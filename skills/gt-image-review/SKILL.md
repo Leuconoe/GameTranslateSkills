@@ -1,13 +1,13 @@
 ---
 name: gt-image-review
-description: Stage 5 of game localization - present before/after image comparison sheet and STOP for mandatory user approval of translated images. Use when user reviews translated images/이미지 검수.
+description: "Stage 5 of game localization - present before/after image comparison sheet and STOP for mandatory user approval of translated images. Use when user reviews translated images/이미지 검수."
 ---
 
 # gt-image-review — 5단계: 사용자 이미지 검수 게이트
 
 번역 이미지를 원본과 비교 가능한 형태로 정리해 사용자에게 제출하고, **승인까지 중단**한다.
 
-> `$GT_HOME` = 지식 베이스 루트 (플러그인 설치: `${CLAUDE_PLUGIN_ROOT}` / 수동 설치: 환경변수 `GT_HOME`).
+> `$GT_HOME` = 지식 베이스 루트. Codex에서는 `install-codex.ps1`가 설정한 `GT_HOME`을 사용하고, Claude Code 플러그인에서는 `GT_HOME`이 없을 때 `${CLAUDE_PLUGIN_ROOT}`를 사용한다. 수동 설치는 `GT_HOME`을 직접 지정한다.
 > 작업 중 문서와 실제의 괴리·막힌 지점·우회법을 발견하면 **즉시** 프로젝트 `HANDOFF.md`에 기록한다 (`$GT_HOME/common/handoff-rules.md`).
 
 ## 입력 조건

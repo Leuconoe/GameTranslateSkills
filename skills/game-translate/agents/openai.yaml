@@ -1,0 +1,6 @@
+interface:
+  display_name: "Game Korean Localization"
+  short_description: "Orchestrate a gated Korean game-localization workflow"
+  default_prompt: "Use $game-translate to start or resume a staged Korean game-localization project."
+policy:
+  allow_implicit_invocation: true

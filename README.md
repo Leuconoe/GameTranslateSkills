@@ -1,6 +1,6 @@
 # GameTranslateSkills
 
-게임 한글화(개인 번역 패치) 작업을 AI 에이전트(Claude Code 등)로 수행하기 위한
+게임 한글화(개인 번역 패치) 작업을 AI 에이전트(Codex, Claude Code 등)로 수행하기 위한
 **범용 스킬 세트**입니다. 실전 Nintendo Switch 한글화 프로젝트들에서 검증된
 노하우를 플랫폼 범용 구조로 추출했습니다.
 
@@ -33,6 +33,16 @@ Claude Code에서:
 /plugin install game-translate@game-translate-skills
 ```
 
+### Codex (Windows)
+
+```powershell
+.\install-codex.ps1
+```
+
+기본적으로 스킬은 `$env:CODEX_HOME\skills`, 지식 베이스는 `$env:CODEX_HOME\game-translate`에 설치한다.
+`CODEX_HOME`이 설정되지 않았으면 `%USERPROFILE%\.codex`를 사용한다. 설치 후 새 Codex 세션을
+열어 스킬 목록을 갱신한다.
+
 ### 수동 설치 (Windows)
 
 ```powershell
@@ -49,7 +59,13 @@ pwsh setup\Install-Tools.ps1 -ToolsRoot <작업루트>\_tools
 
 ## 사용
 
-새 Claude Code 세션에서:
+새 Codex 세션에서:
+
+```
+$game-translate 스킬로 <게임명> 한글화를 시작해줘. 플랫폼은 nsw, 작업 루트는 D:\MyWork
+```
+
+새 Claude Code 세션에서는:
 
 ```
 game-translate 스킬로 <게임명> 한글화를 시작해줘. 플랫폼은 nsw, 작업 루트는 D:\MyWork
@@ -62,7 +78,7 @@ game-translate 스킬로 <게임명> 한글화를 시작해줘. 플랫폼은 nsw
 ## 구조
 
 ```
-skills/       Claude Code 스킬 8종 (게이트·절차 — 플랫폼 무관)
+skills/       Codex/Claude Code 공용 스킬 8종 (게이트·절차 — 플랫폼 무관)
 platforms/    플랫폼 어댑터: nsw(완전) / sfc·ps1·ps2·steam(골격) / _template(양식)
 engines/      엔진 모듈: unity / vn-common / lucasystem (플랫폼과 직교)
 common/       SAFETY.md(안전 규칙) · glossary-rules.md(번역 규칙) ·

@@ -1,6 +1,6 @@
 ---
 name: game-translate
-description: Orchestrates the full 7-stage game Korean-localization workflow (analyze, translate text, user text review, translate images, user image review, QA, release) for NSW/SFC/PS1/PS2/Steam games with PDCA loop. Use when starting or resuming a game translation/localization/한글화 project.
+description: "Orchestrates the full 7-stage game Korean-localization workflow (analyze, translate text, user text review, translate images, user image review, QA, release) for NSW/SFC/PS1/PS2/Steam games with PDCA loop. Use when starting or resuming a game translation/localization/한글화 project."
 ---
 
 # game-translate — 게임 한글화 오케스트레이터
@@ -12,7 +12,7 @@ description: Orchestrates the full 7-stage game Korean-localization workflow (an
 
 | 변수 | 의미 | 해석 규칙 |
 |-----|------|-------|
-| `GT_HOME` | 지식 베이스 루트 (platforms/, engines/, common/, setup/) | **플러그인 설치**: `${CLAUDE_PLUGIN_ROOT}` (이 스킬이 속한 플러그인 루트) → **수동 설치**: 환경변수 `GT_HOME` (기본 `~/.claude/game-translate`) 순서로 해석 |
+| `GT_HOME` | 지식 베이스 루트 (platforms/, engines/, common/, setup/) | **Codex 설치**: `install-codex.ps1`가 설정한 `GT_HOME` (기본 `<CODEX_HOME>\game-translate`) → **Claude Code 플러그인**: `GT_HOME`이 없을 때 `${CLAUDE_PLUGIN_ROOT}` → **수동 설치**: `GT_HOME`을 직접 지정 |
 | `GT_WORKSPACE` | 게임 번역 작업 루트 (게임 데이터·산출물 위치) | 환경변수 또는 현재 작업 디렉터리 |
 | `GT_TOOLS` | 공용 도구 폴더 | `$GT_WORKSPACE/_tools` |
 

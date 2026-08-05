@@ -1,0 +1,6 @@
+interface:
+  display_name: "Image Review Gate"
+  short_description: "Prepare before-and-after image approval review"
+  default_prompt: "Use $gt-image-review to prepare an image comparison sheet and wait for user approval."
+policy:
+  allow_implicit_invocation: true

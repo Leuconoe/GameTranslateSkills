@@ -1,13 +1,13 @@
 ---
 name: gt-text-translate
-description: Stage 2 of game localization - batch-translate extracted game text (JA/EN/ZH to Korean) with glossary accumulation, tone consistency, and structure validation. Use when translating game text/텍스트 번역/대사 번역.
+description: "Stage 2 of game localization - batch-translate extracted game text (JA/EN/ZH to Korean) with glossary accumulation, tone consistency, and structure validation. Use when translating game text/텍스트 번역/대사 번역."
 ---
 
 # gt-text-translate — 2단계: 텍스트 번역
 
 추출된 텍스트를 배치 단위로 일→한(또는 영/중→한) 번역하고 용어집·말투를 누적 관리한다.
 
-> `$GT_HOME` = 지식 베이스 루트 (플러그인 설치: `${CLAUDE_PLUGIN_ROOT}` / 수동 설치: 환경변수 `GT_HOME`).
+> `$GT_HOME` = 지식 베이스 루트. Codex에서는 `install-codex.ps1`가 설정한 `GT_HOME`을 사용하고, Claude Code 플러그인에서는 `GT_HOME`이 없을 때 `${CLAUDE_PLUGIN_ROOT}`를 사용한다. 수동 설치는 `GT_HOME`을 직접 지정한다.
 > 작업 중 문서와 실제의 괴리·막힌 지점·우회법을 발견하면 **즉시** 프로젝트 `HANDOFF.md`에 기록한다 (`$GT_HOME/common/handoff-rules.md`).
 
 ## 입력 조건

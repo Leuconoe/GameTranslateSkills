@@ -1,0 +1,6 @@
+interface:
+  display_name: "Text Review Gate"
+  short_description: "Prepare a user-approved translation review sheet"
+  default_prompt: "Use $gt-text-review to prepare a complete text review sheet and wait for user approval."
+policy:
+  allow_implicit_invocation: true

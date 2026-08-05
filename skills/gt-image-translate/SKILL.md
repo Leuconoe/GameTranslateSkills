@@ -1,6 +1,6 @@
 ---
 name: gt-image-translate
-description: Stage 4 of game localization - translate text-bearing images/textures. Codex agents generate images via imagegen; Claude agents analyze and plan only (generation deferred to user). Use when translating game images/이미지 번역/텍스처 한글화.
+description: "Stage 4 of game localization - translate text-bearing images/textures. Codex agents generate images via imagegen; Claude agents analyze and plan only (generation deferred to user). Use when translating game images/이미지 번역/텍스처 한글화."
 ---
 
 # gt-image-translate — 4단계: 이미지 번역
@@ -8,7 +8,7 @@ description: Stage 4 of game localization - translate text-bearing images/textur
 문자가 그려진 텍스처·아틀라스·타이틀 로고 등을 한글판으로 교체 준비한다.
 **실행 에이전트에 따라 처리 방식이 다르다.**
 
-> `$GT_HOME` = 지식 베이스 루트 (플러그인 설치: `${CLAUDE_PLUGIN_ROOT}` / 수동 설치: 환경변수 `GT_HOME`).
+> `$GT_HOME` = 지식 베이스 루트. Codex에서는 `install-codex.ps1`가 설정한 `GT_HOME`을 사용하고, Claude Code 플러그인에서는 `GT_HOME`이 없을 때 `${CLAUDE_PLUGIN_ROOT}`를 사용한다. 수동 설치는 `GT_HOME`을 직접 지정한다.
 > 작업 중 문서와 실제의 괴리·막힌 지점·우회법을 발견하면 **즉시** 프로젝트 `HANDOFF.md`에 기록한다 (`$GT_HOME/common/handoff-rules.md`).
 
 ## 입력 조건
@@ -37,7 +37,7 @@ Claude 환경에서 이미지 생성을 시도하거나, 생성 없이 원본을
    추출. 아틀라스는 좌표 맵(어느 영역이 어떤 텍스트인지)도 기록.
 3. **스타일 분석**: 각 이미지의 폰트 계열·크기·색·외곽선·그라데이션·배치를 메모
    (재생성 시 시각적 일치 기준).
-4. **[Codex 전용] 이미지 생성**: imagegen 스킬로 번역 이미지 생성 →
+4. **[Codex 전용] 이미지 생성**: `$imagegen` 스킬로 번역 이미지 생성 →
    `30_translation/images/translated/` (원본과 동일 파일명·해상도·포맷).
    생성 후 원본과 나란히 비교하여 스타일 일치 확인.
 5. **[Claude 전용] 보류 처리**: `IMAGE_PLAN.tsv` 상태를 `hold-for-generation`으로 표시하고

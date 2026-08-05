@@ -1,0 +1,6 @@
+interface:
+  display_name: "Game File Analysis"
+  short_description: "Inventory game files, engines, and translation targets"
+  default_prompt: "Use $gt-analyze to inspect a legally owned game project and build its extraction and translation inventory."
+policy:
+  allow_implicit_invocation: true

@@ -1,13 +1,13 @@
 ---
 name: gt-qa
-description: Stage 6 of game localization - full verification: structure integrity, Korean font coverage, patch build, and real runtime testing on emulator/PC with logs and screenshots. Use when QA testing a translation patch/전체 검수/실기 시험.
+description: "Stage 6 of game localization - full verification: structure integrity, Korean font coverage, patch build, and real runtime testing on emulator/PC with logs and screenshots. Use when QA testing a translation patch/전체 검수/실기 시험."
 ---
 
 # gt-qa — 6단계: 전체 검수
 
 승인된 번역을 게임에 재삽입해 빌드하고, 실제 실행 환경에서 검증한다.
 
-> `$GT_HOME` = 지식 베이스 루트 (플러그인 설치: `${CLAUDE_PLUGIN_ROOT}` / 수동 설치: 환경변수 `GT_HOME`).
+> `$GT_HOME` = 지식 베이스 루트. Codex에서는 `install-codex.ps1`가 설정한 `GT_HOME`을 사용하고, Claude Code 플러그인에서는 `GT_HOME`이 없을 때 `${CLAUDE_PLUGIN_ROOT}`를 사용한다. 수동 설치는 `GT_HOME`을 직접 지정한다.
 > 작업 중 문서와 실제의 괴리·막힌 지점·우회법을 발견하면 **즉시** 프로젝트 `HANDOFF.md`에 기록한다 (`$GT_HOME/common/handoff-rules.md`).
 
 ## 입력 조건

@@ -1,0 +1,6 @@
+interface:
+  display_name: "Game Translation QA"
+  short_description: "Verify fonts, builds, runtime, and patch integrity"
+  default_prompt: "Use $gt-qa to verify the Korean patch's structure, font coverage, build, and runtime behavior."
+policy:
+  allow_implicit_invocation: true

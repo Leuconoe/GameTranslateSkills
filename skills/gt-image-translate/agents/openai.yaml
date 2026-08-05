@@ -1,0 +1,6 @@
+interface:
+  display_name: "Game Image Translation"
+  short_description: "Translate text-bearing game images and textures"
+  default_prompt: "Use $gt-image-translate to plan and generate Korean game-text images with imagegen when available."
+policy:
+  allow_implicit_invocation: true

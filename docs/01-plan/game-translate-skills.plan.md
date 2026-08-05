@@ -20,8 +20,8 @@
 | # | 결정 사항 | 선택 |
 |---|----------|------|
 | D1 | 스킬 분할 | **오케스트레이터 + 7단계별 스킬** |
-| D2 | 배포 형태 | ~~순수 skills/ 폴더 + install.ps1~~ → **Claude Code 플러그인** (2026-08-05 공개 배포 확정으로 변경, install.ps1은 수동 설치용 병행) |
-| D3 | 도구 의존성 | **도구 자동 설치 스크립트 포함** |
+| D2 | 배포 형태 | **Codex/Claude Code 플러그인** (공식 마켓플레이스 설치, 수동 설치 스크립트 없음) |
+| D3 | 도구 의존성 | **Node/npm 기반 도구 자동화 CLI 포함** |
 | D4 | 엔진 범위 | **Unity + VN엔진(GARbro/msg-tool/pfs-rs) + LucaSystem 모두** |
 | D5 | 플랫폼 | **범용 설계** — NSW뿐 아니라 SFC, PS1, PS2, Steam 호환 구조 |
 | D6 | 검수 산출물 | **TSV/스프레드시트** (원문│번역│비고), 이미지는 before/after 경로 목록 |
@@ -58,8 +58,11 @@ engines/                     ← 엔진 모듈 (스킬이 참조)
 ├── unity/                   ← UABEA, Il2CppDumper, TMP/SDF 한글 폰트
 ├── vn-common/               ← GARbro, msg-tool, pfs-rs
 └── lucasystem/              ← LuckSystem
-setup/                       ← 도구 자동 설치 스크립트 (D3)
-install.ps1                  ← 스킬 설치 (~/.claude/skills 복사)
+package.json                ← 크로스플랫폼 npm 명령 정의
+setup/                       ← Node/npm 도구 자동화 CLI (D3)
+└── install-tools.mjs        ← 도구 설치/준비 명령
+.codex-plugin/plugin.json    ← Codex 플러그인 manifest
+.agents/plugins/marketplace.json ← Codex repo marketplace
 ```
 
 - **스킬 계층**: 플랫폼 무관 절차 (무엇을, 어떤 순서로, 어떤 게이트로)
@@ -79,7 +82,7 @@ install.ps1                  ← 스킬 설치 (~/.claude/skills 복사)
 | §13-16 (실패 복구, 검증, 재발 방지, 완료 기준) | gt-qa + 각 스킬 분산 |
 | `CODEX_TRANSLATION_WORKFLOW_KO.md` (배치, 2차 검수, PDCA 반복) | gt-text-translate + gt-text-review |
 | `AGENTS.md` 안전 규칙 (타이틀 경계, 정션 보호, 원자적 주입) | 공통 안전 규칙 문서로 추출 |
-| `_tools/*.ps1` (New-TranslationProject, Validate 등) | scripts/로 범용화 이식 |
+| `scripts/*.mjs` (프로젝트 생성·검증 등) | npm CLI로 범용화 이식 |
 
 ## 5. Success Criteria
 
@@ -87,7 +90,7 @@ install.ps1                  ← 스킬 설치 (~/.claude/skills 복사)
 - [ ] NSW 신규 타이틀에 스킬만으로 착수 가능 (기존 91KB 문서 없이)
 - [ ] 사용자 검수 게이트(3·5단계)가 명시적으로 작업을 멈추고 승인을 기다림
 - [ ] Codex/Claude 에이전트별 이미지 처리 분기가 SKILL.md에 명문화
-- [ ] 다른 PC에서 install.ps1 + setup으로 환경 재현 가능
+- [ ] 다른 PC에서 Codex/Claude 플러그인 마켓플레이스로 환경 재현 가능
 - [ ] 플랫폼 어댑터 추가만으로 신규 플랫폼(SFC 등) 확장 가능한 구조 검증
 
 ## 6. Risks and Mitigation
@@ -96,14 +99,14 @@ install.ps1                  ← 스킬 설치 (~/.claude/skills 복사)
 |-------|------|
 | 과도한 일반화로 NSW 실전성 상실 | NSW 어댑터를 1차 기준 구현으로 삼고 스킬 본문은 어댑터 참조로 위임 |
 | 91KB 지침의 게임 특정 정보(타이틀ID 등) 유출 | 이식 시 특정 게임 정보 제거, 패턴만 추출 |
-| 도구 라이선스/재배포 문제 | setup 스크립트는 공식 릴리스 URL에서 다운로드만 수행, 바이너리 미포함 |
+| 도구 라이선스/재배포 문제 | npm CLI는 공식 릴리스 URL에서 다운로드만 수행, 바이너리 미포함 |
 | 저작권 민감성 | 스킬은 사용자 보유 게임의 개인 번역 절차만 다룸. 롬/키/추출물 취급 금지 규칙 포함 |
 
 ## 7. Next Steps
 
 1. 잔여 질문 확정 (검수 게이트 산출물 형태, 타 플랫폼 1차 깊이)
 2. Design: 각 스킬 SKILL.md 목차 + 어댑터 인터페이스 정의
-3. Do: NSW 어댑터부터 이식 → 스킬 본문 작성 → setup/install 스크립트
+3. Do: NSW 어댑터부터 이식 → 스킬 본문 작성 → 플러그인 manifest/marketplace + setup 도구
 4. Check: 기존 NSW 타이틀 1개로 스킬 기반 드라이런 검증
 5. Act: 갭 보완 후 v1 태깅
 

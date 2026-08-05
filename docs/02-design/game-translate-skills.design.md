@@ -6,7 +6,9 @@
 
 ```
 E:\GameTranslateSkills\
-├── skills/                      # Claude Code 스킬 (설치 대상)
+├── .codex-plugin/plugin.json   # Codex 플러그인 manifest
+├── .agents/plugins/marketplace.json # Codex repo marketplace
+├── skills/                      # Codex/Claude Code 공용 스킬 (플러그인 배포)
 │   ├── game-translate/SKILL.md  # 오케스트레이터
 │   ├── gt-analyze/SKILL.md
 │   ├── gt-text-translate/SKILL.md
@@ -34,13 +36,13 @@ E:\GameTranslateSkills\
 │   ├── SAFETY.md                # 안전 규칙 (AGENTS.md에서 일반화 추출)
 │   ├── glossary-rules.md        # 용어집·말투 누적 규칙
 │   └── project-structure.md     # 표준 작업 폴더 구조 (00_source~90_tools)
+├── package.json                 # 크로스플랫폼 npm 명령
 ├── setup/
-│   ├── Install-Tools.ps1        # 도구 자동 다운로드/배치 (공식 릴리스 URL만)
+│   ├── install-tools.mjs        # 도구 자동 다운로드/배치 (공식 릴리스 URL만)
 │   └── tools.manifest.json      # 도구별 이름·버전·URL·용도·배치 경로
 ├── scripts/
-│   ├── New-TranslationProject.ps1   # 원본 작업장에서 범용화 이식
-│   └── Validate-TranslationProjects.ps1
-├── install.ps1                  # skills/ → ~/.claude/skills 복사
+│   ├── new-translation-project.mjs   # 원본 작업장에서 범용화 이식
+│   └── validate-translation-projects.mjs
 ├── docs/                        # PDCA 문서
 └── README.md
 ```
@@ -92,5 +94,5 @@ E:\GameTranslateSkills\
 
 1. 소스 노하우 증류 (병렬 에이전트): NSW 지침 → platforms/nsw/ + engines/, Codex 워크플로우 + AGENTS.md → common/
 2. 스킬 8종 작성 (본인)
-3. setup/install 스크립트 + README
+3. 플러그인 manifest/marketplace + setup 도구 + README
 4. Check: 스킬 문서 상호 참조 무결성 + 기존 타이틀 워크플로우와 대조 갭 분석

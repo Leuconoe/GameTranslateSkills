@@ -1,6 +1,6 @@
 {
   "name": "game-translate",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Seven-stage Korean game-localization workflow with analysis, translation, review gates, QA, and patch release guidance.",
   "author": {
     "name": "Leuconoe"

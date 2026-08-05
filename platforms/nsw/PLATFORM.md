@@ -20,10 +20,10 @@
 | Eden | `$GT_TOOLS/Eden/<version>/eden.exe` | 실기 전 표준 에뮬레이터 테스트 환경 |
 | Ryujinx 호환 런타임 | `$GT_TOOLS/<배포 폴더>/` (예: `Ryubing/`) | 보조 에뮬레이터 스모크 테스트. 포터블 프로파일은 도구 폴더 안에 유지하고 프로젝트 트리로 복사 금지 |
 | 공용 한글 폰트 | `$GT_TOOLS/_fonts/` | 기본 본문 폰트. **실제 폴더의 파일을 확인**해 선택한 파일명·SHA-256을 프로젝트 시작 시 기록 |
-| 프로젝트 스캐폴드 | `$GT_TOOLS/New-TranslationProject.ps1` | 격리된 프로젝트 폴더 생성 |
-| 구조 검증기 | `$GT_TOOLS/Validate-TranslationProjects.ps1` | 폴더 구조·Title ID 격리·루트 누수 검사 (`-Strict`) |
+| 프로젝트 스캐폴드 | `npm run project:new` | 격리된 프로젝트 폴더 생성 |
+| 구조 검증기 | `npm run project:validate` | 폴더 구조·Title ID 격리·루트 누수 검사 (`--strict`) |
 
-**도구 경로 탐색 규칙**: 배포 압축본을 그대로 푼 도구 폴더에는 버전·플랫폼 접미가 붙는다(예: `nstool-v*-win_x64/`). 문서의 고정 경로를 그대로 가정하지 말고 **이름 접두로 탐색**한다(예: `Get-ChildItem $GT_TOOLS -Directory -Filter 'nstool-*'`). 폰트 폴더 이름은 `fonts/`가 아니라 `_fonts/`다. 실제로 사용한 절대 경로와 버전은 `WORK_LOG.md`에 기록한다.
+**도구 경로 탐색 규칙**: 배포 압축본을 그대로 푼 도구 폴더에는 버전·플랫폼 접미가 붙는다(예: `nstool-v*-win_x64/`). 문서의 고정 경로를 그대로 가정하지 말고 디렉터리 목록에서 **이름 접두로 탐색**한다. 폰트 폴더 이름은 `fonts/`가 아니라 `_fonts/`다. 실제로 사용한 절대 경로와 버전은 `WORK_LOG.md`에 기록한다.
 
 엔진별 도구(Unity, 비주얼노벨 계열, LUCA System 등)는 `engines/` 하위 문서를 참조한다.
 
@@ -121,14 +121,11 @@
 
 3. 워크스페이스 루트에서 스캐폴드 스크립트로 프로젝트를 생성한다.
 
-```powershell
-& $GT_TOOLS/New-TranslationProject.ps1 `
-  -GameFolder '<게임 릴리스 폴더명 (대기 폴더 하위면 예: _waitng\<폴더명>)>' `
-  -TitleId '<16자리 베이스 Title ID>' `
-  -GameName '<게임명>'
+```text
+npm run project:new -- --game-folder "<게임 릴리스 폴더명 (대기 폴더 하위면 예: _waitng/<폴더명>)>" --title-id "<16자리 베이스 Title ID>" --game-name "<게임명>" --titles-root "$GT_WORKSPACE/_titles"
 ```
 
-워크스페이스에 스크립트 사본이 없으면 지식 베이스 스크립트에 타이틀 루트를 명시해 실행한다: `& $GT_HOME/scripts/New-TranslationProject.ps1 -TitlesRoot '<타이틀 루트 절대 경로>' ...`
+명령은 `package.json`이 있는 플러그인 루트에서 실행한다. `--game-folder`에는 대기 폴더를 포함한 상대 경로를 지정한다.
 
 4. `PROJECT.md`에 업데이트 Title ID, 버전, 엔진, 원본 파일명을 기록한다.
 5. `00_source/SOURCE_INVENTORY.tsv`에 원본 크기와 SHA-256을 기록한다.
@@ -140,8 +137,8 @@
 
 폴더 이동, 새 게임 등록, 빌드 완료 후 다음을 실행한다.
 
-```powershell
-& $GT_TOOLS/Validate-TranslationProjects.ps1 -Strict
+```text
+npm run project:validate -- --titles-root "$GT_WORKSPACE/_titles" --strict
 ```
 
 이 검사는 필수 폴더·매니페스트 누락, Title ID 중복, 다른 게임의 LayeredFS ID 혼입, 루트에 생성된 공용 작업 폴더를 오류로 보고해야 한다.

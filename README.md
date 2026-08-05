@@ -49,19 +49,13 @@ codex plugin marketplace add Leuconoe/GameTranslateSkills
 
 Codex 데스크톱 앱에서는 Plugins 화면에서 같은 플러그인을 검색해 설치할 수 있다.
 
-### Claude Code 수동 설치 (Windows)
+### 작업 도구 (선택)
 
-```powershell
-git clone https://github.com/Leuconoe/GameTranslateSkills.git
-cd GameTranslateSkills
-.\install.ps1          # 스킬 → ~/.claude/skills, 지식 베이스 → GT_HOME
+```bash
+npm run tools:install -- --tools-root <작업루트>/_tools
 ```
 
-### 도구 설치 (공통)
-
-```powershell
-pwsh setup\Install-Tools.ps1 -ToolsRoot <작업루트>\_tools
-```
+Node.js 18 이상과 npm이 필요하다. 이 명령은 스킬 설치가 아니라 플랫폼 어댑터가 요구하는 작업 도구를 준비할 때만 사용한다.
 
 ## 사용
 
@@ -84,13 +78,16 @@ game-translate 스킬로 <게임명> 한글화를 시작해줘. 플랫폼은 nsw
 ## 구조
 
 ```
+.codex-plugin/ Codex 플러그인 manifest
+.agents/      Codex repo marketplace 정의
+package.json  크로스플랫폼 npm 명령
 skills/       Codex/Claude Code 공용 스킬 8종 (게이트·절차 — 플랫폼 무관)
 platforms/    플랫폼 어댑터: nsw(완전) / sfc·ps1·ps2·steam(골격) / _template(양식)
 engines/      엔진 모듈: unity / vn-common / lucasystem (플랫폼과 직교)
 common/       SAFETY.md(안전 규칙) · glossary-rules.md(번역 규칙) ·
               project-structure.md · handoff-rules.md(시행착오 기록·개선 루프)
-setup/        도구 자동 설치 (tools.manifest.json + Install-Tools.ps1)
-scripts/      프로젝트 생성·검증 스크립트
+setup/        도구 자동 설치 (tools.manifest.json + install-tools.mjs)
+scripts/      프로젝트 생성·검증 Node CLI
 docs/         PDCA 문서 (plan / design / analysis / report)
 ```
 

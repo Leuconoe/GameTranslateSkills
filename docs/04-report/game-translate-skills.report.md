@@ -9,7 +9,7 @@ Claude Code 스킬 세트로 추출·구조화하여 공유 가능하게 만든�
 
 **결과**: 스킬 8종 + 지식 베이스(플랫폼 어댑터 5종·엔진 모듈 3종·공통 규칙 3종) +
 설치/도구 자동화 완성. 실제 대기 타이틀 드라이런으로 검증하고 결함 15건 수정.
-스킬은 사용자 환경에 설치 완료(`~/.claude/skills/`, `GT_HOME`).
+스킬은 Codex/Claude Code 플러그인 manifest와 marketplace를 통해 설치하도록 구성했다.
 
 ## 2. PDCA 요약
 
@@ -17,7 +17,7 @@ Claude Code 스킬 세트로 추출·구조화하여 공유 가능하게 만든�
 |-----|------|
 | **Plan** | 원본 작업장 분석(도구 18종·타이틀 11개·가이드 158KB) → 사용자 결정 D1-D9 확정 (스킬 구조·배포 형태·도구 의존성·엔진/플랫폼 범위·검수 형태·언어) |
 | **Design** | 3계층 아키텍처(스킬=절차 / 플랫폼 어댑터=추출·빌드·시험 / 엔진 모듈=포맷·폰트), 단계 간 산출물 계약, 검수 게이트 프로토콜, 에이전트별 분기 |
-| **Do** | 병렬 증류 에이전트 2기(158KB 가이드+AGENTS.md → 일반화 이식) + 스킬 8종·골격 어댑터·setup/install 작성. 초기 커밋 `e61bfad` (33파일, 2,416줄) |
+| **Do** | 병렬 증류 에이전트 2기(158KB 가이드+AGENTS.md → 일반화 이식) + 스킬 8종·골격 어댑터·setup 도구·플러그인 manifest 작성. 초기 커밋 `e61bfad` (33파일, 2,416줄) |
 | **Check** | 정적 검증(frontmatter 8/8·참조 무결성·유출 0건) + **실전 드라이런**: LucaSystem 대기 타이틀로 원본 가이드 차단 상태에서 1단계 실측 → 결함 15건 발견 |
 | **Act** | 15/15 수정 (`c8a25c2`) — 추출 실측 명령 반영, LucaSystem 복구 절차, 스크립트 재작성, 문서 모순 해소. 2차 드라이런으로 D4 해제 실증 진행 |
 
@@ -29,9 +29,11 @@ skills/          game-translate(오케스트레이터) + gt-analyze/text-transla
 platforms/       nsw(완전: PLATFORM+extract+build-test+release) / sfc·ps1·ps2·steam(골격) / _template
 engines/         unity(TMP·SDF 폰트) / vn-common(GARbro·msg-tool·pfs-rs) / lucasystem(LuckSystem)
 common/          SAFETY.md / glossary-rules.md(80행 배치 canonical) / project-structure.md
-setup/           tools.manifest.json + Install-Tools.ps1 (GitHub 최신 릴리스 자동 설치)
-scripts/         New-TranslationProject.ps1(-TitlesRoot, 재귀 중복검사) / Validate-TranslationProjects.ps1
-install.ps1      스킬→~/.claude/skills, 지식베이스→GT_HOME 분리 설치
+package.json     크로스플랫폼 npm 명령(project:new, project:validate, tools:install)
+setup/           tools.manifest.json + install-tools.mjs (GitHub 최신 릴리스 자동 설치)
+scripts/         new-translation-project.mjs(--titles-root, 재귀 중복검사) / validate-translation-projects.mjs
+.codex-plugin/   plugin.json (Codex 플러그인 manifest)
+.agents/plugins/ marketplace.json (Codex repo marketplace)
 ```
 
 ## 4. 핵심 교훈 (Lessons Learned)
@@ -44,7 +46,7 @@ install.ps1      스킬→~/.claude/skills, 지식베이스→GT_HOME 분리 설
 3. **안전 규칙은 이식 품질이 좋았다** — AGENTS.md에서 일반화한 SAFETY.md는 드라이런
    에이전트가 "그대로 따라도 사고가 나지 않는" 수준으로 평가.
 4. **검증 스크립트 자체의 버그 주의** — 1차 frontmatter 검사에서 오탐 16건은 검사
-   스크립트의 PowerShell 파라미터 비호환이 원인이었다.
+   구형 검증 스크립트의 파라미터 처리 비호환이 원인이었다.
 
 ## 5. 2차 드라이런 (D4 해제 실증) — 성공
 

@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "Game Korean-localization skill suite for Codex and Claude Code",
-    "version": "1.1.0"
+    "version": "1.2.0"
   },
   "plugins": [
     {

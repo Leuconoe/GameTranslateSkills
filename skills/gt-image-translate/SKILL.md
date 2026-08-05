@@ -8,7 +8,7 @@ description: "Stage 4 of game localization - translate text-bearing images/textu
 문자가 그려진 텍스처·아틀라스·타이틀 로고 등을 한글판으로 교체 준비한다.
 **실행 에이전트에 따라 처리 방식이 다르다.**
 
-> `$GT_HOME` = 지식 베이스 루트. Codex에서는 `install-codex.ps1`가 설정한 `GT_HOME`을 사용하고, Claude Code 플러그인에서는 `GT_HOME`이 없을 때 `${CLAUDE_PLUGIN_ROOT}`를 사용한다. 수동 설치는 `GT_HOME`을 직접 지정한다.
+> `$GT_HOME` = 지식 베이스 루트. Codex에서는 이 스킬이 설치된 플러그인 루트(상위에 `.codex-plugin/`, `skills/`, `common/`이 있는 디렉터리)로 해석하고, Claude Code 플러그인에서는 `${CLAUDE_PLUGIN_ROOT}`를 사용한다. 플러그인 외 수동 설치는 지원하지 않는다.
 > 작업 중 문서와 실제의 괴리·막힌 지점·우회법을 발견하면 **즉시** 프로젝트 `HANDOFF.md`에 기록한다 (`$GT_HOME/common/handoff-rules.md`).
 
 ## 입력 조건

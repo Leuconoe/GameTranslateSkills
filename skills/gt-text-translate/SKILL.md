@@ -7,7 +7,7 @@ description: "Stage 2 of game localization - batch-translate extracted game text
 
 추출된 텍스트를 배치 단위로 일→한(또는 영/중→한) 번역하고 용어집·말투를 누적 관리한다.
 
-> `$GT_HOME` = 지식 베이스 루트. Codex에서는 `install-codex.ps1`가 설정한 `GT_HOME`을 사용하고, Claude Code 플러그인에서는 `GT_HOME`이 없을 때 `${CLAUDE_PLUGIN_ROOT}`를 사용한다. 수동 설치는 `GT_HOME`을 직접 지정한다.
+> `$GT_HOME` = 지식 베이스 루트. Codex에서는 이 스킬이 설치된 플러그인 루트(상위에 `.codex-plugin/`, `skills/`, `common/`이 있는 디렉터리)로 해석하고, Claude Code 플러그인에서는 `${CLAUDE_PLUGIN_ROOT}`를 사용한다. 플러그인 외 수동 설치는 지원하지 않는다.
 > 작업 중 문서와 실제의 괴리·막힌 지점·우회법을 발견하면 **즉시** 프로젝트 `HANDOFF.md`에 기록한다 (`$GT_HOME/common/handoff-rules.md`).
 
 ## 입력 조건

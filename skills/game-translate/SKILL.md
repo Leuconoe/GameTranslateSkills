@@ -12,7 +12,7 @@ description: "Orchestrates the full 7-stage game Korean-localization workflow (a
 
 | 변수 | 의미 | 해석 규칙 |
 |-----|------|-------|
-| `GT_HOME` | 지식 베이스 루트 (platforms/, engines/, common/, setup/) | **Codex 설치**: `install-codex.ps1`가 설정한 `GT_HOME` (기본 `<CODEX_HOME>\game-translate`) → **Claude Code 플러그인**: `GT_HOME`이 없을 때 `${CLAUDE_PLUGIN_ROOT}` → **수동 설치**: `GT_HOME`을 직접 지정 |
+| `GT_HOME` | 지식 베이스 루트 (platforms/, engines/, common/, setup/) | **Codex 플러그인**: `.codex-plugin/`, `skills/`, `common/`이 함께 있는 설치된 플러그인 루트 → **Claude Code 플러그인**: `${CLAUDE_PLUGIN_ROOT}`. 플러그인 외 수동 설치는 지원하지 않음 |
 | `GT_WORKSPACE` | 게임 번역 작업 루트 (게임 데이터·산출물 위치) | 환경변수 또는 현재 작업 디렉터리 |
 | `GT_TOOLS` | 공용 도구 폴더 | `$GT_WORKSPACE/_tools` |
 
@@ -75,11 +75,9 @@ description: "Orchestrates the full 7-stage game Korean-localization workflow (a
 ## 6. 신규 프로젝트 시작 절차
 
 1. 플랫폼 확인 → 어댑터 존재 확인 (`$GT_HOME/platforms/`)
-2. 프로젝트 생성 (아래 순서로 시도):
-   - 워크스페이스에 스크립트 사본이 있으면 그것을 사용: `& $GT_TOOLS\New-TranslationProject.ps1 ...`
-   - 없으면 지식 베이스 스크립트에 타이틀 루트를 명시: 
-     `& $GT_HOME\scripts\New-TranslationProject.ps1 -TitlesRoot $GT_WORKSPACE\_titles ...`
-   - 대기 폴더(`_waitng` 등) 하위 타이틀은 `-GameFolder`에 대기 폴더 포함 상대 경로를 그대로 지정
-   - 스크립트 실패 시 `common/project-structure.md`의 표준 구조를 수동 생성
+2. 플러그인 루트(`package.json`이 있는 디렉터리)에서 npm 명령으로 프로젝트 생성:
+   `npm run project:new -- --game-folder "<게임 릴리스 폴더명>" --title-id "<16자리 베이스 Title ID>" --game-name "<게임명>" --titles-root "$GT_WORKSPACE/_titles"`
+   대기 폴더(`_waitng` 등) 하위 타이틀은 `--game-folder`에 대기 폴더 포함 상대 경로를 그대로 지정한다.
+   명령 실패 시 `common/project-structure.md`의 표준 구조를 수동 생성하지 말고 원인을 먼저 기록·해결한다.
 3. 게임 레지스트리(`GAME_REGISTRY.tsv`)에 등록 (워크스페이스에 있는 경우)
 4. `gt-analyze` 호출로 1단계 시작

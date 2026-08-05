@@ -1,0 +1,15 @@
+{
+  "name": "game-translate-skills",
+  "version": "1.2.0",
+  "private": true,
+  "description": "Cross-platform npm tooling for the GameTranslateSkills plugin.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "tools:install": "node setup/install-tools.mjs",
+    "project:new": "node scripts/new-translation-project.mjs",
+    "project:validate": "node scripts/validate-translation-projects.mjs"
+  }
+}

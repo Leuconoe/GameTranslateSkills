@@ -10,7 +10,7 @@
 4. `BUILD_MANIFEST.tsv`에 입력 원본, 출력 파일, 크기, 해시, 시험 결과를 기록한다.
 5. 패키징 전에 모든 패치 파일 목록과 파싱 가능 여부를 검사한다.
 6. 다른 Title ID 폴더가 LayeredFS 아래에 있으면 **빌드를 폐기**하고 경로부터 수정한다.
-7. 빌드 완료 후 `& $GT_TOOLS/Validate-TranslationProjects.ps1 -Strict`를 실행한다.
+7. 빌드 완료 후 `npm run project:validate -- --titles-root "$GT_WORKSPACE/_titles" --strict`를 실행한다.
 
 ### LayeredFS 구조
 

@@ -4,14 +4,14 @@
     "name": "Leuconoe"
   },
   "metadata": {
-    "description": "Game Korean-localization skill suite for Claude Code",
-    "version": "1.0.0"
+    "description": "Game Korean-localization skill suite for Codex and Claude Code",
+    "version": "1.1.0"
   },
   "plugins": [
     {
       "name": "game-translate",
       "source": "./",
-      "description": "7-stage game Korean-localization workflow: analyze, text translate, user text review, image translate, user image review, QA, release. Platform adapters (NSW complete; SFC/PS1/PS2/Steam skeletons) + engine modules (Unity/VN/LucaSystem).",
+      "description": "7-stage game Korean-localization workflow for Codex and Claude Code: analyze, text translate, user text review, image translate, user image review, QA, release. Platform adapters (NSW complete; SFC/PS1/PS2/Steam skeletons) + engine modules (Unity/VN/LucaSystem).",
       "category": "workflow",
       "keywords": ["game", "translation", "localization", "korean"]
     }

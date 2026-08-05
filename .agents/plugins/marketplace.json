@@ -1,0 +1,21 @@
+{
+  "name": "game-translate-skills",
+  "interface": {
+    "displayName": "GameTranslateSkills"
+  },
+  "plugins": [
+    {
+      "name": "game-translate",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/Leuconoe/GameTranslateSkills.git",
+        "ref": "main"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

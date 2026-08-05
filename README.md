@@ -33,17 +33,23 @@ Claude Code에서:
 /plugin install game-translate@game-translate-skills
 ```
 
-### Codex (Windows)
+### Codex CLI / desktop
 
-```powershell
-.\install-codex.ps1
+Codex는 표준 플러그인 manifest와 마켓플레이스를 통해 설치한다. PowerShell 설치기는 필요 없다.
+
+Codex CLI에서 마켓플레이스를 한 번 등록한다:
+
+```bash
+codex plugin marketplace add Leuconoe/GameTranslateSkills
 ```
 
-기본적으로 스킬은 `$env:CODEX_HOME\skills`, 지식 베이스는 `$env:CODEX_HOME\game-translate`에 설치한다.
-`CODEX_HOME`이 설정되지 않았으면 `%USERPROFILE%\.codex`를 사용한다. 설치 후 새 Codex 세션을
-열어 스킬 목록을 갱신한다.
+그 다음 Codex에서 `/plugins`를 입력해 `GameTranslateSkills` 마켓플레이스의
+`game-translate` 플러그인을 설치·활성화하고 새 세션을 시작한다. Codex의 설치 메뉴는
+`/plugin` 단수가 아니라 `/plugins`이며, 일반적인 `/install` 명령은 사용하지 않는다.
 
-### 수동 설치 (Windows)
+Codex 데스크톱 앱에서는 Plugins 화면에서 같은 플러그인을 검색해 설치할 수 있다.
+
+### Claude Code 수동 설치 (Windows)
 
 ```powershell
 git clone https://github.com/Leuconoe/GameTranslateSkills.git

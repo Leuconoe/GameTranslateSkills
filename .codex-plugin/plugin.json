@@ -1,0 +1,35 @@
+{
+  "name": "game-translate",
+  "version": "1.1.0",
+  "description": "Seven-stage Korean game-localization workflow with analysis, translation, review gates, QA, and patch release guidance.",
+  "author": {
+    "name": "Leuconoe"
+  },
+  "homepage": "https://github.com/Leuconoe/GameTranslateSkills",
+  "repository": "https://github.com/Leuconoe/GameTranslateSkills",
+  "license": "MIT",
+  "keywords": [
+    "game",
+    "translation",
+    "localization",
+    "korean",
+    "romhacking"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Game Korean Localization",
+    "shortDescription": "Gated Korean game-localization workflow",
+    "longDescription": "A seven-stage workflow for analyzing, translating, reviewing, testing, and packaging personal Korean game translation patches.",
+    "developerName": "Leuconoe",
+    "category": "Productivity",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/Leuconoe/GameTranslateSkills",
+    "defaultPrompt": [
+      "Use Game Korean Localization to start a staged Korean game translation project."
+    ],
+    "brandColor": "#2563EB"
+  }
+}

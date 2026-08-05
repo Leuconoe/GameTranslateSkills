@@ -1,6 +1,6 @@
 {
   "name": "game-translate-skills",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "private": true,
   "description": "Cross-platform npm tooling for the GameTranslateSkills plugin.",
   "license": "MIT",

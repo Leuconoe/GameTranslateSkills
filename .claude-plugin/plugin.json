@@ -1,0 +1,12 @@
+{
+  "name": "game-translate",
+  "description": "7-stage game Korean-localization workflow skills (analyze, translate, review gates, QA, release) for NSW/SFC/PS1/PS2/Steam with platform adapters, engine modules (Unity/VN/LucaSystem), and field-proven safety rules.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Leuconoe"
+  },
+  "homepage": "https://github.com/Leuconoe/GameTranslateSkills",
+  "repository": "https://github.com/Leuconoe/GameTranslateSkills",
+  "license": "MIT",
+  "keywords": ["game", "translation", "localization", "korean", "nsw", "romhacking"]
+}

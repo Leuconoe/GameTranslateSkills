@@ -1,0 +1,35 @@
+# 게임 데이터·바이너리는 이 저장소에 절대 커밋하지 않음
+*.nsp
+*.nsz
+*.xci
+*.xcz
+*.nca
+*.iso
+*.bin
+*.cue
+*.sfc
+*.smc
+*.keys
+prod.keys
+title.keys
+
+# 도구 바이너리
+*.exe
+*.dll
+*.pdb
+_tools/
+
+# 작업 산출물
+_work/
+_tmp/
+*.tmp
+
+# 드라이런 검증 기록 (실제 타이틀 정보 포함 — 공개 금지, 로컬 보관)
+docs/03-analysis/dryrun-*.md
+
+# 런타임 상태
+.bkit/
+
+# OS
+Thumbs.db
+Desktop.ini

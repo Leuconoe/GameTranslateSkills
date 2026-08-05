@@ -1,0 +1,105 @@
+{
+  "$comment": "게임 번역 도구 매니페스트. mode: 'download'=자동 다운로드(고정 URL), 'latest-github'=GitHub 최신 릴리스 자산 자동 선택, 'manual'=사용자 직접 준비(안내만). 에뮬레이터·콘솔 키는 자동 배포하지 않음.",
+  "toolsRoot": "$GT_TOOLS",
+  "tools": [
+    {
+      "name": "nstool",
+      "purpose": "NSW 패키지(XCI/NSP/NCA) 검사·추출",
+      "platforms": ["nsw"],
+      "mode": "latest-github",
+      "repo": "jakcron/nstool",
+      "assetPattern": "*win*x64*.zip",
+      "dest": "nstool"
+    },
+    {
+      "name": "UABEA",
+      "purpose": "Unity 에셋번들 검사·편집",
+      "engines": ["unity"],
+      "mode": "latest-github",
+      "repo": "nesrak1/UABEA",
+      "assetPattern": "*win*.zip",
+      "dest": "UABEA"
+    },
+    {
+      "name": "Il2CppDumper",
+      "purpose": "Unity IL2CPP 메타데이터 덤프",
+      "engines": ["unity"],
+      "mode": "latest-github",
+      "repo": "Perfare/Il2CppDumper",
+      "assetPattern": "*win*.zip",
+      "dest": "Il2CppDumper"
+    },
+    {
+      "name": "Switch-Toolbox",
+      "purpose": "NSW 자산(텍스처·아카이브) 편집",
+      "platforms": ["nsw"],
+      "mode": "latest-github",
+      "repo": "KillzXGaming/Switch-Toolbox",
+      "assetPattern": "*.zip",
+      "dest": "Switch-Toolbox"
+    },
+    {
+      "name": "LuckSystem",
+      "purpose": "LucaSystem 엔진 스크립트/아카이브 처리",
+      "engines": ["lucasystem"],
+      "mode": "latest-github",
+      "repo": "wetor/LuckSystem",
+      "assetPattern": "*windows*",
+      "dest": "LuckSystem"
+    },
+    {
+      "name": "Flips",
+      "purpose": "IPS/BPS 델타 패치 생성 (SFC)",
+      "platforms": ["sfc"],
+      "mode": "latest-github",
+      "repo": "Alcaro/Flips",
+      "assetPattern": "*windows*.zip",
+      "dest": "Flips"
+    },
+    {
+      "name": "xdelta3",
+      "purpose": "바이너리 델타 패치 (PS1/PS2)",
+      "platforms": ["ps1", "ps2"],
+      "mode": "manual",
+      "note": "공식 배포처에서 xdelta3 실행 파일을 받아 $GT_TOOLS/xdelta3 에 배치"
+    },
+    {
+      "name": "GARbro",
+      "purpose": "비주얼노벨 아카이브 추출",
+      "engines": ["vn-common"],
+      "mode": "manual",
+      "note": "GARbro 릴리스(원저장소 morkt/GARbro 또는 활성 포크)에서 받아 $GT_TOOLS/GARbro 에 배치"
+    },
+    {
+      "name": "msg-tool",
+      "purpose": "VN 계열 메시지 스크립트 처리",
+      "engines": ["vn-common"],
+      "mode": "manual",
+      "note": "사용 중인 릴리스 zip을 $GT_TOOLS/msg-tool 에 배치"
+    },
+    {
+      "name": "pfs-rs",
+      "purpose": "PFS 아카이브 처리",
+      "engines": ["vn-common"],
+      "mode": "manual",
+      "note": "사용 중인 릴리스 zip을 $GT_TOOLS/pfs-rs 에 배치"
+    },
+    {
+      "name": "fonts",
+      "purpose": "한글 폰트 (본문 기본: Source Han Sans KR Regular)",
+      "mode": "download",
+      "urls": [
+        "https://github.com/adobe-fonts/source-han-sans/releases/latest",
+        "https://fonts.google.com/noto/specimen/Noto+Sans+KR"
+      ],
+      "dest": "_fonts",
+      "note": "OFL 라이선스. latest 링크는 안내용 — 스크립트가 페이지를 열어주면 KR subset OTF를 받아 배치"
+    },
+    {
+      "name": "emulators",
+      "purpose": "실행 시험 환경 (NSW: Eden 표준 / PS1: DuckStation / PS2: PCSX2 / SFC: bsnes·Snes9x)",
+      "mode": "manual",
+      "note": "에뮬레이터와 펌웨어·키는 자동 배포하지 않음. 사용자가 직접 준비하고 경로를 플랫폼 어댑터 문서에 기록"
+    }
+  ]
+}

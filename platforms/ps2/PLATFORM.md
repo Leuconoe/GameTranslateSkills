@@ -17,12 +17,14 @@
 | 아카이브 처리 | AFSExplorer 등 포맷별 도구 ⚠️ 미검증 |
 | 텍스처 편집 | TIM2 관련 도구 ⚠️ 미검증 |
 | 패치 생성 | xdelta3 |
-| 실행 시험 | PCSX2 계열 에뮬레이터 |
+| 실행 시험 | PCSX2 계열 에뮬레이터, 선택적 emucap/PCSX2 |
 
 ## 3-5. 추출·빌드·실행 시험
 
 - ⚠️ 미작성 — 착수 시 보강. 원칙: 크기 유지 교체 우선, 실행 시험은 최종 산출물 1회 +
   실제 입력 통과 기준 (common/SAFETY.md §8 준용).
+  emucap을 선택하면 `common/emucap-integration.md`를 따르고 PCSX2 capability가
+  실제로 광고될 때만 사용한다.
 
 ## 6. 배포 패키징 규격
 

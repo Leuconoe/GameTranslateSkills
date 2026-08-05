@@ -84,8 +84,8 @@ package.json  크로스플랫폼 npm 명령
 skills/       Codex/Claude Code 공용 스킬 8종 (게이트·절차 — 플랫폼 무관)
 platforms/    플랫폼 어댑터: nsw(완전) / sfc·ps1·ps2·steam(골격) / _template(양식)
 engines/      엔진 모듈: unity / vn-common / lucasystem (플랫폼과 직교)
-common/       SAFETY.md(안전 규칙) · glossary-rules.md(번역 규칙) ·
-              project-structure.md · handoff-rules.md(시행착오 기록·개선 루프)
+common/       SAFETY.md(안전 규칙) · emucap-integration.md(선택적 런타임 QA) ·
+              glossary-rules.md · project-structure.md · handoff-rules.md
 setup/        도구 자동 설치 (tools.manifest.json + install-tools.mjs)
 scripts/      프로젝트 생성·검증 Node CLI
 docs/         PDCA 문서 (plan / design / analysis / report)

@@ -17,12 +17,14 @@
 | 텍스트 덤프/삽입 | Cartographer / Atlas 계열 ⚠️ 미검증 |
 | 그래픽(타일) 편집 | Tile Molester / YY-CHR 계열 ⚠️ 미검증 |
 | 패치 생성 | Flips (IPS/BPS) |
-| 실행 시험 | 정확도 높은 에뮬레이터 (bsnes/Snes9x 계열) |
+| 실행 시험 | 정확도 높은 에뮬레이터 (bsnes/Snes9x 계열), 선택적 emucap/Mesen2 |
 
 ## 3-5. 추출·빌드·실행 시험
 
 - ⚠️ 미작성 — 착수 시 보강. 원칙: 원본 수정 금지, 패치는 IPS/BPS 델타로만 생성,
-  실행 시험은 최종 산출물 1회 + 실제 입력 통과 기준 (common/SAFETY.md §8 준용)
+  실행 시험은 최종 산출물 1회 + 실제 입력 통과 기준 (common/SAFETY.md §8 준용).
+  emucap을 선택하면 `common/emucap-integration.md`를 따르고 Mesen2/SNES capability가
+  실제로 광고될 때만 사용한다.
 
 ## 6. 배포 패키징 규격
 

@@ -27,6 +27,7 @@
 ## 2. 실기 시험 순서
 
 실기 전에 `$GT_TOOLS/Eden/<version>/eden.exe`를 표준 에뮬레이터 테스트 환경으로 사용한다.
+emucap은 NSW 어댑터를 제공하지 않으므로 이 절차에서는 사용하지 않는다.
 
 - 실행 전 에뮬레이터 mod 트리(`load/<BASE_TITLE_ID>/<mod name>/romfs`)와 현재 canonical staging 트리를 상대 경로·SHA-256으로 비교해 **누락·추가·이전 후보 잔존 파일이 0건**인지 확인한다.
 - 실행 파일 경로·버전, 게임/업데이트 버전, 로케일, 활성 mod 경로와 inventory hash, 화면 캡처, 에뮬레이터 로그를 `50_test`에 기록한다.

@@ -1,6 +1,6 @@
 ---
 name: gt-qa
-description: "Stage 6 of game localization - full verification: structure integrity, Korean font coverage, patch build, and real runtime testing on emulator/PC with logs and screenshots. Use when QA testing a translation patch/전체 검수/실기 시험."
+description: "Stage 6 of game localization - full verification: structure integrity, Korean font coverage, patch build, and real runtime testing on emulator/PC or emucap MCP with logs and screenshots. Use when QA testing a translation patch, emucap runtime evidence, 전체 검수, or 실기 시험."
 ---
 
 # gt-qa — 6단계: 전체 검수
@@ -15,6 +15,8 @@ description: "Stage 6 of game localization - full verification: structure integr
 - 3단계(텍스트)·5단계(이미지) 사용자 승인 완료
 - 플랫폼 어댑터 로드: `$GT_HOME/platforms/<platform>/build-test.md`
 - 엔진 모듈 로드: `$GT_HOME/engines/<engine>/ENGINE.md`
+- emucap을 사용할 경우 `$GT_HOME/common/emucap-integration.md`를 추가로 읽는다. emucap은
+  선택 사항이며, 미설치·미지원이면 플랫폼 어댑터의 기존 실행시험으로 진행한다.
 
 ## 절차
 
@@ -32,6 +34,11 @@ description: "Stage 6 of game localization - full verification: structure integr
 5. **실행 시험** (플랫폼 어댑터의 실기 시험 절차):
    - **중간 배치마다 실행하지 않는다** — 번역·병합·빌드·정적 검사·패키징을 끝낸 뒤
      최종 산출물에 대해 1회 수행하는 것이 기본
+   - emucap을 선택했다면 Control/Tracking MCP의 `bootstrap` → capability 확인 →
+     `launch_plan`/`launch` → `status` → `get_rom_info`/`run_start` 순서로 시작하고,
+     프로젝트별 `50_test/emucap/` 원장 경계를 먼저 확인
+   - emucap의 메모리 쓰기·입력·상태 변경은 Tracking MCP `log_intervention`으로 기록하고,
+     캡처·로그·덤프는 `log_artifact`로 SHA-256을 남김
    - 실제 입력(확인/저장/다음 화면 전이)을 통과해야 실행 성공으로 판정
    - 환경(에뮬레이터/펌웨어/입력·설정)·종료 코드·로그·캡처를 `50_test/`에 보존
    - 실행 중 인스턴스는 새 패치를 핫리로드하지 않음 — 재시작 필요를 기록
@@ -47,6 +54,7 @@ description: "Stage 6 of game localization - full verification: structure integr
 |-----|------|
 | `40_build/` | 패치 빌드 산출물 |
 | `50_test/logs/`, `50_test/captures/` | 실행 로그·스크린샷 (환경 정보 포함) |
+| `50_test/emucap/` | 선택적 emucap Tracking 원장·런타임 증거 |
 | `30_translation/QA_REPORT.md` | 정적 검사 결과, 실행 판정, 발견·수정 내역 |
 
 ## 완료 기준
@@ -54,6 +62,7 @@ description: "Stage 6 of game localization - full verification: structure integr
 - [ ] 정적 무결성 검사 전 항목 통과
 - [ ] 최종 산출물로 실행 시험 통과 (실제 입력·화면 전이·저장 확인, 증거 보존)
 - [ ] 한글 렌더링·레이아웃 이상 없음 (캡처로 확인)
+- [ ] emucap 사용 시 `run_finish`, 개입 기록, 산출물 해시가 프로젝트 원장에 남음
 - [ ] 발견 문제 전건 수정 완료 또는 알려진 제한으로 문서화
 
 통과 시 `gt-release`로 진행한다.

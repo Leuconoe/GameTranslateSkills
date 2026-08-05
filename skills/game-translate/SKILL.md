@@ -18,6 +18,8 @@ description: "Orchestrates the full 7-stage game Korean-localization workflow (a
 
 - 시작 전 **반드시 읽기**: `$GT_HOME/common/SAFETY.md` (안전 규칙 — 모든 단계에 적용),
   `$GT_HOME/common/project-structure.md` (표준 폴더 구조)
+- emucap을 사용하는 6단계에서는 `$GT_HOME/common/emucap-integration.md`를 추가로 읽는다.
+  emucap은 선택적 런타임 QA 백엔드이며 번역·추출 단계에서 호출하지 않는다.
 - 플랫폼 판별 후 해당 어댑터 로드: `$GT_HOME/platforms/<platform>/PLATFORM.md`
   (지원: `nsw`(완전), `sfc`/`ps1`/`ps2`/`steam`(골격 — 부족한 부분은 `_template` 양식에 맞춰 조사·보강 후 진행))
 - 엔진 판별 후(1단계에서) 해당 모듈 로드: `$GT_HOME/engines/<engine>/ENGINE.md`

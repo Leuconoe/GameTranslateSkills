@@ -17,7 +17,7 @@
 | nstool | `$GT_TOOLS/nstool-<버전>/nstool.exe` | NSP/XCI/NCA 언팩·검증의 표준 CLI. 재현 가능한 추출은 반드시 이 도구로 수행 |
 | 시스템 키 | `$GT_TOOLS/system/prod.keys` | nstool 복호화 키. 모든 nstool 명령에 `-k`로 명시 (extract.md 키 파일 규약) |
 | NxFileViewer | `$GT_TOOLS/NxFileViewer/` | 패키지 검사 보조 유틸리티. GUI 추출을 재현 가능한 빌드 단계로 사용하지 않음 |
-| Eden | `$GT_TOOLS/Eden/<version>/eden.exe` | 실기 전 표준 에뮬레이터 테스트 환경 |
+| Eden | `$GT_TOOLS/Eden/<version>/eden.exe` | 실기 전 표준 에뮬레이터 테스트 환경 (emucap 대상 아님) |
 | Ryujinx 호환 런타임 | `$GT_TOOLS/<배포 폴더>/` (예: `Ryubing/`) | 보조 에뮬레이터 스모크 테스트. 포터블 프로파일은 도구 폴더 안에 유지하고 프로젝트 트리로 복사 금지 |
 | 공용 한글 폰트 | `$GT_TOOLS/_fonts/` | 기본 본문 폰트. **실제 폴더의 파일을 확인**해 선택한 파일명·SHA-256을 프로젝트 시작 시 기록 |
 | 프로젝트 스캐폴드 | `npm run project:new` | 격리된 프로젝트 폴더 생성 |

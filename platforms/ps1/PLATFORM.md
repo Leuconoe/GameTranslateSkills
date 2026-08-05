@@ -17,12 +17,14 @@
 | 파일 삽입(크기 유지) | 섹터 단위 교체 도구 ⚠️ 미검증 |
 | TIM 이미지 편집 | TimViewer/팀 편집기 계열 ⚠️ 미검증 |
 | 패치 생성 | xdelta3 / PPF (플레이스테이션 관례) |
-| 실행 시험 | DuckStation 계열 에뮬레이터 |
+| 실행 시험 | DuckStation 계열 에뮬레이터, 선택적 emucap/Mednafen PSX |
 
 ## 3-5. 추출·빌드·실행 시험
 
 - ⚠️ 미작성 — 착수 시 보강. 원칙: 파일 크기·LBA를 바꾸지 않는 교체를 우선 전략으로,
   불가피할 때만 이미지 리빌드. 실행 시험은 최종 산출물 1회 + 실제 입력 통과 기준.
+  emucap을 선택하면 `common/emucap-integration.md`를 따르고 Mednafen/PSX capability가
+  실제로 광고될 때만 사용한다.
 
 ## 6. 배포 패키징 규격
 

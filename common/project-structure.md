@@ -33,7 +33,7 @@ _work/<프로젝트 ID>/
   30_translation/          ANALYSIS.md (분석 단계 산출물: 엔진·언어 슬롯·번역 대상 분류·재현 명령)
                            text(glossary, manifest, batches, reports) / image_translation
   40_build/                staging / 패치 트리 / releases / BUILD_MANIFEST.tsv
-  50_test/                 TEST_LOG.md / screenshots / logs
+  50_test/                 TEST_LOG.md / screenshots / logs / emucap(선택적 원장·증거)
   90_tools/                게임별 scripts / environment
 ```
 

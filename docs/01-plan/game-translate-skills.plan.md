@@ -1,6 +1,6 @@
 # game-translate-skills Plan (PDCA: Plan)
 
-> 작성일: 2026-08-04 | 상태: **Approved v1.0** (D1-D9 사용자 확정) | 다음 단계: Design
+> 작성일: 2026-08-04 | 상태: **Approved v1.0** (D1-D9 사용자 확정, D10 이번 사이클 반영) | 다음 단계: Design
 
 ## Executive Summary
 
@@ -28,6 +28,7 @@
 | D7 | 타 플랫폼 깊이 | **골격 + 확장 가이드만** — 1차는 NSW 어댑터만 완전 이식 |
 | D8 | 문서 언어 | **한국어** (frontmatter description은 영어 병기) |
 | D9 | 언어 방향 | **일/영/중 → 한 고정** — 한글화 특화 품질 규칙 유지 |
+| D10 | 런타임 QA 연동 | **emucap 선택적 사용** — SFC/PS1/PS2 capability가 광고될 때만 사용, NSW/Steam 절차는 유지 |
 
 ## 2. 핵심 워크플로우 (사용자 정의 7단계)
 
@@ -92,6 +93,7 @@ setup/                       ← Node/npm 도구 자동화 CLI (D3)
 - [ ] Codex/Claude 에이전트별 이미지 처리 분기가 SKILL.md에 명문화
 - [ ] 다른 PC에서 Codex/Claude 플러그인 마켓플레이스로 환경 재현 가능
 - [ ] 플랫폼 어댑터 추가만으로 신규 플랫폼(SFC 등) 확장 가능한 구조 검증
+- [ ] emucap 사용 시 프로젝트별 원장 경계·개입 기록·런타임 증거 계약 준수
 
 ## 6. Risks and Mitigation
 

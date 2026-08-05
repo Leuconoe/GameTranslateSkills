@@ -1,6 +1,6 @@
 # game-translate-skills Design (PDCA: Design)
 
-> 작성일: 2026-08-04 | 상태: v1.0 | Plan: docs/01-plan/game-translate-skills.plan.md (D1-D9)
+> 작성일: 2026-08-04 | 상태: v1.0 | Plan: docs/01-plan/game-translate-skills.plan.md (D1-D10)
 
 ## 1. 저장소 레이아웃
 
@@ -34,6 +34,7 @@ E:\GameTranslateSkills\
 │   └── lucasystem/ENGINE.md     # LuckSystem
 ├── common/
 │   ├── SAFETY.md                # 안전 규칙 (AGENTS.md에서 일반화 추출)
+│   ├── emucap-integration.md    # 선택적 런타임 QA MCP 연동 계약
 │   ├── glossary-rules.md        # 용어집·말투 누적 규칙
 │   └── project-structure.md     # 표준 작업 폴더 구조 (00_source~90_tools)
 ├── package.json                 # 크로스플랫폼 npm 명령

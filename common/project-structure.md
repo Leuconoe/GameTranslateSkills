@@ -40,7 +40,19 @@ _work/<프로젝트 ID>/
 - `20_reference`는 읽기 전용 원본과 재조립 정보만. 직접 수정하는 이미지는 `30_translation/.../for_translation`에만.
 - 실패한 빌드·조사용 출력물을 최종 패치 트리에 섞지 않는다.
 - 번역 기준 데이터는 `30_translation/text/translation_manifest.tsv`이며 최소 스키마는 `id, source_file, source_key, 원문, (참고 언어), target_ko, status, notes`. 상태값은 `new / translated / reviewed / injected / device_verified / blocked`로 통일한다.
+- 용어집의 canonical 경로는 `30_translation/text/glossary.tsv`다. 프로젝트 문서·스크립트·검수 시트에서 대문자 `GLOSSARY.tsv`나 다른 상대 경로를 새로 참조하지 않는다.
 - 행 번호가 아닌 **안정적인 키·리소스 ID·오프셋 조합**으로 원문과 번역을 연결한다.
+
+### 단계 실행 정책과 경고 게이트
+
+- 각 프로젝트의 `PROJECT.md`에는 `batch_size`(공통 기본값 80), `runtime_policy`(`static-first` 기본),
+  `target_language_slot`, `image_scope`(`required` 또는 `N/A`), `release_contract`를 기록한다. 80행이 아닌 배치는 근거가 있는
+  명시적 타이틀별 override로만 허용한다.
+- 단계별 스킬을 직접 호출하는 경우에도 [`preflight-checks.md`](preflight-checks.md)를 먼저 읽는다.
+  문서 간 숫자·경로·상태·승인 조건이 충돌하면 추측하지 않고 `WARN`/`BLOCKED`를 기록하며,
+  `HANDOFF.md`에 불일치를 append-only로 남긴다.
+- 정적/bench PASS, 런타임 PASS, 실기 PASS, 사용자 승인, 릴리스 완료는 서로 다른 상태다.
+  한 상태를 다른 상태의 증거로 승격하지 않는다.
 
 ### 실행 환경
 
@@ -53,7 +65,7 @@ _work/<프로젝트 ID>/
 
 - 지침·스크립트·manifest를 수정하기 **직전에** 현재 파일을 다시 읽고 `git status`, 최근 수정 시각·해시, 실행 중인 관련 프로세스, 최신 보고서·manifest 상태를 확인한다. 이전 대화 내용이나 캐시한 파일 내용을 최신으로 간주하지 않는다.
 - 다른 세션이 같은 프로젝트에서 작업 중이면 배치 ID, 출력 파일, staging 폴더를 중복 할당하지 않는다. 이미 예약되었거나 출력이 생성된 배치는 재실행하지 않는다.
-- **번역 작업은 서브에이전트에 위임하지 않는다.** 메인 에이전트가 manifest의 미예약 행을 chunk 단위로 예약하고 한 chunk씩 직접 `번역 → 원문 재독 검수 → 제어 토큰·줄바꿈·ID 검증 → 병합 → 로그 기록` 순으로 처리한다. 예약 chunk와 번역 배치는 같은 단위이며, **배치 크기는 `glossary-rules.md` §3을 따른다**(편집 대상 80행 고정, 전체 잔여분이 그 미만일 때만 마지막 chunk를 잔여 수로 구성). 여러 chunk 병렬 번역은 금지한다.
+- **번역 작업은 서브에이전트에 위임하지 않는다.** 메인 에이전트가 manifest의 미예약 행을 chunk 단위로 예약하고 한 chunk씩 직접 `번역 → 원문 재독 검수 → 제어 토큰·줄바꿈·ID 검증 → 병합 → 로그 기록` 순으로 처리한다. 예약 chunk와 번역 배치는 같은 단위이며, **배치 크기는 `PROJECT.md`에 기록한 유효값을 사용한다**(override가 없으면 80행, 전체 잔여분이 그 미만일 때만 마지막 chunk를 잔여 수로 구성). 여러 chunk 병렬 번역은 금지한다.
 - manifest 갱신 작업은 한 번에 하나만 수행한다. 현재 chunk의 번역·재검수·QA가 모두 끝난 뒤에만 상태 병합과 최종 기록을 **단일 단계**로 수행한다.
 - 배치 행 ID가 `not found in manifest`·중복·해시 불일치로 거부되면 번역문을 추측해 고치지 않는다. 원본 manifest의 전체 ID·source_key와 대조해 오타를 격리 배치에서 수정하고, 전체 parse와 전체 Merge를 다시 통과시킨 뒤에만 상태를 갱신한다.
 - 공통 지침 수정은 통째로 덮어쓰지 말고 **최소 패치로 추가**한다. 수정 직후 diff·링크·경로·문법을 재확인하고 변경 이유를 작업 로그에 남긴다.

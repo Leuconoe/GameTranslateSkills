@@ -1,6 +1,6 @@
 ---
 name: gt-image-review
-description: "Stage 5 of game localization - present before/after image comparison sheet and STOP for mandatory user approval of translated images. Use when user reviews translated images/이미지 검수."
+description: "Stage 5 of game localization - present before/after image comparison, detect image/atlas/style/format problems, and STOP for mandatory explicit user approval. Use when user reviews translated images/이미지 검수."
 ---
 
 # gt-image-review — 5단계: 사용자 이미지 검수 게이트
@@ -8,16 +8,25 @@ description: "Stage 5 of game localization - present before/after image comparis
 번역 이미지를 원본과 비교 가능한 형태로 정리해 사용자에게 제출하고, **승인까지 중단**한다.
 
 > `$GT_HOME` = 지식 베이스 루트. Codex에서는 이 스킬이 설치된 플러그인 루트(상위에 `.codex-plugin/`, `skills/`, `common/`이 있는 디렉터리)로 해석하고, Claude Code 플러그인에서는 `${CLAUDE_PLUGIN_ROOT}`를 사용한다. 플러그인 외 수동 설치는 지원하지 않는다.
+> 시작 전에 `$GT_HOME/common/preflight-checks.md`를 읽고 이미지 목록·원본/후보 해시·사용자 승인 게이트를 확인한다.
 > 작업 중 문서와 실제의 괴리·막힌 지점·우회법을 발견하면 **즉시** 프로젝트 `HANDOFF.md`에 기록한다 (`$GT_HOME/common/handoff-rules.md`).
 
 ## 입력 조건
 
-- `gt-image-translate` 완료: `translated/`에 번역 이미지 존재
+- 이미지 대상이 있으면 `gt-image-translate` 완료와 `for_translation/`의 번역 이미지가 필요하다
   (Claude 보류 상태였다면 사용자/Codex가 이미지를 공급한 뒤 이 단계 진행)
+- 이미지 대상이 있으면 `IMAGE_PLAN.tsv`와 실제 후보 파일의 수·경로·해시 일치
+- 이미지 대상이 없는 프로젝트는 `PROJECT.md`·`ANALYSIS.md`의 `image_scope: N/A` 근거
+  (이 경우 `REVIEW_IMAGE.tsv`를 만들지 않는다)
 
 ## 절차
 
-1. **검수 시트 생성**: `30_translation/images/REVIEW_IMAGE.tsv`
+0. **제출 전 경고 게이트**: `image_scope: N/A`이면 N/A 근거와 0개 inventory만 기록하고
+   이 단계의 사용자 검수 시트를 만들지 않고 이 스킬을 종료한다. 대상이 있으면 원본·번역 이미지가 1:1로
+   귀속되지 않거나 캔버스·포맷·알파·atlas 좌표가 확인되지 않으면 시트를 완성본으로 제출하지 않는다. 누락·추가·중복 행은
+   `BLOCKED`로 기록한다.
+
+1. **검수 시트 생성**: `30_translation/image_translation/REVIEW_IMAGE.tsv`
    - 컬럼: `id │ 원본 경로(before) │ 번역 경로(after) │ 원문 │ 번역 │ 상태 │ 사용자의견`
    - 전 이미지 포함. 아틀라스는 영역별로 행 분리
 2. **자체 사전 점검**: 제출 전 각 이미지를 확인 —
@@ -29,14 +38,18 @@ description: "Stage 5 of game localization - present before/after image comparis
      행에 `사용자의견`을 적고 '검수 완료'라고 알려주세요."
 4. **재작업 반영**: 사용자 의견이 있는 항목은 재생성/수정 후 해당 행만 재검수 요청.
    전 행 승인될 때까지 반복.
-5. **승인 기록**: `PROJECT.md`에 검수 완료 일시·재작업 건수 기록.
+5. **승인 기록**: 사용자가 명시적으로 검수 완료를 선언하고 전 행이 `approved`가 된 뒤에만
+   `PROJECT.md`에 검수 완료 일시·재작업 건수·시트 해시·승인 근거를 기록한다.
 
 ## 산출물
 
-- `30_translation/images/REVIEW_IMAGE.tsv` (전 행 approved)
-- 최종 확정된 `translated/` 이미지 세트
+`image_scope: N/A`이면 아래 검수 시트를 만들지 않고 0개 inventory와 N/A 근거만 보존한다.
+
+- `30_translation/image_translation/REVIEW_IMAGE.tsv` (전 행 approved)
+- 최종 확정된 `for_translation/` 이미지 세트
 
 ## 완료 기준
 
-- [ ] 사용자가 명시적으로 검수 완료를 선언함
-- [ ] 재작업 요청 항목이 모두 반영되고 전 행 `approved`
+- [ ] 이미지 대상이 없으면 `image_scope: N/A`가 증명됨 / 있으면 사용자가 명시적으로 검수 완료를 선언함
+- [ ] 이미지 대상이 있으면 재작업 요청 항목이 모두 반영되고 전 행 `approved`
+- [ ] 사용자 승인 전에는 QA·릴리스로 진행하지 않음

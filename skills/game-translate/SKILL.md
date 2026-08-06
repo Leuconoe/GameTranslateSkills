@@ -1,6 +1,6 @@
 ---
 name: game-translate
-description: "Orchestrates the full 7-stage game Korean-localization workflow (analyze, translate text, user text review, translate images, user image review, QA, release) for NSW/SFC/PS1/PS2/Steam games with PDCA loop. Use when starting or resuming a game translation/localization/한글화 project."
+description: "Orchestrates the full 7-stage game Korean-localization workflow (analyze, translate text, user text review, translate images, user image review, QA, release) for NSW/SFC/PS1/PS2/Steam games with PDCA loop, preflight warnings, contradiction detection, and hard approval gates. Use when starting or resuming a game translation/localization/한글화 project or when a workflow rule may be unsafe or inconsistent."
 ---
 
 # game-translate — 게임 한글화 오케스트레이터
@@ -18,11 +18,40 @@ description: "Orchestrates the full 7-stage game Korean-localization workflow (a
 
 - 시작 전 **반드시 읽기**: `$GT_HOME/common/SAFETY.md` (안전 규칙 — 모든 단계에 적용),
   `$GT_HOME/common/project-structure.md` (표준 폴더 구조)
+- 시작 전 **반드시 읽기**: `$GT_HOME/common/preflight-checks.md` (문서·경로·배치·런타임·릴리스
+  계약의 불일치 경고 게이트)
 - emucap을 사용하는 6단계에서는 `$GT_HOME/common/emucap-integration.md`를 추가로 읽는다.
   emucap은 선택적 런타임 QA 백엔드이며 번역·추출 단계에서 호출하지 않는다.
 - 플랫폼 판별 후 해당 어댑터 로드: `$GT_HOME/platforms/<platform>/PLATFORM.md`
   (지원: `nsw`(완전), `sfc`/`ps1`/`ps2`/`steam`(골격 — 부족한 부분은 `_template` 양식에 맞춰 조사·보강 후 진행))
 - 엔진 판별 후(1단계에서) 해당 모듈 로드: `$GT_HOME/engines/<engine>/ENGINE.md`
+
+### 플랫폼·워크스페이스 계약
+
+- 도구 경로, 런타임 실행 파일, 릴리스 폴더·파일명·ZIP 루트는 공통 스킬이 추측하지
+  않는다. `$GT_HOME/platforms/<platform>/` 어댑터와 현재 프로젝트 `PROJECT.md`의
+  계약을 따른다.
+- `GT_WORKSPACE`의 작업 지침(`AGENTS.md`, README, 프로젝트 문서)이 플러그인 예시와
+  다르면, 안전·플랫폼 계약을 확인한 뒤 현재 워크스페이스 계약을 우선 적용한다.
+- `GT_HOME`, `GT_WORKSPACE`, 플랫폼, 엔진 또는 프로젝트 루트를 확정하지 못하면 파일을
+  생성·수정·삭제하거나 런타임을 실행하지 않는다.
+
+## 0-a. 모든 단계 공통 사전 경고 게이트
+
+각 단계를 직접 호출할 때도 다음을 먼저 실행한다.
+
+1. `PROJECT.md`, `WORK_LOG.md`, 존재하면 `HANDOFF.md`, 현재 manifest와 출력 경로의
+   수정 시각·크기·SHA-256·`git status`를 확인한다.
+2. `$GT_HOME/common/preflight-checks.md`의 정책 필드(`batch_size`, `glossary_path`,
+   `runtime_policy`, `target_language_slot`, `image_scope`, `release_contract`)를 확인한다.
+   공통 배치 기본값은 80행이며, 다른 값은 프로젝트의 명시적 override와 근거가 있어야 한다.
+3. 문서 간 숫자·경로·상태·승인 조건이 다르면 추측하지 않는다. `WARN` 또는 `BLOCKED`를
+   기록하고 프로젝트 `HANDOFF.md`에 append-only로 남긴 뒤, 안전한 읽기 전용 조사만 진행한다.
+4. 도구 종료 코드 0, 로더 생존, 파일 존재, 정적 해시만으로 다음 단계나 런타임 PASS를
+   선언하지 않는다. 대상 수·구조·재로드·실제 화면 전이의 증거를 확인한다.
+5. 3단계 사용자 승인과 `image_scope: required`인 경우의 5단계 사용자 승인 전에는 다음
+   단계로 넘어가지 않는다. `image_scope: N/A`는 0개 inventory와 근거를 기록한 뒤 5단계
+   사용자 검수를 생략할 수 있다. Codex의 자체 검수는 사용자 승인으로 간주하지 않는다.
 
 ## 1. 7단계 파이프라인
 
@@ -30,9 +59,9 @@ description: "Orchestrates the full 7-stage game Korean-localization workflow (a
 |---|------|------|-------|
 | 1 | 파일 분석 | `gt-analyze` | 산출물 검증 |
 | 2 | 텍스트 번역 | `gt-text-translate` | 구조 검증 |
-| 3 | 텍스트 검수 | `gt-text-review` | **사용자 승인 필수** |
-| 4 | 이미지 번역 | `gt-image-translate` | 에이전트별 분기 |
-| 5 | 이미지 검수 | `gt-image-review` | **사용자 승인 필수** |
+| 3 | 텍스트 검수 | `gt-text-review` | `REVIEW_TEXT.tsv` 전 행 + **사용자 승인 필수** |
+| 4 | 이미지 번역 | `gt-image-translate` | 이미지 대상이 있으면 에이전트별 분기, 없으면 명시적 `N/A` |
+| 5 | 이미지 검수 | `gt-image-review` | 이미지 대상이 있으면 `REVIEW_IMAGE.tsv` 전 행 + **사용자 승인 필수**, 없으면 `N/A` |
 | 6 | 전체 검수 | `gt-qa` | 빌드+실행시험 통과 |
 | 7 | 배포 파일 생성 | `gt-release` | 완료 기준 체크리스트 |
 
@@ -55,6 +84,9 @@ description: "Orchestrates the full 7-stage game Korean-localization workflow (a
 
 - 프로젝트 루트의 `PROJECT.md`에 단계별 상태 테이블 유지:
   `단계 | 상태(pending/in-progress/blocked/done) | 산출물 경로 | 완료일 | 비고`
+- 행 상태(`new/translated/reviewed/injected/device_verified/blocked`), 검수 배치 상태,
+  단계 상태, 런타임·릴리스 상태를 한 필드에 섞지 않는다. `approved`, `released`,
+  `PASS (bench)`, `PASS (runtime)`, `PENDING_RUNTIME`은 각각 별도 증거를 요구한다.
 - 세션 재개 시 `PROJECT.md`부터 읽고 마지막 미완료 단계부터 재개
 - 사용자 검수 게이트(3·5단계)에서는 **작업을 중단하고 명시적 승인을 기다린다**.
   승인 없이 6단계 이후로 진행하는 것은 금지
@@ -77,9 +109,11 @@ description: "Orchestrates the full 7-stage game Korean-localization workflow (a
 ## 6. 신규 프로젝트 시작 절차
 
 1. 플랫폼 확인 → 어댑터 존재 확인 (`$GT_HOME/platforms/`)
-2. 플러그인 루트(`package.json`이 있는 디렉터리)에서 npm 명령으로 프로젝트 생성:
+2. 플랫폼 어댑터가 지정한 프로젝트 생성 명령을 사용한다. 플러그인 루트
+   (`package.json`이 있는 디렉터리)가 canonical인 어댑터에서는 다음 npm 명령을 사용한다:
    `npm run project:new -- --game-folder "<게임 릴리스 폴더명>" --title-id "<16자리 베이스 Title ID>" --game-name "<게임명>" --titles-root "$GT_WORKSPACE/_titles"`
    대기 폴더(`_waitng` 등) 하위 타이틀은 `--game-folder`에 대기 폴더 포함 상대 경로를 그대로 지정한다.
+   NSW 워크스페이스처럼 별도 스캐폴드 스크립트를 어댑터가 지정하면 그 명령을 사용한다.
    명령 실패 시 `common/project-structure.md`의 표준 구조를 수동 생성하지 말고 원인을 먼저 기록·해결한다.
 3. 게임 레지스트리(`GAME_REGISTRY.tsv`)에 등록 (워크스페이스에 있는 경우)
 4. `gt-analyze` 호출로 1단계 시작

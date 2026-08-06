@@ -15,8 +15,8 @@
 | 1 | 파일 분석 | `gt-analyze` | 추출·엔진 식별·인벤토리 |
 | 2 | 텍스트 번역 | `gt-text-translate` | 배치·용어집·구조 검증 |
 | 3 | 텍스트 검수 | `gt-text-review` | **사용자 승인 게이트** |
-| 4 | 이미지 번역 | `gt-image-translate` | Codex=imagegen 생성 / Claude=분석·보류 |
-| 5 | 이미지 검수 | `gt-image-review` | **사용자 승인 게이트** |
+| 4 | 이미지 번역 | `gt-image-translate` | 이미지 대상이 있으면 Codex=imagegen 생성 / Claude=분석·보류, 없으면 `N/A` |
+| 5 | 이미지 검수 | `gt-image-review` | 이미지 대상이 있으면 **사용자 승인 게이트**, 없으면 `N/A` |
 | 6 | 전체 검수 | `gt-qa` | 폰트·빌드·실행 시험 |
 | 7 | 배포 파일 생성 | `gt-release` | 델타/모드 패치 패키징 |
 
@@ -74,6 +74,7 @@ game-translate 스킬로 <게임명> 한글화를 시작해줘. 플랫폼은 nsw
 - 언어 방향: 일/영/중 → 한 (한글화 특화)
 - 세션 재개: 프로젝트의 `PROJECT.md`를 읽고 마지막 단계부터 재개
 - 안전 규칙: 모든 작업 전 `common/SAFETY.md` 필독 (프로젝트 경계 보호, allowlist 커밋 등)
+- 사전 경고: 모든 단계에서 `common/preflight-checks.md`를 읽고 배치·경로·언어 슬롯·승인·릴리스 계약의 불일치를 `WARN`/`BLOCKED`로 기록
 
 ## 구조
 
@@ -84,8 +85,9 @@ package.json  크로스플랫폼 npm 명령
 skills/       Codex/Claude Code 공용 스킬 8종 (게이트·절차 — 플랫폼 무관)
 platforms/    플랫폼 어댑터: nsw(완전) / sfc·ps1·ps2·steam(골격) / _template(양식)
 engines/      엔진 모듈: unity / vn-common / lucasystem (플랫폼과 직교)
-common/       SAFETY.md(안전 규칙) · emucap-integration.md(선택적 런타임 QA) ·
-              glossary-rules.md · project-structure.md · handoff-rules.md
+common/       SAFETY.md(안전 규칙) · preflight-checks.md(사전 경고 게이트) ·
+              emucap-integration.md(선택적 런타임 QA) · glossary-rules.md ·
+              project-structure.md · handoff-rules.md
 setup/        도구 자동 설치 (tools.manifest.json + install-tools.mjs)
 scripts/      프로젝트 생성·검증 Node CLI
 docs/         PDCA 문서 (plan / design / analysis / report)

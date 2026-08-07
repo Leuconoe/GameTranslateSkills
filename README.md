@@ -8,24 +8,32 @@
 > 배포물은 원본 게임 데이터를 포함하지 않는 패치 형태여야 하며,
 > 롬·콘솔 키·펌웨어의 취급/재배포를 지원하지 않습니다.
 
-## 7단계 워크플로우
+## 브랜치 기반 워크플로우
 
 | # | 단계 | 스킬 | 비고 |
 |---|------|------|------|
-| 1 | 파일 분석 | `gt-analyze` | 추출·엔진 식별·인벤토리 |
-| 2 | 텍스트 번역 | `gt-text-translate` | 배치·용어집·구조 검증 |
-| 3 | 텍스트 검수 | `gt-text-review` | **사용자 승인 게이트** |
-| 4 | 이미지 번역 | `gt-image-translate` | `image_scope=required`일 때 Codex=imagegen 생성 / Claude=분석·보류; `N/A`면 생략 |
-| 5 | 이미지 검수 | `gt-image-review` | `required`일 때 **사용자 승인 게이트**; `N/A`면 생략 |
-| 6 | 전체 검수 | `gt-qa` | 폰트·빌드·실행 시험 |
-| 7 | 배포 파일 생성 | `gt-release` | 델타/모드 패치 패키징 |
+| 1 | 공통 분석 | `gt-analyze` | 추출·엔진·언어 슬롯·전체 inventory |
+| 2–5 | 텍스트 브랜치 | `gt-text-analyze` → `gt-text-translate` → `gt-text-qa` → `gt-text-review` | 텍스트·폰트·아틀라스·에뮬레이터 준비 |
+| 6–9 | 이미지 브랜치 | `gt-image-analyze` → `gt-image-translate` → `gt-image-qa` → `gt-image-review` | 이미지·atlas·스타일·비교 자료 |
+| 10 | 통합 QA | `gt-qa` | 통합 빌드·세션 소유권·실행 시험 |
+| 11 | 배포 파일 생성 | `gt-release` | 어댑터 계약에 따른 패치 패키징 |
 
 전체 흐름은 오케스트레이터 스킬 **`game-translate`** 가 PDCA 루프로 지휘합니다.
 
 게임 분석에서 이미지 번역 대상이 없거나 게임별로 이미지 번역이 적용되지 않는다고
-증명되면 `image_scope=N/A`로 기록하고, 텍스트 번역·검수 뒤 이미지 4·5단계를 생략해
+증명되면 `image_scope=N/A`로 기록하고, 텍스트 브랜치 뒤 이미지 4단계를 생략해
 QA와 릴리즈로 진행할 수 있습니다. 이때도 QA에서 기존 이미지 표시 이상 여부는 확인하고,
 릴리스 노트에 `N/A` 근거를 남깁니다.
+
+`text-review`와 `image-review`는 기본적으로 사용자 승인 단계가 아닙니다. 전체 검수
+자료·handoff·에뮬레이터 준비 상태를 만들고 자동으로 다음 단계로 진행합니다.
+프로젝트의 `text_review_policy` 또는 `image_review_policy`를 `user-gate`로 명시한 경우에만
+해당 단계에서 사용자의 명시적 승인을 기다립니다.
+
+텍스트 QA는 번역문뿐 아니라 전체 가시 코드포인트, 실제 폰트 consumer/fallback, glyph
+좌표·metrics·아틀라스 padding·UV 원점, 재추출 왕복과 render probe를 통과해야 합니다.
+폰트 아틀라스 문제는 [font-atlas-contract.md](common/font-atlas-contract.md)의 계약을
+따릅니다.
 
 NSW 에뮬레이터 시험은 사용 가능한 경우 `eden-mcp` 경로를 권장합니다. Eden/Ryubing
 격리 프로파일은 시스템 지역 `한국`/`대한민국`, 시스템 언어 `한국어`를 필수로 사용하고
@@ -35,6 +43,8 @@ NSW 에뮬레이터 시험은 사용 가능한 경우 `eden-mcp` 경로를 권�
 `_work/<베이스 Title ID>/`로 고정합니다. `_title`/`_titles` 아래에 임의의 `title` 폴더를
 새로 만들지 않습니다. Eden QA는 프로젝트당 `50_test/eden/SESSION.json` 하나를 재사용하고,
 remote 세션을 정확한 ID로 종료하기 전에는 새 세션을 추가하지 않습니다.
+`pending` 세션은 remote 상태를 재조회하기 전 재생성하지 않으며, 이전 `last_session_id`가
+있는 새 세션은 `--previous-session-id` 증명 없이는 생성하지 않습니다.
 
 ## 설치
 
@@ -88,9 +98,10 @@ game-translate 스킬로 <게임명> 한글화를 시작해줘. 플랫폼은 nsw
 - 언어 방향: 일/영/중 → 한 (한글화 특화)
 - 세션 재개: 프로젝트의 `PROJECT.md`를 읽고 마지막 단계부터 재개
 - 안전 규칙: 모든 작업 전 `common/SAFETY.md` 필독 (프로젝트 경계 보호, allowlist 커밋 등)
-- 완료 정리: `npm run project:clean -- --project-root "<타이틀 루트>/_work/<프로젝트 ID>"`로 dry-run 후, 검토한 exact allowlist에만 `--apply` 사용
+- 완료 정리: `gt-project-cleanup` 또는 `npm run project:cleanup -- --project-root "<타이틀 루트>/_work/<프로젝트 ID>"`로 Handoff 기반 계획·지시서를 먼저 생성하고, 승인된 exact allowlist와 plan SHA-256에만 `--apply` 사용
 - Eden 세션 guard: `npm run project:qa-session -- --project-root "<타이틀 루트>/_work/<프로젝트 ID>" --action prepare ...`로 기존 세션을 먼저 조회·재사용
-- 사전 경고: 모든 단계에서 `common/preflight-checks.md`를 읽고 배치·경로·언어 슬롯·승인·릴리스 계약의 불일치를 `WARN`/`BLOCKED`로 기록
+- 작업장 루트 정리: `gt-workspace-cleanup` 또는 `npm run workspace:cleanup -- --workspace-root "<루트>" --report "<외부 보고서 경로>"`; 기본은 삭제하지 않음
+- 사전 경고: 모든 단계에서 `common/preflight-checks.md`를 읽고 배치·경로·언어 슬롯·review policy·폰트·세션·릴리스 계약의 불일치를 `WARN`/`BLOCKED`로 기록
 
 ## 구조
 
@@ -98,14 +109,14 @@ game-translate 스킬로 <게임명> 한글화를 시작해줘. 플랫폼은 nsw
 .codex-plugin/ Codex 플러그인 manifest
 .agents/      Codex repo marketplace 정의
 package.json  크로스플랫폼 npm 명령
-skills/       Codex/Claude Code 공용 스킬 8종 (게이트·절차 — 플랫폼 무관)
+skills/       Codex/Claude Code 공용 스킬 (파이프라인·정리·청결화 — 플랫폼 무관)
 platforms/    플랫폼 어댑터: nsw(완전) / sfc·ps1·ps2·steam(골격) / _template(양식)
 engines/      엔진 모듈: unity / vn-common / lucasystem (플랫폼과 직교)
 common/       SAFETY.md(안전 규칙) · preflight-checks.md(사전 경고 게이트) ·
               qa-session-rules.md(Eden 세션·중복 산출물 규칙) · emucap-integration.md(선택적 런타임 QA) · glossary-rules.md ·
-              project-structure.md · handoff-rules.md
+              project-structure.md · pipeline-contract.* · font-atlas-contract.md · cleanup-contract.md · handoff-rules.md
 setup/        도구 자동 설치 (tools.manifest.json + install-tools.mjs)
-scripts/      프로젝트 생성·검증·임시 파일 정리·QA 세션 guard Node CLI
+scripts/      프로젝트 생성·검증·스킬/폰트 검증·Handoff 기반 정리 계획·QA 세션 guard Node CLI
 docs/         PDCA 문서 (plan / design / analysis / report)
 ```
 

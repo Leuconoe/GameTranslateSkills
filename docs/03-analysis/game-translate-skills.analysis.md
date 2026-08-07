@@ -1,5 +1,9 @@
 # game-translate-skills Gap Analysis (PDCA: Check)
 
+> **Revision note (2026-08-07):** This report records the pre-branch implementation. The current
+> gap/contract baseline is enforced by `npm run skills:validate`, `common/pipeline-contract.json`,
+> the font-atlas contract, and the Handoff-based cleanup/session harness.
+
 > 작성일: 2026-08-04 | 대상: Design v1.0 대비 구현 결과
 
 ## 1. 검증 결과

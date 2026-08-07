@@ -1,0 +1,6 @@
+interface:
+  display_name: "Game Text Analysis"
+  short_description: "Inventory text sources and round-trip rules"
+  default_prompt: "Use $gt-text-analyze to inventory game text sources, stable IDs, language slots, controls, and round-trip constraints before translation."
+policy:
+  allow_implicit_invocation: true

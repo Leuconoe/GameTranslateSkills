@@ -1,7 +1,7 @@
 {
   "name": "game-translate",
-  "version": "1.2.1",
-  "description": "Seven-stage Korean game-localization workflow with analysis, translation, review gates, QA, and patch release guidance.",
+  "version": "1.3.0",
+  "description": "Branch-based Korean game-localization workflow with text/image analysis, translation, font and asset QA, conditional review handoffs, session-safe runtime QA, cleanup planning, and patch release guidance.",
   "author": {
     "name": "Leuconoe"
   },
@@ -18,8 +18,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Game Korean Localization",
-    "shortDescription": "Gated Korean game-localization workflow",
-    "longDescription": "A seven-stage workflow for analyzing, translating, reviewing, testing, and packaging personal Korean game translation patches.",
+    "shortDescription": "Branch-based Korean game-localization workflow",
+    "longDescription": "A fail-closed workflow for analyzing, translating, font/asset QA, preparing review handoffs, testing, cleaning, and packaging personal Korean game translation patches.",
     "developerName": "Leuconoe",
     "category": "Productivity",
     "capabilities": [

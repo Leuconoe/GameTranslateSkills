@@ -86,6 +86,7 @@ Options:
   --emulator-version <version>     Exact emulator version
   --build-id <id>                  Current candidate build ID (not part of session key)
   --session-id <id>                Eden session ID returned by the backend
+  --previous-session-id <id>       Exact last_session_id proven closed before creating a new session
   --remote-closed                  Required with close after backend close succeeded
   --help                           Show this help
 
@@ -134,6 +135,7 @@ async function main() {
       session_id: null,
       last_session_id: null,
       status: 'closed',
+      remote_close_session_id: null,
       title_id: null,
       profile_path: null,
       profile_sha256: null,
@@ -181,8 +183,27 @@ async function main() {
         return;
       }
 
-      if (state.status === 'blocked') throw new Error('SESSION.json is blocked; reconcile remote Eden status before preparing a session');
       const suppliedSessionId = option(args, 'session-id');
+      if (state.status === 'pending' && !suppliedSessionId) {
+        state.status = 'blocked';
+        state.updated_at = new Date().toISOString();
+        await atomicWriteJson(statePath, state);
+        throw new Error('SESSION.json is pending without a confirmed session ID; reconcile remote Eden status before creating another session');
+      }
+      if (state.status === 'pending' && state.session_key && state.session_key !== sessionKey) {
+        state.status = 'blocked';
+        state.updated_at = new Date().toISOString();
+        await atomicWriteJson(statePath, state);
+        throw new Error('Pending Eden session ownership/profile key differs; reconcile remote status before recording a session ID');
+      }
+      if (state.status === 'blocked') throw new Error('SESSION.json is blocked; reconcile remote Eden status before preparing a session');
+      const previousSessionId = option(args, 'previous-session-id');
+      if (state.status === 'closed' && state.last_session_id && previousSessionId !== state.last_session_id) {
+        throw new Error(`A previous session exists (${state.last_session_id}); pass --previous-session-id with that exact ID after remote close was confirmed`);
+      }
+      if (state.status === 'closed' && !state.last_session_id && previousSessionId) {
+        throw new Error('--previous-session-id was supplied but SESSION.json has no last_session_id');
+      }
       state = {
         ...state,
         schema_version: 1,
@@ -191,6 +212,7 @@ async function main() {
         session_key: sessionKey,
         session_id: suppliedSessionId ?? null,
         last_session_id: state.last_session_id ?? null,
+        remote_close_session_id: null,
         status: suppliedSessionId ? 'active' : 'pending',
         title_id: identity.titleId,
         profile_path: path.resolve(identity.profilePath),
@@ -213,6 +235,7 @@ async function main() {
       status: 'closed',
       session_id: null,
       last_session_id: suppliedSessionId,
+      remote_close_session_id: suppliedSessionId,
       current_build_id: buildId,
       updated_at: new Date().toISOString(),
       closed_at: new Date().toISOString(),

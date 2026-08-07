@@ -27,6 +27,11 @@ emulator_version=<실행 파일 버전>
 
 - `50_test/eden/SESSION.json`: 프로젝트당 **정확히 1개**. 현재/마지막 세션 ID, 세션 키,
   프로파일 해시, 현재 build ID, `active|pending|closed|blocked` 상태를 기록한다.
+  `closed`에 `last_session_id`가 있으면 remote close가 성공한 exact ID를
+  `remote_close_session_id`에도 기록한다.
+  `pending`은 remote create 요청이 진행 중인 상태이므로 새 create를 재호출하지 않는다.
+  `closed`에 `last_session_id`가 남아 있으면 그 ID의 remote close를 증명한 뒤에만 다음
+  세션을 만들 수 있다.
 - `50_test/eden/ARTIFACT_MANIFEST.tsv`: 프로젝트당 **정확히 1개**. `artifact_key`는
   유일해야 하며, 같은 키를 다른 경로에 추가하지 않고 canonical 행을 갱신한다.
 
@@ -51,6 +56,12 @@ emulator_version=<실행 파일 버전>
    말고 먼저 세션 목록과 canonical 상태를 다시 읽어 이미 생성된 세션을 재사용할 수 있는지
    확인한다.
 
+`SESSION.json`이 `pending`이면 backend 응답이 유실되었을 가능성이 있으므로 상태를
+`blocked`로 전환하고 remote 목록/status를 재조회한다. `closed`이고
+`last_session_id`가 있으면 `project:qa-session --action prepare`에
+`--previous-session-id <동일한 ID>`를 전달하지 않는 한 새 세션 생성은 거부한다.
+이 규칙은 테스트를 반복할 때 remote 세션을 계속 쌓는 실수를 차단한다.
+
 `npm run project:qa-session -- --project-root "<타이틀 루트>/_work/<프로젝트 ID>" --action
 prepare ...`는 로컬 canonical 상태를 검사·갱신하는 guard다. 이 명령은 원격 Eden 세션을
 직접 종료하지 않으며, backend의 정확한 종료 성공을 확인한 뒤에만 `--action close
@@ -66,6 +77,10 @@ prepare ...`는 로컬 canonical 상태를 검사·갱신하는 guard다. 이 �
 - 테스트가 끝나면 현재 실행을 `run/stop`하고, backend가 세션 종료를 지원하면 현재
   `session_id`로 한 번만 close한다. 종료하지 못하면 `active`로 남기고 `HANDOFF.md`에
   원인과 다음 정리 조건을 기록한다. 프로세스 이름 기반 강제 종료는 금지한다.
+- 새 세션을 만든 뒤에는 `SESSION.json`의 `last_session_id`와 `ARTIFACT_MANIFEST.tsv`의
+  canonical 행을 갱신한다. 이전 세션 폴더·로그·캡처를 보존해야 한다면 별도 복사 대신
+  기존 canonical artifact의 hash/status를 갱신하고, 역사 보존이 정말 필요한 경우에만
+  Handoff에 근거와 만료 조건을 기록한 `attempt-N` logical key를 추가한다.
 - `SESSION.json`의 `active`와 remote status가 다르면 새 세션을 만들지 말고 `BLOCKED`로
   중단한 뒤 상태를 동기화한다.
 
@@ -88,3 +103,6 @@ artifact_key = <project_id>/<stage>/<logical_name>
 - 생성 전에 디렉터리를 재귀적으로 만들더라도 이미 존재하는 canonical 디렉터리를 복제하지
   않는다. 작업 루트·타이틀 루트·저장소 루트에 `title`, `sessions`, `output`, `temp` 같은
   보조 작업 폴더를 새로 만들지 않는다.
+- `50_test/eden` 아래에 `sessions/`, `runs/`, `session-*`, `run-*`, `SESSION-2.json`,
+  `(1)`·`copy` 파일을 만들지 않는다. 검증기가 하나라도 발견하면 새 런타임을 시작하지
+  않고 `BLOCKED`로 돌려보낸다.

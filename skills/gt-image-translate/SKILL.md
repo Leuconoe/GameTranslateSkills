@@ -1,87 +1,60 @@
 ---
 name: gt-image-translate
-description: "Stage 4 of game localization - translate text-bearing images/textures with approved text gates, source-style/alpha checks, and Codex/Claude capability warnings. Use when translating game images/이미지 번역/텍스처 한글화."
+description: "Image branch translation after image analysis: translate text-bearing textures, atlases, and raster labels while preserving canvas, alpha, coordinates, style, and approved text terms, with Codex/imagegen and Claude capability handling. Use when translating game images or textures."
 ---
 
-# gt-image-translate — 4단계: 이미지 번역
+# gt-image-translate — 이미지 브랜치 I2: 이미지 번역
 
-문자가 그려진 텍스처·아틀라스·타이틀 로고 등을 한글판으로 교체 준비한다.
-**실행 에이전트에 따라 처리 방식이 다르다.**
-
-> `$GT_HOME` = 지식 베이스 루트. Codex에서는 이 스킬이 설치된 플러그인 루트(상위에 `.codex-plugin/`, `skills/`, `common/`이 있는 디렉터리)로 해석하고, Claude Code 플러그인에서는 `${CLAUDE_PLUGIN_ROOT}`를 사용한다. 플러그인 외 수동 설치는 지원하지 않는다.
-> 시작 전에 `$GT_HOME/common/preflight-checks.md`를 읽고 텍스트 승인·이미지 범위·원본 해시·엔진 규격을 확인한다.
-> 작업 중 문서와 실제의 괴리·막힌 지점·우회법을 발견하면 **즉시** 프로젝트 `HANDOFF.md`에 기록한다 (`$GT_HOME/common/handoff-rules.md`).
+`gt-image-analyze`가 확정한 대상만 처리한다. 이미지 안의 텍스트는 text branch의 glossary와
+STYLE을 따르며, 원본 스타일·canvas·alpha·atlas 계약을 깨는 생성물을 완료로 처리하지 않는다.
 
 ## 입력 조건
 
-- `gt-text-review` 승인 완료 (이미지 내 텍스트 번역어가 승인된 용어집·문체를 따라야 하므로)
-- `ANALYSIS.md`의 이미지 대상 목록
-- 이미지 대상이 0개인 경우 `PROJECT.md`와 `ANALYSIS.md`에 `image_scope: N/A`와
-  0개임을 확인한 근거를 기록한다. 이 경우 가짜 이미지 계획·번역·검수 행을 만들지 않는다.
-- 전 행 `REVIEW_TEXT.tsv`와 사용자의 명시적 텍스트 승인 증거
-- 엔진 모듈 로드: `$GT_HOME/engines/<engine>/ENGINE.md` (텍스처 추출/재삽입 방식)
-- 프로젝트의 `image_scope` 확인:
-  - `required`: 아래 절차를 수행한다.
-  - `N/A`: 이 단계는 적용하지 않는다. 빈 계획표나 가짜 산출물을 만들지 말고
-    `PROJECT.md`와 `WORK_LOG.md`에 `skipped (image_scope=N/A)`, 0건 inventory, 근거를
-    기록한 뒤 `gt-qa`로 이동한다.
+- `IMAGE_ANALYSIS.md`, `IMAGE_SOURCE_INVENTORY.tsv`, `IMAGE_PLAN.tsv`
+- `gt-text-review` handoff, `text_status=review_ready`, `font_status=verified`
+- 엔진·플랫폼의 texture/atlas import contract와 원본 이미지 hash
+- `PROJECT.md`의 `image_scope`와 실행 환경(Codex/imagegen 또는 Claude)
 
-## 에이전트별 분기 (필수 준수)
+`image_scope=N/A`이면 계획·가짜 이미지·검수 행을 만들지 않고 0건 근거와
+`image_status=skipped`를 기록한 뒤 `gt-qa`로 이동한다. `required`인데 분석·text handoff·
+원본 hash가 없으면 `BLOCKED`다.
+
+## 에이전트별 처리
 
 | 환경 | 동작 |
-|-----|------|
-| **Codex** (imagegen 스킬 사용 가능) | 분석 + imagegen으로 한글 이미지 생성 + 재삽입 준비까지 수행 |
-| **Claude** (이미지 생성 불가) | **분석·계획까지만** 수행하고 생성은 보류(hold). 사용자/Codex에 이관 |
+|---|---|
+| Codex + imagegen | 계획·스타일 분석 후 imagegen/편집으로 전 대상 생성·수급 |
+| Claude 또는 imagegen 불가 | 계획·분석까지만 하고 `hold-for-generation`; 사용자가 공급한 파일을 기다림 |
 
-Claude 환경에서 이미지 생성을 시도하거나, 생성 없이 원본을 그대로 두고 완료 처리하는 것 모두 금지.
+어느 환경에서도 원본을 그대로 둔 채 번역 완료로 표시하지 않는다.
 
 ## 절차
 
-0. **승인·원본 경고 게이트**: `image_scope=N/A`이면 N/A 근거와 0개 inventory만 기록하고
-   이미지 산출물을 만들지 않은 채 이미지 사용자 승인 게이트를 건너뛴다. 이 경우 이 스킬을
-   종료한다. `required`이면 텍스트 검수 승인 시트가 없거나 승인 상태가 불명확할 때
-   이미지 생성·수정으로 진행하지 않는다. 원본 경로·해시·캔버스·알파·언어 variant와
-   대상 수가 일치하지 않으면 `BLOCKED`로 기록한다. 원본 스타일을 증명하지 못한 자동 폰트
-   대체나 일부 항목만 바꾸고 전체 이미지 범위를 완료로 표시하는 행위는 금지한다.
-
-1. **이미지 인벤토리 정밀화**: `ANALYSIS.md`의 이미지 목록을 기반으로
-   `30_translation/image_translation/IMAGE_PLAN.tsv` 작성:
-   - 컬럼: `경로 │ 포맷·크기 │ 원문 텍스트 │ 번역 텍스트 │ 폰트·스타일 메모 │ 우선순위 │ 상태`
-   - 번역 텍스트는 승인된 `30_translation/text/glossary.tsv`/`STYLE.md` 준수
-   - 우선순위: 타이틀·메뉴·UI > 튜토리얼 이미지 > 배경 장식 텍스트
-2. **원본 추출**: 대상 이미지를 원본 해상도·포맷 그대로
-   `30_translation/image_translation/reference/`에
-   추출. 아틀라스는 좌표 맵(어느 영역이 어떤 텍스트인지)도 기록.
-3. **스타일 분석**: 각 이미지의 폰트 계열·크기·색·외곽선·그라데이션·배치를 메모
-   (재생성 시 시각적 일치 기준).
-4. **[Codex 전용] 이미지 생성**: `$imagegen` 스킬로 번역 이미지 생성 →
-   `30_translation/image_translation/for_translation/` (원본과 동일 파일명·해상도·포맷).
-   생성 후 원본과 나란히 비교하여 스타일 일치 확인.
-5. **[Claude 전용] 보류 처리**: `IMAGE_PLAN.tsv` 상태를 `hold-for-generation`으로 표시하고
-   사용자에게 안내: 계획 시트 경로 + "이미지 생성은 Codex(imagegen) 또는 수동 편집으로
-   진행해주세요. 완성 이미지를 `for_translation/`에 넣으면 5단계 검수로 진행합니다."
-6. **재삽입 사전 검증**: 생성/수급된 이미지의 크기·포맷·알파채널이 엔진 요구사항과
-   일치하는지 확인 (엔진 모듈의 텍스처 규격 준수). 아틀라스는 원본 좌표에 맞게 합성.
+1. 범위·경로·원본 hash·stable key·text glossary를 재확인한다. 기존 for_translation 파일이
+   있으면 hash와 계획 행을 비교해 exact reuse하고 복사본을 만들지 않는다.
+2. reference를 원본 해상도·포맷으로 추출하고 atlas region/clear bbox/보존 픽셀을 고정한다.
+3. 원본 스타일(서체·크기·색·외곽선·질감·여백·active/inactive)을 행별로 기록한다.
+4. 대상 문자 영역만 번역한다. canvas·alpha·색상 모드·압축·atlas page/좌표·sprite ID를
+   임의 변경하지 않는다. atlas는 원본 좌표에 합성하고 보존 영역 decoded RGBA diff를 검증한다.
+5. Codex는 imagegen 결과를 동일 파일명·canvas·포맷으로 생성한 뒤 style/alpha/region을
+   비교한다. Claude는 모든 행을 `hold-for-generation`으로 표시하고 공급 경로·hash를
+   기록한다.
+6. 생성/수급 후 extract→import→re-extract 왕복으로 canvas·format·alpha·atlas·pixel/metadata를
+   검사한다. 실패한 행만 `blocked`로 격리하고 전체를 완료 처리하지 않는다.
+7. `IMAGE_PLAN.tsv`를 갱신하고 `image_status=translated`를 기록한 뒤 `gt-image-qa`로
+   진행한다. 사용자 승인을 기다리는 단계가 아니다.
 
 ## 산출물
 
-`image_scope: N/A`이면 아래 이미지 산출물을 만들지 않고 N/A 근거만 `PROJECT.md`·분석
-보고서에 남긴다.
-
-| 파일 | 내용 |
-|-----|------|
-| `30_translation/image_translation/IMAGE_PLAN.tsv` | 이미지 번역 계획·상태 |
-| `30_translation/image_translation/reference/` | 원본 추출 이미지 (+아틀라스 좌표 맵) |
-| `30_translation/image_translation/for_translation/` | 번역 이미지 (Codex 또는 사용자 제공) |
+- `30_translation/image_translation/IMAGE_PLAN.tsv`
+- `reference/` 원본 이미지와 atlas map
+- `for_translation/` 번역 이미지 또는 hold 목록
+- 생성기·입력·출력 hash와 왕복/시각 검증 기록
 
 ## 완료 기준
 
-- [ ] `required`: 전 대상 이미지가 `IMAGE_PLAN.tsv`에 상태와 함께 기록됨
-- [ ] `required`: Codex는 `for_translation/`에 전 이미지 생성 완료 / Claude는 전 항목을
-  `hold-for-generation` 처리하고 사용자에게 안내함
-- [ ] `required`: 번역 이미지의 규격(크기·포맷·알파), 원본 대비 스타일·보존 영역·alpha/canvas
-  검증 결과가 기록됨
-- [ ] `N/A`: 0건 inventory·판정 근거·생략 상태가 `PROJECT.md`와 `WORK_LOG.md`에 기록됨
-
-`required`면 완료 시 `gt-image-review`(사용자 검수 게이트)로 진행하고, `N/A`면
-`gt-qa`로 바로 진행한다.
+- [ ] required 대상이 전부 계획표에 있고 누락·추가·중복이 없음
+- [ ] Codex는 전 대상 생성/수급, Claude는 전 대상 hold 상태와 공급 조건이 있음
+- [ ] canvas·format·alpha·atlas 좌표·보존 영역·스타일 검사 통과
+- [ ] 왕복 추출·재삽입 후 대상/비대상 diff가 허용 목록과 일치함
+- [ ] `image_status=translated`와 현재 원본 hash가 귀속됨

@@ -1,5 +1,11 @@
 # game-translate-skills Plan (PDCA: Plan)
 
+> **Current contract revision (2026-08-07):** The original 7-stage design below is historical.
+> The active workflow is the branch contract in `common/pipeline-contract.md`: overall analysis,
+> four text stages, four image stages, integrated QA, and release. Review stages default to
+> `prepare-only`; user waiting is enabled only by explicit `*_review_policy: user-gate`.
+> Font-atlas QA, session ownership, duplicate prevention, and Handoff-based cleanup are mandatory.
+
 > 작성일: 2026-08-04 | 상태: **Approved v1.0** (D1-D9 사용자 확정, D10 이번 사이클 반영) | 다음 단계: Design
 
 ## Executive Summary

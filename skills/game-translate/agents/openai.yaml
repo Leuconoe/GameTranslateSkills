@@ -1,6 +1,6 @@
 interface:
   display_name: "Game Korean Localization"
-  short_description: "Orchestrate a gated Korean game-localization workflow"
-  default_prompt: "Use $game-translate to start or resume a staged Korean game-localization project, honoring the project's image_scope and conditional image-stage path."
+  short_description: "Orchestrate branch-based Korean game localization"
+  default_prompt: "Use $game-translate to start or resume the branch-based Korean game-localization pipeline, honoring review policies, font gates, image scope, session ownership, and cleanup contracts."
 policy:
   allow_implicit_invocation: true

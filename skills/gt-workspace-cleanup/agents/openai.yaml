@@ -1,0 +1,4 @@
+interface:
+  display_name: "Workspace Cleanup"
+  short_description: "Generate safe root cleanup instructions"
+  default_prompt: "Use $gt-workspace-cleanup to inventory a translation workspace and generate a Handoff-based cleanup plan without deleting files."

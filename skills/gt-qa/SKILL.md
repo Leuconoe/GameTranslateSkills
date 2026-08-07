@@ -1,113 +1,96 @@
 ---
 name: gt-qa
-description: "Stage 6 of game localization - full verification with fail-closed structure/font/build checks, explicit bench-versus-runtime evidence, session ownership checks, and logs/screenshots. Use when QA testing a translation patch, emucap runtime evidence, 전체 검수, or 실기 시험."
+description: "Integrated game-translation QA after text and conditional image review-ready handoffs: verify font coverage, structure, build, session ownership, emulator/runtime behavior, and logs/screenshots with fail-closed bench-versus-runtime evidence. Use for final patch QA, emulator testing, emucap evidence, or device verification."
 ---
 
-# gt-qa — 6단계: 전체 검수
+# gt-qa — 통합 QA
 
-승인된 번역을 게임에 재삽입해 빌드하고, 실제 실행 환경에서 검증한다.
-
-> `$GT_HOME` = 지식 베이스 루트. Codex에서는 이 스킬이 설치된 플러그인 루트(상위에 `.codex-plugin/`, `skills/`, `common/`이 있는 디렉터리)로 해석하고, Claude Code 플러그인에서는 `${CLAUDE_PLUGIN_ROOT}`를 사용한다. 플러그인 외 수동 설치는 지원하지 않는다.
-> 시작 전에 `$GT_HOME/common/preflight-checks.md`를 읽고 사용자 승인·runtime policy·canonical staging·세션 소유권을 확인한다.
-> NSW에서 Eden을 시험하면 `$GT_HOME/common/qa-session-rules.md`도 읽고, 프로젝트의 `50_test/eden/SESSION.json`·`ARTIFACT_MANIFEST.tsv`를 단일 상태점으로 사용한다.
-> 작업 중 문서와 실제의 괴리·막힌 지점·우회법을 발견하면 **즉시** 프로젝트 `HANDOFF.md`에 기록한다 (`$GT_HOME/common/handoff-rules.md`).
+텍스트·폰트·이미지 브랜치의 `review_ready` 후보를 깨끗한 원본에서 통합하고, 정적/bench
+검증과 실제 실행 증거를 분리해 기록한다. review-ready는 사용자 승인이나 런타임 PASS가
+아니며, 프로젝트 정책이 `user-gate`일 때만 해당 승인 증거를 추가로 요구한다.
 
 ## 입력 조건
 
-- 3단계 텍스트 사용자 승인 완료. 이미지 대상이 있으면 5단계 이미지 사용자 승인도
-  완료되어야 하며, 대상이 없으면 `image_scope: N/A` 근거가 있어야 한다.
-- `REVIEW_TEXT.tsv` 전 행 승인 상태와 `PROJECT.md`의 명시적 승인 기록. 이미지 대상이 있으면
-  `REVIEW_IMAGE.tsv` 전 행 승인도 필요하며, 대상이 없으면 `image_scope: N/A`와 0개 inventory를 확인한다.
-- `image_scope=required`이면 5단계 이미지 사용자 승인도 완료되어야 하며,
-  `image_scope=N/A`이면 5단계는 생략 상태·0건 근거로 대체한다.
-- 플랫폼 어댑터 로드: `$GT_HOME/platforms/<platform>/build-test.md`
-- 엔진 모듈 로드: `$GT_HOME/engines/<engine>/ENGINE.md`
-- emucap을 사용할 경우 `$GT_HOME/common/emucap-integration.md`를 추가로 읽는다. emucap은
-  선택 사항이며, 미설치·미지원이면 플랫폼 어댑터의 기존 실행시험으로 진행한다.
-- Eden QA는 active 세션을 먼저 조회해 exact session key면 재사용한다. 이전 세션의 소유권·
-  종료 결과를 증명할 수 없으면 새 세션을 만들지 않고 `BLOCKED`로 남긴다.
+시작 전 `PROJECT.md`, `WORK_LOG.md`, `HANDOFF.md`, 현재 manifest·staging hash와
+`pipeline-contract.json`을 읽는다. 계약을 증명하지 못하면 `PROJECT.md`에 `BLOCKED`를 기록한다.
+
+- `text_status=review_ready`, `text_review_approval=not_required|approved`,
+  `font_status=verified`, `30_translation/text/reviews/TEXT_REVIEW_HANDOFF.md`
+- `image_scope=required`이면 `image_status=review_ready`,
+  `image_review_approval=not_required|approved`,
+  `30_translation/image_translation/reports/IMAGE_REVIEW_HANDOFF.md`와
+  이미지 build manifest. `image_scope=N/A`이면 0건 inventory와 `image_status=skipped`
+- 현재 text/image candidate·manifest·hash, target language slot, platform/engine 계약
+- `$GT_HOME/common/preflight-checks.md`, `qa-session-rules.md`,
+  `emucap-integration.md`(사용 시), 플랫폼 build-test, 엔진 문서
+- `text_review_policy=user-gate` 또는 `image_review_policy=user-gate`이면 각 시트 전 행과
+  PROJECT 명시 승인 기록
+
+입력 해시·Title ID·staging·세션이 다른 증거와 섞이면 `BLOCKED`다. 통합 후보를 만들기
+전에 사용자 승인 여부를 추측하지 않는다.
 
 ## 절차
 
-0. **QA 전제·런타임 경고 게이트**: 텍스트 승인 증거, 이미지 대상의 승인 또는 `N/A` 근거,
-   입력 manifest, canonical staging의 파일 목록·
-   SHA-256이 현재 프로젝트와 일치하는지 확인한다. `runtime_policy=static-first`이면 중간
-   배치에서 에뮬레이터를 실행하지 않고, 최종 시험도 사용자의 명시적 요청 전에는 정적/bench
-   검증만 수행한다. 다른 세션·다른 Title ID·이전 candidate의 로그나 active mod는 현재 PASS의
-   근거로 사용하지 않는다. `50_test/eden/SESSION.json`과 remote status가 다르거나
-   `ARTIFACT_MANIFEST.tsv`에 중복 `artifact_key`가 있으면 `BLOCKED`로 중단한다.
-
-1. **폰트 준비**: 번역 텍스트의 전체 사용 문자 집합을 추출해 폰트의 한글 글리프
-   커버리지를 검증. 부족하면 엔진 모듈의 폰트 주입 절차 수행
-   (Unity TMP/SDF는 원본 메트릭 보존 + 공통 스케일 1개 — 엔진 문서 참조).
-2. **재삽입**: 승인된 텍스트 TSV를 게임 포맷으로 역변환한다. `image_scope=required`일
-   때만 승인된 번역 이미지를 원본 위치에 재삽입하고, `N/A`이면 이미지 번역 산출물을
-   만들거나 주입하지 않는다. 왕복 무손실 검증(2단계에서 증명한 스크립트)은 전체 파일에
-   재실행한다.
-3. **정적 무결성 검사** (빌드 전 — 실행 시험보다 먼저, 저비용 검사 우선):
-   - 파일 수·구조 일치, 컨테이너 포맷 유효성 (플랫폼 어댑터의 검증 명령)
-   - 플레이스홀더·제어코드 보존 전수 스캔
-   - 변경된 컨테이너 목록과 크기 변화 기록 (큰 패치 ≠ 실패 — 원인 문서화)
-4. **빌드**: 플랫폼 어댑터의 빌드 절차로 패치 생성 → `40_build/` (커밋 제외).
-   빌드는 결정적(deterministic)이어야 함 — 같은 입력이면 같은 출력.
-5. **실행 시험** (플랫폼 어댑터의 실기 시험 절차):
-   - **중간 배치마다 실행하지 않는다** — 번역·병합·빌드·정적 검사·패키징을 끝낸 뒤
-     최종 산출물에 대해 1회 수행하는 것이 기본
-   - NSW에서 `eden-mcp`를 사용할 수 있고 대상 실행을 지원하면 Eden 실행·상태 확인·캡처
-     경로로 우선 사용한다. 실행 전 `SESSION.json`의 세션 키를 계산하고 remote 세션 목록/status와
-     대조한다. active 세션이 exact로 일치하면 새 launch/create를 호출하지 않고 재사용한다.
-     stale인 **현재 프로젝트 소유 세션**만 정확한 `session_id`로 한 번 close한 뒤 새 세션을
-     만들며, 종료 성공 전 재시도·추가 생성은 금지한다. `npm run project:qa-session --
-     --project-root "<프로젝트 루트>" --action prepare ...`로 local guard를 갱신한다.
-     `eden-mcp`가 없거나 해당 게임/작업을 지원하지 않을 때만 직접 Eden 실행으로 대체하고
-     그 사유를 `50_test/TEST_LOG.md`에 기록한다.
-   - emucap을 선택했다면 Control/Tracking MCP의 `bootstrap` → capability 확인 →
-     `launch_plan`/`launch` → `status` → `get_rom_info`/`run_start` 순서로 시작하고,
-     프로젝트별 `50_test/emucap/` 원장 경계를 먼저 확인
-   - emucap의 메모리 쓰기·입력·상태 변경은 Tracking MCP `log_intervention`으로 기록하고,
-     캡처·로그·덤프는 `log_artifact`로 SHA-256을 남김
-   - 실제 입력(확인/저장/다음 화면 전이)을 통과해야 실행 성공으로 판정
-   - 로더 생존·패치 적용 로그·프로세스 생존·종료 코드만으로 PASS를 선언하지 않는다.
-     입력 경로, 실제 Title ID, active mod, 교체 파일 수, 화면 전이와 캡처를 귀속한다.
-   - 하드웨어를 사용할 수 없으면 bench 결과와 `PENDING (hardware)`를 분리 기록하고
-     `PASS (hardware)`로 추론하지 않는다.
-   - 환경(에뮬레이터/펌웨어/입력·설정)·종료 코드·로그·캡처를 `50_test/`에 보존
-   - 실행 중 인스턴스는 새 패치를 핫리로드하지 않음 — 재시작 필요를 기록
-   - 세션 종료 시 remote close 성공을 확인한 뒤 현재 `session_id`로 `npm run project:qa-session --
-     --project-root "<프로젝트 루트>" --action close --title-id "<실행 Title ID>" \
-     --profile-path "<격리 프로파일 절대경로>" --profile-sha256 "<64자리 SHA-256>" \
-     --emulator-version "<버전>" --session-id "<현재 ID>" --remote-closed`를
-     실행한다. 세션 ID·시각을 파일명에 넣은 로그/캡처·`sessions/`/`runs/` 폴더는 만들지 않는다.
-6. **화면 검수**: 실행 캡처에서 확인 — 한글 렌더링(깨짐·두부문자 없음), 텍스트 넘침/
-   잘림, 폰트 크기 일관성, 이미지 표시 정상. `image_scope=N/A`여도 기존 이미지·아틀라스의
-   표시 정상 여부는 확인하며, 이미지 번역 승인 여부를 요구하지 않는다.
-7. **갭 분석·수정 (PDCA Check→Act)**: 발견된 문제를 유형별로 기록하고 해당 배치/이미지만
-   수정 → 3번부터 재실행. 런타임 실패는 번역·폰트 변경과 분리해 원인 조사
-   (로그 먼저, 우회책은 마지막).
+0. **소유권·세션 preflight**: literal 프로젝트 루트·Title ID·입력 파일·canonical
+   staging을 inventory한다. `SESSION.json`과 remote Eden status를 비교하고, active 세션의
+   key가 다르거나 pending/소유권 불명 상태이면 새 세션을 만들지 않는다. `eden` 아래의
+   `sessions/`, `runs/`, `session-*`, `run-*`, `SESSION-2.json`, `(1)`·`copy` 산출물을
+   발견하면 먼저 정리 계획을 만들고 QA를 중단한다.
+1. **정책 게이트**: review policy가 `user-gate`이면 approval 필드가 `approved`이고 승인
+   시각·시트 hash·전 행이 일치하는지 검증한다. `prepare-only`이면 approval이
+   `not_required`이고 review handoff의 준비 증거만 요구해 자동 진행한다.
+   어느 정책에서도 `review_ready`를 runtime PASS로 승격하지 않는다.
+2. **깨끗한 통합**: 깨끗한 원본에서 승인/준비된 text·font·조건부 image를 한 번만
+   재삽입한다. 기존 통합 트리나 이전 ZIP을 다시 패치하지 않으며 `artifact_key`와
+   canonical 경로를 먼저 예약한다.
+3. **폰트 재검증**: 최종 통합 입력의 전체 가시 코드포인트를 다시 추출하고
+   `FONT_ATLAS_MANIFEST.tsv`·coverage·render probe hash와 대조한다. 실제 consumer에서
+   한글·작은 글자·루비·active/inactive·행간·baseline·advance를 확인한다. mismatch면
+   `font_status=blocked`로 되돌리고 텍스트 QA부터 재실행한다.
+4. **정적 무결성**: 파일 수·구조·magic·컨테이너 parser·placeholder/control token·
+   language slot·변경/비대상 diff·입출력 SHA-256을 전수 검사한다. 종료 코드 0이나
+   로더 생존만으로 PASS하지 않는다.
+5. **빌드**: 플랫폼 어댑터의 deterministic build를 실행해 `40_build/`와
+   `BUILD_MANIFEST.tsv`를 만든다. stale 파일·다른 Title ID·중복 output·source overwrite가
+   있으면 실패시킨다.
+6. **런타임 선택**: `runtime_policy=static-first`이면 사용자의 명시적 실행 요청 전에는
+   bench 결과와 `PENDING_RUNTIME`만 기록한다. 실행이 승인되면 최종 candidate에서만
+   시험한다.
+   - Eden은 capability/session 목록을 먼저 확인한다. 같은 session key면 새 create 없이
+     재사용한다.
+   - 새 세션이 필요하면 이전 `last_session_id`의 exact remote close와
+     `project:qa-session --action close --remote-closed` 기록을 확인하고,
+     `--previous-session-id <동일 ID>`를 사용해 한 번만 생성한다.
+   - create/launch 실패 후 목록/status를 다시 읽기 전 재호출하지 않는다. 세션 ID·Title ID·
+     profile path/hash·emulator version·build hash를 `SESSION.json`과 TEST_LOG에 귀속한다.
+   - 테스트 종료 후 현재 session ID만 exact close하고 remote close 응답을 확인한 뒤 local
+     state를 closed로 갱신한다. 프로세스 이름 기반 전역 종료나 타 프로젝트 세션 조작은 금지한다.
+   - emucap을 사용하면 bootstrap/capability/launch/status/run_finish, intervention·artifact
+     log와 hash를 프로젝트 원장에 남긴다.
+7. **화면·경로 검수**: 실제 입력·화면 전이·메뉴·설정·저장/불러오기·백로그·튜토리얼·
+   매뉴얼·엔딩 경로에서 한글 렌더링, tofu, glyph 위치, baseline, 폭/잘림, 이미지 표시를
+   캡처로 확인한다. 로더 생존·패치 적용 로그·프로세스 생존은 화면 PASS가 아니다.
+8. **갭 수정**: 문제를 배치·폰트·이미지·런타임·환경으로 분리하고 해당 branch로 되돌린다.
+   런타임 실패는 깨끗한 원본에서 재빌드하며, 실패한 candidate/세션/로그를 새 복사본으로
+   쌓지 않는다. 결과·제한·재시작 조건을 `HANDOFF.md`에 append-only로 남긴다.
+9. **상태 기록**: `QA_REPORT.md`, `50_test/TEST_LOG.md`, build/test manifest에
+   `PASS (bench)`, `PASS (runtime)`, `PENDING_RUNTIME`, `PENDING (hardware)`를 분리 기록한다.
 
 ## 산출물
 
-| 경로 | 내용 |
-|-----|------|
-| `40_build/` | 패치 빌드 산출물 |
-| `50_test/logs/`, `50_test/captures/` | 실행 로그·스크린샷 (환경 정보 포함) |
-| `50_test/emucap/` | 선택적 emucap Tracking 원장·런타임 증거 |
-| `50_test/eden/SESSION.json` | 프로젝트당 하나의 Eden 세션 상태·소유권 기록 |
-| `50_test/eden/ARTIFACT_MANIFEST.tsv` | 프로젝트당 하나의 canonical 런타임 아티팩트 manifest |
-| `30_translation/QA_REPORT.md` | 정적 검사 결과, 실행 판정, 발견·수정 내역 |
+- `40_build/`의 deterministic 통합 후보와 `BUILD_MANIFEST.tsv`
+- `50_test/logs/`, `50_test/screenshots/`, `TEST_LOG.md`
+- `50_test/eden/SESSION.json`, `ARTIFACT_MANIFEST.tsv`(프로젝트당 하나)
+- `30_translation/QA_REPORT.md` 또는 프로젝트가 지정한 canonical QA report
+- 폰트·텍스트·이미지 manifest hash와 runtime 증거
 
 ## 완료 기준
 
-- [ ] 정적 무결성 검사 전 항목 통과
-- [ ] 최종 산출물로 실행 시험 통과 (실제 입력·화면 전이·저장 확인, 증거 보존)
-- [ ] 한글 렌더링·레이아웃 이상 없음 (캡처로 확인)
-- [ ] `image_scope=required`이면 이미지 주입·검수 완료, `N/A`이면 0건 근거와 생략
-  상태가 기록됨
-- [ ] emucap 사용 시 `run_finish`, 개입 기록, 산출물 해시가 프로젝트 원장에 남음
-- [ ] Eden 사용 시 동일 session key 재사용 또는 정확한 이전 세션 종료가 증명되고,
-  `SESSION.json`이 remote status와 일치함
-- [ ] `ARTIFACT_MANIFEST.tsv`의 `artifact_key`가 유일하고 timestamp/session/copy 중복 파일이 없음
-- [ ] 발견 문제 전건 수정 완료 또는 알려진 제한으로 문서화
-- [ ] `PASS (bench)`, `PASS (runtime)`, `PASS (hardware)`, `PENDING_RUNTIME`이 서로 혼동되지 않음
+- [ ] text/image 입력 정책과 현재 hash가 일치하며 폰트·구조·컨테이너 정적 QA 통과
+- [ ] 세션 소유권·Title ID·profile·build가 현재 증거에 exact 귀속됨
+- [ ] runtime을 실행했다면 실제 입력·화면 전이·한글/glyph 위치·캡처가 있음
+- [ ] 실행하지 않았다면 `PENDING_RUNTIME`/hardware 상태가 명시되고 PASS로 포장되지 않음
+- [ ] 중복 세션·artifact key·timestamp/copy 파일이 없음
+- [ ] 모든 갭이 해결되거나 제한·재현·다음 조건과 함께 Handoff에 기록됨
 
 통과 시 `gt-release`로 진행한다.

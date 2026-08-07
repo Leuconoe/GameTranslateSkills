@@ -20,7 +20,7 @@
 - `tmp`, `staging`, `cache`, `archive` 같은 폴더·파일 이름은 삭제 승인이 아니다. 이름이 아니라 검증된 정체로 판단한다.
 - 정리는 **정확한 allowlist**만 사용한다. 워크스페이스 전역 재귀 정리는 어떤 경우에도 금지한다.
 - 후보 목록에 없는 파일은 기본적으로 삭제하지 않고 보고만 한다. 명시적인 prune 옵션이 지정된 경우에만, 정확히 지정된 디렉터리 내부에서만 제거한다.
-- 완료 후에는 먼저 `npm run project:clean -- --project-root "<타이틀 루트>/_work/<프로젝트 ID>"`로 dry-run allowlist를 생성한다. `tmp-*`, `tmp_*`, `*.tmp`만 exact path·Git 추적 여부·참조 여부·활성 프로세스·링크/reparse 여부를 확인한 뒤, 명시적인 완료 정리 승인과 `--apply`가 있을 때만 제거한다. 제거 후 dry-run 후보 0건과 구조 검증 결과를 `WORK_LOG.md`에 남긴다.
+- 완료 후에는 `gt-project-cleanup` 또는 `npm run project:cleanup -- --project-root "<타이틀 루트>/_work/<프로젝트 ID>"`로 Handoff·PROJECT·WORK_LOG·manifest·세션·QA·release 참조를 추론한 `CLEANUP_PLAN.json`과 `CLEANUP_INSTRUCTIONS.md`를 생성한다. `tmp` 이름은 후보 근거 중 하나일 뿐이며, open evidence·활성/소유권 불명 세션·canonical 산출물은 보존한다. 지시서의 exact 후보를 `approved=true`로 표시하고 현재 plan SHA-256을 함께 넘긴 `--apply --plan`에서만 제거한다. 제거 후 plan hash·경로·개수와 구조 검증 결과를 `WORK_LOG.md`에 남긴다.
 
 ## 3. 정션/심링크/reparse point 보호
 
@@ -68,6 +68,11 @@
 - 파일·디렉터리를 만드는 모든 단계는 기존 canonical 경로를 먼저 확인하고, 변경이 필요할
   때만 같은 디렉터리의 `tmp-*` 파일을 원자적으로 교체한다. 세션별 `sessions/`·`runs/` 폴더와
   timestamp 파일을 자동 생성하지 않는다.
+- `SESSION.json`이 `pending`이면 remote 응답 유실 가능성을 조사하기 전 새 세션을 만들지
+  않는다. `closed` 상태의 `last_session_id`가 있으면 exact remote close와 local close를
+  증명한 뒤 `--previous-session-id`로 그 ID를 명시해야 다음 세션을 생성할 수 있다.
+- `ARTIFACT_MANIFEST.tsv`의 `artifact_key`와 `path`는 각각 유일해야 한다. 동일 논리 산출물은
+  기존 행을 hash/status로 갱신하며, 세션별 로그·캡처 복사본을 계속 쌓지 않는다.
 
 ## 6. git 커밋 규칙
 

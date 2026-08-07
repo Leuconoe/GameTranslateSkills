@@ -1,5 +1,9 @@
 # game-translate-skills 완료 보고서 (PDCA: Report)
 
+> **Historical report:** The 7-stage/approval-gate wording below describes the earlier release.
+> The maintained implementation is now the branch-based contract with non-blocking review handoffs
+> by default, mandatory font-atlas QA, session/duplicate guards, and Handoff-based cleanup plans.
+
 > 기간: 2026-08-04 ~ 2026-08-05 | 사이클: PDCA 1회차 완료 + iterate 1회
 
 ## 1. 목표와 결과

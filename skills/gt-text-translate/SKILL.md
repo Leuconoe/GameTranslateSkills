@@ -1,9 +1,9 @@
 ---
 name: gt-text-translate
-description: "Stage 2 of game localization - batch-translate extracted game text (JA/EN/ZH to Korean) with glossary accumulation, tone consistency, structure validation, explicit batch-policy checks, and fail-closed warnings. Use when translating game text/텍스트 번역/대사 번역."
+description: "Text branch translation after text analysis: batch-translate extracted game text (JA/EN/ZH to Korean) with glossary accumulation, tone consistency, structure validation, explicit batch-policy checks, and fail-closed warnings. Use when translating game text, dialogue, or UI."
 ---
 
-# gt-text-translate — 2단계: 텍스트 번역
+# gt-text-translate — 텍스트 브랜치 T2: 텍스트 번역
 
 추출된 텍스트를 배치 단위로 일→한(또는 영/중→한) 번역하고 용어집·말투를 누적 관리한다.
 
@@ -13,7 +13,8 @@ description: "Stage 2 of game localization - batch-translate extracted game text
 
 ## 입력 조건
 
-- `gt-analyze` 산출물: `ANALYSIS.md`의 텍스트 대상 목록
+- `gt-text-analyze` 산출물: `TEXT_ANALYSIS.md`, `TEXT_SOURCE_INVENTORY.tsv`, canonical
+  `30_translation/text/translation_manifest.tsv`
 - 상세 규칙 로드: `$GT_HOME/common/glossary-rules.md` (배치 구성·용어집·검증 규칙의 원본)
 - `PROJECT.md`의 유효 배치 크기와 `30_translation/text/glossary.tsv` 경로 선언
 
@@ -27,9 +28,10 @@ description: "Stage 2 of game localization - batch-translate extracted game text
 
 1. **기준 언어 결정**: 원문 품질이 가장 좋은 언어를 기준 언어로, 나머지를 참고 언어로.
    중의적 표현은 참고 언어와 교차 확인 (`glossary-rules.md` §기준 언어).
-2. **텍스트 → TSV 변환**: 게임 포맷의 텍스트를 `30_translation/text/*.tsv`로 변환.
-   컬럼: `id │ 원문 │ 번역 │ 상태 │ 비고`. 변환 스크립트는 `90_tools/`에 보관하고
-   **역변환(TSV→게임 포맷)이 무손실임을 왕복 테스트로 먼저 증명**한다.
+2. **기준 manifest 사용**: `gt-text-analyze`가 만든 canonical
+   `30_translation/text/translation_manifest.tsv`만 갱신한다. 임의의 `*.tsv` 복사본을
+   canonical 입력으로 만들지 않으며, 역변환(TSV→게임 포맷)이 무손실임을 왕복 테스트로
+   증명한다.
 3. **배치 구성**: `glossary-rules.md`의 chunk 전략에 따라 배치 분할.
    여러 에이전트가 같은 파일을 동시에 쓰지 않도록 단일 메인 에이전트가 chunk를 처리하고,
    서브에이전트는 읽기 전용 조사만 담당.
@@ -64,4 +66,4 @@ description: "Stage 2 of game localization - batch-translate extracted game text
 - [ ] 왕복 변환(TSV→게임 포맷→TSV) 무손실 확인
 - [ ] 배치 크기·용어집 경로·입력 manifest 해시가 `PROJECT.md`와 일치함
 
-완료 시 `gt-text-review`(사용자 검수 게이트)로 진행한다. **검수 없이 4단계 진행 금지.**
+완료 시 `gt-text-qa`로 진행한다. 이 단계에서 사용자 허락을 기다리지 않는다.

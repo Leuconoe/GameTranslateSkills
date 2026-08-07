@@ -132,7 +132,7 @@ emucap은 NSW 어댑터를 제공하지 않으므로 이 절차에서는 사용�
 ## 7. 재발 방지 팁 (일반화)
 
 - 릴리스·staging 정리 시 **파일명이나 폴더명만으로 재생성 가능성을 추정하지 않는다.** `cache`, `backup`, `staging` 같은 이름이 있어도 Git 추적 여부, 원본 입력의 실재, 대체본과의 크기·SHA-256 exact 또는 재생성 명령, canonical 릴리스 보존을 모두 확인한 대상만 exact allowlist로 삭제한다. 전제가 하나라도 어긋나면 fail-closed로 중단한다. 삭제 전 resolve한 절대 경로가 프로젝트 안에 있고 link/junction/reparse point가 없는지 확인하며, 실행 뒤 같은 정리 계획을 dry-run으로 재실행해 잔여 대상 0과 보존 anchor의 현재 해시를 기록한다.
-- 작업 중 생성하는 임시 파일·중간 아티팩트·도구 출력은 타이틀 `_work/<BASE_TITLE_ID>/` 아래에만 두고, 삭제 후보는 `tmp-<단계>-<목적>`, `tmp_<단계>_<목적>` 또는 `*.tmp`로 명명한다. 완료 후 `npm run project:clean -- --project-root "<타이틀 루트>/_work/<BASE_TITLE_ID>"`를 dry-run하고 exact allowlist를 검토한 뒤 `--apply`로 정리한다. 제거 경로·개수와 후보 0건 재검증을 `WORK_LOG.md`에 기록하며, 릴리스·QA 증거·활성 staging은 보존한다.
+- 작업 중 생성하는 임시 파일·중간 아티팩트·도구 출력은 타이틀 `_work/<BASE_TITLE_ID>/` 아래에만 두고, 삭제 후보는 `tmp-<단계>-<목적>`, `tmp_<단계>_<목적>` 또는 `*.tmp`로 명명한다. 완료 후 Handoff·manifest·세션 참조를 읽는 `npm run project:cleanup -- --project-root "<타이틀 루트>/_work/<BASE_TITLE_ID>"`로 `CLEANUP_PLAN.json`과 `CLEANUP_INSTRUCTIONS.md`를 먼저 생성한다. 지시서의 exact 후보만 `approved=true`로 표시하고 plan SHA-256과 함께 `--apply --plan`을 실행한다. 제거 경로·개수와 후보 0건 재검증을 `WORK_LOG.md`에 기록하며, 릴리스·QA 증거·활성 staging은 보존한다.
 - 아카이브 빌더가 추출 작업 트리를 보존해야 하면 **시작 전에 디스크 공간을 점검**한다(깨끗한 입력 + staging + compile + round-trip 추출 + 원자적 출력). 공간 확보를 위해 깨끗한 입력, 검증 완료 이전본, 사용자 번역 원본을 삭제하지 않는다.
 - 번역하지 못한 행·해결하지 못한 실패는 빈 값이나 기존 초안으로 조용히 대체하지 않는다. `blocked` 상태와 원인, 다음 검증 조건을 매니페스트·작업 로그에 남겨 다음 사이클의 입력으로 삼는다.
 - 상태값은 최소 `new`, `translated`, `reviewed`, `injected`, `device_verified`, `blocked`로 통일한다.

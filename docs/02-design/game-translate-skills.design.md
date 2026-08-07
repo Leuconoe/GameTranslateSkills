@@ -1,5 +1,10 @@
 # game-translate-skills Design (PDCA: Design)
 
+> **Superseded design note (2026-08-07):** The 7-stage tables in this historical document are
+> retained as source history. Implementations must follow `common/pipeline-contract.json` and
+> `common/pipeline-contract.md`, which split text and image work into analyze → translate → QA →
+> review-handoff stages and make user approval conditional on explicit project policy.
+
 > 작성일: 2026-08-04 | 상태: v1.0 | Plan: docs/01-plan/game-translate-skills.plan.md (D1-D10)
 
 ## 1. 저장소 레이아웃

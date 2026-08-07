@@ -24,6 +24,23 @@ TextMeshPro 폰트 에셋(SDF 아틀라스 + glyph/character 테이블)에 한�
 5. SDF 아틀라스 텍스처를 교체하면 glyph rect·atlas 크기·padding 값이 테이블과 정확히 일치해야 한다. 텍스처만 바꾸고 테이블을 방치하지 않는다.
 6. QA는 재패킹된 번들에서 폰트 데이터를 다시 꺼내 전체 가시 코드포인트를 렌더링해 tofu·빈 outline 0건을 확인한다. 완성형 한글 범위, 작은 글자, 행간, 루비 위치, 메뉴 선택·비활성 상태를 실기/에뮬레이터에서 확인한다.
 
+## 폰트 아틀라스 강제 검증
+
+`gt-text-qa`는 아래 파일을 만들고 `$GT_HOME/common/font-atlas-contract.md`를 적용한다.
+
+```text
+30_translation/text/FONT_COVERAGE.tsv
+30_translation/text/FONT_ATLAS_MANIFEST.tsv
+30_translation/text/FONT_ATLAS_QA_REPORT.md
+```
+
+아틀라스 텍스처만 바꾸는 패치는 금지한다. 원본과 후보의 codepoint→glyph ID, atlas page,
+rect, UV 원점, padding, bearing, advance, baseline, face metrics를 비교하고 기존 언어
+glyph·비대상 glyph는 exact로 보존한다. 좌표가 뒤집히거나 글리프가 위아래로 밀리면
+per-character offset을 임의로 넣지 말고 import/export 좌표계·padding·공통 scale·font
+asset reference를 다시 증명한다. 재패킹 후 독립 재추출과 render probe가 통과하기 전에는
+`font_status=verified` 또는 `text_status=review_ready`를 기록하지 않는다.
+
 일반 폰트(TTF/OTF 직접 참조)의 경우: 전면 교체가 기존 언어 glyph를 잃거나 outline 형식(`glyf`/CFF)이 달라 병합할 수 없으면, 원본 glyph를 유지한 채 호환 TrueType glyph를 추가하는 방식을 우선한다. composite glyph 이름, `cmap`/`hmtx`/`maxp` 갱신, 원본 glyph 무변경을 검증한다.
 
 ## 에셋번들 리빌드

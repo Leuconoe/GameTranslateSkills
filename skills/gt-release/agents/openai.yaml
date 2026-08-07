@@ -1,6 +1,6 @@
 interface:
   display_name: "Game Patch Release"
-  short_description: "Package a verified patch for distribution"
-  default_prompt: "Use $gt-release to package a verified Korean game patch with installation and release notes."
+  short_description: "Package a verified patch by adapter contract"
+  default_prompt: "Use $gt-release to package a verified Korean game patch with the platform adapter's exact file, hash, installation, release, and cleanup contracts."
 policy:
   allow_implicit_invocation: true

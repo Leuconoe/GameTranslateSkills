@@ -44,7 +44,17 @@ glossary_path: 30_translation/text/glossary.tsv
 runtime_policy: static-first           # static-first | slot-probe | final-only
 runtime_authorization: pending         # pending | approved | not_required
 target_language_slot: pending          # 증명 전에는 pending
-image_scope: required                  # required | N/A
+image_scope: pending                   # pending | required | N/A; 분석 후에는 required/N/A
+text_review_policy: prepare-only       # prepare-only | user-gate
+image_review_policy: prepare-only      # prepare-only | user-gate
+text_review_approval: not_required     # prepare-only: not_required; user-gate: pending | approved
+image_review_approval: not_required    # prepare-only: not_required; user-gate: pending | approved
+font_status: pending                   # pending | verified | blocked
+project_status: registered              # pipeline-contract.json의 project_status
+text_status: pending                   # pipeline-contract.json의 text_status
+image_status: pending                  # pipeline-contract.json의 image_status
+qa_status: pending                     # pipeline-contract.json의 qa_status
+release_status: pending                # pipeline-contract.json의 release_status
 release_contract: platform-adapter    # 플랫폼 문서의 정확한 경로·파일명 사용
 qa_session_backend: eden-mcp           # NSW QA 권장 backend
 qa_session_state: 50_test/eden/SESSION.json
@@ -66,7 +76,14 @@ artifact_manifest: 50_test/eden/ARTIFACT_MANIFEST.tsv
 - 40행과 80행 등 문서 간 숫자·상태·경로 계약이 다르며 적용할 `PROJECT.md` override가 없음
 - 대상 프로젝트, Title ID, 입력 manifest, 출력 경로를 정확한 literal 경로로 확정하지 못함
 - 추출 도구가 종료 코드 0을 반환했지만 파일 수·크기·매직·파싱·해시가 검증되지 않음
-- 사용자 검수 단계의 검수 시트, 전 행 상태, 명시적 승인 기록이 없음
+- `text_review_policy=user-gate` 또는 `image_review_policy=user-gate`인데 검수 시트·전 행
+  상태·명시적 승인 기록이 없음
+- `prepare-only` 정책인데 review 단계가 사용자 응답을 기다리거나, 반대로 `user-gate`를
+  명시했는데 사용자 승인 없이 다음 단계로 진행함
+- `prepare-only`인데 approval 필드가 `not_required`가 아니거나, `user-gate`인데 해당
+  approval 필드가 `pending`/`approved`가 아니며, `review_ready`인데 `approved`가 아님
+- 전체 가시 코드포인트·폰트 glyph 매핑·아틀라스 rect·metrics·왕복·render probe가 없거나
+  `font_status=verified`가 아닌데 text/image review-ready를 선언함
 - `image_scope: N/A`인데 이미지 대상이 남아 있거나, 반대로 이미지 대상이 없는데 가짜 후보·검수 행을 만든 경우
 - `static-first` 정책인데 런타임 실행을 요청받지 않았거나, 실행 결과를 현재 build에 귀속할
   입력 경로·Title ID·active mod·파일 해시·캡처가 없음
@@ -112,7 +129,8 @@ date | type | observed | impact | decision | evidence | status(open/applied/reje
 
 - [ ] 프로젝트 루트와 Title ID가 literal 경로로 확정됨
 - [ ] `PROJECT.md`·최근 로그·manifest의 최신 해시를 읽음
-- [ ] 현재 단계의 입력 게이트와 사용자 승인 여부가 증명됨
+- [ ] 현재 단계의 입력 게이트와 review 정책(`prepare-only`/`user-gate`)이 증명됨
+- [ ] `font_status=verified`와 폰트 아틀라스 검증 증거가 증명됨
 - [ ] 이미지 대상이 없으면 `PROJECT.md`·분석 결과에 `image_scope: N/A`와 근거가 기록됨
 - [ ] 배치 크기·용어집 경로·런타임 정책·릴리스 계약이 서로 일치함
 - [ ] 대상 수가 0이 아니거나 명시적 `N/A` 근거가 있으며, 실패·미확인 항목은 `blocked` 또는 `PENDING`으로 기록됨

@@ -1,0 +1,6 @@
+interface:
+  display_name: "Game Image QA"
+  short_description: "QA image formats, atlases, pixels, and staging"
+  default_prompt: "Use $gt-image-qa to validate translated image formats, canvas, alpha, atlas coordinates, preserved pixels, hashes, and injection readiness."
+policy:
+  allow_implicit_invocation: true

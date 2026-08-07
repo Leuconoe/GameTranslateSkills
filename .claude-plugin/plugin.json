@@ -1,7 +1,7 @@
 {
   "name": "game-translate",
-  "description": "7-stage game Korean-localization workflow skills for Codex and Claude Code (analyze, translate, review gates, QA, release) across NSW/SFC/PS1/PS2/Steam with platform adapters, engine modules, and field-proven safety rules.",
-  "version": "1.2.1",
+  "description": "Branch-based game Korean-localization workflow skills for Codex and Claude Code (overall analysis, text/image branches, font and asset QA, conditional review handoffs, session-safe runtime QA, cleanup planning, and release) across NSW/SFC/PS1/PS2/Steam.",
+  "version": "1.3.0",
   "author": {
     "name": "Leuconoe"
   },

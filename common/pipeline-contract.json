@@ -1,0 +1,183 @@
+{
+  "schema_version": 2,
+  "entry_skill": "gt-analyze",
+  "convergence_skill": "gt-qa",
+  "release_skill": "gt-release",
+  "policies": {
+    "text_review_policy": {
+      "default": "prepare-only",
+      "allowed": ["prepare-only", "user-gate"]
+    },
+    "image_review_policy": {
+      "default": "prepare-only",
+      "allowed": ["prepare-only", "user-gate"]
+    },
+    "runtime_policy": {
+      "default": "static-first",
+      "allowed": ["static-first", "slot-probe", "final-only"]
+    }
+  },
+  "review_approval_fields": {
+    "text_review_approval": {
+      "default": "not_required",
+      "allowed": ["not_required", "pending", "approved"]
+    },
+    "image_review_approval": {
+      "default": "not_required",
+      "allowed": ["not_required", "pending", "approved"]
+    }
+  },
+  "stages": [
+    {
+      "id": "overall-analyze",
+      "branch": "common",
+      "skill": "gt-analyze",
+      "input_status": "registered",
+      "output_status": "analyzed",
+      "next": ["text-analyze"]
+    },
+    {
+      "id": "text-analyze",
+      "branch": "text",
+      "skill": "gt-text-analyze",
+      "input_status": "analyzed",
+      "output_status": "analyzed",
+      "next": ["text-translate"]
+    },
+    {
+      "id": "text-translate",
+      "branch": "text",
+      "skill": "gt-text-translate",
+      "input_status": "analyzed",
+      "output_status": "translated",
+      "next": ["text-qa"]
+    },
+    {
+      "id": "text-qa",
+      "branch": "text",
+      "skill": "gt-text-qa",
+      "input_status": "translated",
+      "output_status": "qa_ready",
+      "next": ["text-review"]
+    },
+    {
+      "id": "text-review",
+      "branch": "text",
+      "skill": "gt-text-review",
+      "input_status": "qa_ready",
+      "output_status": "review_ready",
+      "next": ["image-analyze", "integrated-qa"],
+      "policy": "text_review_policy"
+    },
+    {
+      "id": "image-analyze",
+      "branch": "image",
+      "skill": "gt-image-analyze",
+      "input_status": "review_ready",
+      "output_status": "analyzed",
+      "skip_when": "image_scope=N/A",
+      "next": ["image-translate"]
+    },
+    {
+      "id": "image-translate",
+      "branch": "image",
+      "skill": "gt-image-translate",
+      "input_status": "analyzed",
+      "output_status": "translated",
+      "skip_when": "image_scope=N/A",
+      "next": ["image-qa"]
+    },
+    {
+      "id": "image-qa",
+      "branch": "image",
+      "skill": "gt-image-qa",
+      "input_status": "translated",
+      "output_status": "qa_ready",
+      "skip_when": "image_scope=N/A",
+      "next": ["image-review"]
+    },
+    {
+      "id": "image-review",
+      "branch": "image",
+      "skill": "gt-image-review",
+      "input_status": "qa_ready",
+      "output_status": "review_ready",
+      "skip_when": "image_scope=N/A",
+      "next": ["integrated-qa"],
+      "policy": "image_review_policy"
+    },
+    {
+      "id": "integrated-qa",
+      "branch": "common",
+      "skill": "gt-qa",
+      "input_status": "review_ready",
+      "output_status": "qa_passed",
+      "next": ["release"]
+    },
+    {
+      "id": "release",
+      "branch": "common",
+      "skill": "gt-release",
+      "input_status": "qa_passed",
+      "output_status": "released",
+      "next": []
+    }
+  ],
+  "status_fields": {
+    "project_status": [
+      "registered",
+      "analyzing",
+      "analyzed",
+      "translating",
+      "review_ready",
+      "qa",
+      "qa_passed",
+      "runtime_verified",
+      "released",
+      "blocked"
+    ],
+    "text_status": [
+      "pending",
+      "analyzing",
+      "analyzed",
+      "translated",
+      "qa_ready",
+      "review_waiting",
+      "review_ready",
+      "blocked"
+    ],
+    "image_status": [
+      "pending",
+      "skipped",
+      "analyzing",
+      "analyzed",
+      "translated",
+      "qa_ready",
+      "review_waiting",
+      "review_ready",
+      "blocked"
+    ],
+    "font_status": [
+      "pending",
+      "verified",
+      "blocked"
+    ],
+    "qa_status": [
+      "pending",
+      "bench_ready",
+      "runtime_pending",
+      "passed",
+      "blocked"
+    ],
+    "release_status": [
+      "pending",
+      "blocked",
+      "released"
+    ]
+  },
+  "review_contract": {
+    "prepare_only": "Create complete review artifacts and emulator-ready handoff, then continue without asking for user approval.",
+    "user_gate": "Create the same artifacts, set the branch approval field to pending, stop, and continue only after an explicit user approval changes that field to approved in PROJECT.md.",
+    "never_implies": ["PASS (runtime)", "user approval", "release readiness"]
+  }
+}

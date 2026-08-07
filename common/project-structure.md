@@ -35,7 +35,9 @@ _work/<프로젝트 ID>/
   00_source/               원본 인벤토리 (SOURCE_INVENTORY.tsv: 크기·SHA-256)
   10_extract/              추출물 (romfs_original 등, 읽기 전용 취급) / decompiled
   20_reference/            읽기 전용 참고 자료 (외부 패치, 폰트, 문서)
-  30_translation/          ANALYSIS.md (분석 단계 산출물: 엔진·언어 슬롯·번역 대상 분류·재현 명령)
+  30_translation/          ANALYSIS.md (공통 분석: 엔진·언어 슬롯·번역 대상 분류·재현 명령)
+                           text(manifest, glossary, STYLE, batches, reports, reviews, font QA)
+                           image_translation(reference, for_translation, reports)
                            text(glossary, manifest, batches, reports) / image_translation
   40_build/                staging / 패치 트리 / releases / BUILD_MANIFEST.tsv
   50_test/                 TEST_LOG.md / screenshots / logs / emucap(선택적 원장·증거)
@@ -45,11 +47,15 @@ _work/<프로젝트 ID>/
 
 - `20_reference`는 읽기 전용 원본과 재조립 정보만. 직접 수정하는 이미지는 `30_translation/.../for_translation`에만.
 - 실패한 빌드·조사용 출력물을 최종 패치 트리에 섞지 않는다.
-- `PROJECT.md`에는 이미지 범위 정책 `image_scope`를 `required` 또는 `N/A`로 기록한다. `N/A`인
-  프로젝트는 `ANALYSIS.md`에 0건 inventory와 판정 근거를 남긴 뒤 4·5단계를 생략하고 QA로
-  진행할 수 있다. 이 생략은 이미지 표시 자체의 QA를 면제하지 않는다.
+- `PROJECT.md`에는 이미지 범위 정책 `image_scope`를 처음에는 `pending`으로 두고, 전체
+  inventory 후 `required` 또는 `N/A`로 확정한다. `N/A`인 프로젝트는 `ANALYSIS.md`에 0건
+  inventory와 판정 근거를 남긴 뒤 이미지 브랜치 네 단계를 생략하고 QA로 진행할 수 있다.
+  이 생략은 이미지 표시 자체의 QA를 면제하지 않는다.
 - 번역 기준 데이터는 `30_translation/text/translation_manifest.tsv`이며 최소 스키마는 `id, source_file, source_key, 원문, (참고 언어), target_ko, status, notes`. 상태값은 `new / translated / reviewed / injected / device_verified / blocked`로 통일한다.
 - 용어집의 canonical 경로는 `30_translation/text/glossary.tsv`다. 프로젝트 문서·스크립트·검수 시트에서 대문자 `GLOSSARY.tsv`나 다른 상대 경로를 새로 참조하지 않는다.
+- 텍스트 QA의 canonical 폰트 산출물은 `30_translation/text/FONT_COVERAGE.tsv`,
+  `FONT_ATLAS_MANIFEST.tsv`, `FONT_ATLAS_QA_REPORT.md`다. glyph table·atlas·metrics가
+  서로 다른 staging에 있으면 후보를 만들지 않는다.
 - 행 번호가 아닌 **안정적인 키·리소스 ID·오프셋 조합**으로 원문과 번역을 연결한다.
 
 ### Canonical 생성·세션 재사용 게이트
@@ -68,21 +74,23 @@ _work/<프로젝트 ID>/
 ### 단계 실행 정책과 경고 게이트
 
 - 각 프로젝트의 `PROJECT.md`에는 `batch_size`(공통 기본값 80), `runtime_policy`(`static-first` 기본),
-  `target_language_slot`, `image_scope`(`required` 또는 `N/A`), `release_contract`를 기록한다. 80행이 아닌 배치는 근거가 있는
-  명시적 타이틀별 override로만 허용한다.
+  `target_language_slot`, `image_scope`(`pending` → `required` 또는 `N/A`),
+  `text_review_policy`, `image_review_policy`, 해당 approval 필드와 `release_contract`를 기록한다.
+  80행이 아닌 배치는 근거가 있는 명시적 타이틀별 override로만 허용한다.
 - 단계별 스킬을 직접 호출하는 경우에도 [`preflight-checks.md`](preflight-checks.md)를 먼저 읽는다.
   문서 간 숫자·경로·상태·승인 조건이 충돌하면 추측하지 않고 `WARN`/`BLOCKED`를 기록하며,
   `HANDOFF.md`에 불일치를 append-only로 남긴다.
 - 정적/bench PASS, 런타임 PASS, 실기 PASS, 사용자 승인, 릴리스 완료는 서로 다른 상태다.
+  `qa_ready`, `review_ready`, `user-approved`, `PASS (runtime)`도 서로 대체하지 않는다.
   한 상태를 다른 상태의 증거로 승격하지 않는다.
 
-### 완료 후 임시 파일 정리 게이트
+### Handoff 기반 정리·완료 후 청결화 게이트
 
-1. `PROJECT.md`가 `released` 또는 사용자가 지정한 완료 상태인지 확인하고, 실행 중인 도구·에뮬레이터가 정리 대상 파일을 사용하지 않는지 확인한다. Eden을 사용했다면 remote 세션 종료와 `SESSION.json`의 `closed` 상태도 확인한다.
-2. 프로젝트 루트에서 기본 dry-run을 실행한다: `npm run project:clean -- --project-root "<타이틀 루트>/_work/<프로젝트 ID>"`.
-3. 출력된 exact allowlist 중 `tmp-*`, `tmp_*`, `*.tmp` 항목만 검토한다. Git 추적 파일, manifest·보고서가 참조하는 파일, 활성 staging·릴리스·QA 증거, 링크/reparse point가 포함되거나 정체가 불명확한 항목은 보존하고 정리하지 않는다.
-4. 정리 대상이 안전하다고 확인된 뒤에만 같은 명령에 `--apply`를 추가해 제거하고, 제거 경로·개수·시각을 `WORK_LOG.md`에 기록한다. 워크스페이스 전체 재귀 삭제나 이름 기반 `rm -rf`는 금지한다.
-5. dry-run을 다시 실행해 후보 0건을 확인하고 `npm run project:validate -- --titles-root "$GT_WORKSPACE/_titles" --strict`를 재실행한다. `_title` 컨테이너를 쓰는 워크스페이스는 해당 경로로 바꾼다. 최종 릴리스·로그·QA 증거는 삭제하지 않는다.
+1. `PROJECT.md`가 `released` 또는 사용자가 지정한 완료 상태인지 확인하고, 실행 중인 도구·에뮬레이터가 정리 대상 파일을 사용하지 않는지 확인한다. Eden을 사용했다면 remote close, `SESSION.json=closed`, 마지막 ID 귀속을 확인한다.
+2. `gt-project-cleanup` 또는 `npm run project:cleanup -- --project-root "<타이틀 루트>/_work/<프로젝트 ID>"`로 Handoff·PROJECT·WORK_LOG·manifest·QA·release 참조를 추론해 `CLEANUP_PLAN.json`과 `CLEANUP_INSTRUCTIONS.md`를 생성한다.
+3. `tmp` 이름은 후보 근거 중 하나일 뿐이다. open Handoff evidence, canonical manifest, 현재/소유권 불명 세션, 링크/reparse point, 활성 staging·릴리스·QA 증거는 보존하거나 `BLOCKED`로 둔다.
+4. 지시서의 exact 후보만 `approved=true`로 표시하고 계획 SHA-256을 확인한 뒤 `--apply --plan`을 실행한다. 계획 밖 경로·glob·워크스페이스 전체 재귀 삭제·프로세스 이름 기반 세션 종료는 금지한다.
+5. 적용 후 제거 경로·개수·시각·plan hash를 `WORK_LOG.md`에 기록하고, `project:validate -- --strict`와 동일 cleanup 명령의 재계획을 실행한다. 최종 릴리스·로그·QA·폰트 evidence는 삭제하지 않는다.
 
 ### 실행 환경
 

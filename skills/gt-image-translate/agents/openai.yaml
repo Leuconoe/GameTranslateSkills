@@ -1,6 +1,6 @@
 interface:
   display_name: "Game Image Translation"
-  short_description: "Translate text-bearing game images and textures"
-  default_prompt: "Use $gt-image-translate to plan and generate Korean game-text images with imagegen when available; honor image_scope=N/A by recording the skip and routing to QA."
+  short_description: "Translate game images with format safeguards"
+  default_prompt: "Use $gt-image-translate to translate analyzed game images and textures while preserving canvas, alpha, atlas coordinates, style, and image scope."
 policy:
   allow_implicit_invocation: true

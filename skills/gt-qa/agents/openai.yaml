@@ -1,6 +1,6 @@
 interface:
   display_name: "Game Translation QA"
-  short_description: "Verify patches with runtime and emucap evidence"
-  default_prompt: "Use $gt-qa to verify the Korean patch's structure, font coverage, build, and runtime behavior; on NSW prefer eden-mcp when available and honor image_scope=N/A."
+  short_description: "Integrate and verify patch runtime evidence"
+  default_prompt: "Use $gt-qa to integrate text, font, and image candidates and verify structure, session ownership, build, font rendering, and runtime evidence."
 policy:
   allow_implicit_invocation: true

@@ -46,3 +46,25 @@
 - 문서 수정만으로 끝내지 않는다 — 가능하면 수정된 절차로 해당 지점을 **재실행**하여
   실제로 통하는지 확인하고, 결과를 엔트리에 남긴다 (드라이런 방식).
 - 수치 기준(배치 크기, 해시, 재시도 정책)을 바꾸는 제안은 근거 데이터를 함께 기록한다.
+
+## 5. 정리 지시서와 Handoff evidence
+
+정리·청결화는 `tmp` 이름만 보고 수행하지 않는다. `gt-project-cleanup`과
+`gt-workspace-cleanup`은 이 파일의 `open` 엔트리와 `evidence` 경로를 보존 anchor로
+사용하고, `PROJECT.md`, `WORK_LOG.md`, manifest, QA·릴리스 문서의 참조를 함께 대조해
+`CLEANUP_PLAN.json`과 `CLEANUP_INSTRUCTIONS.md`를 생성한다.
+
+정리 관련 Handoff는 가능하면 다음 표 형식을 사용한다.
+
+```text
+date | type | observed | impact | decision | evidence | status(open/applied/rejected)
+```
+
+기존 bullet 형식도 버리지 않지만, `상황`·`해결/우회`·`evidence`에 정확한 상대/절대
+경로와 현재 hash를 남긴다. `open` evidence·활성 세션·소유권 불명 세션은 삭제 후보가
+아니다. `applied`/`rejected`도 manifest와 문서가 더 이상 참조하지 않는지 확인하기 전에는
+자동 삭제로 추론하지 않는다.
+
+정리 계획의 후보는 기본 `approved=false`다. 사용자가 exact 경로를 검토해 승인하고
+계획의 현재 SHA-256을 확인한 경우에만 `--apply --plan`으로 적용한다. 계획 밖 경로,
+glob, link/reparse point, 프로젝트 root 전체, 다른 타이틀의 산출물은 항상 거부한다.

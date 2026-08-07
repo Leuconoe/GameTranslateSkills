@@ -1,172 +1,155 @@
 ---
 name: game-translate
-description: "Orchestrates the full 7-stage game Korean-localization workflow (analyze, translate text, user text review, translate images, user image review, QA, release) for NSW/SFC/PS1/PS2/Steam games with PDCA loop, preflight warnings, contradiction detection, and hard approval gates. Use when starting or resuming a game translation/localization/한글화 project or when a workflow rule may be unsafe or inconsistent."
+description: "Orchestrate a fail-closed Korean game-localization workflow across overall analysis, text analyze/translate/QA/review, conditional image analyze/translate/QA/review, integrated QA, and release. Review stages prepare emulator-ready handoffs by default and wait for user approval only when the project explicitly sets user-gate. Use when starting, resuming, or reconciling a NSW/SFC/PS1/PS2/Steam game translation project."
 ---
 
 # game-translate — 게임 한글화 오케스트레이터
 
-사용자가 합법적으로 보유한 게임의 **개인 번역 패치** 제작을 7단계로 지휘하는 스킬입니다.
-배포물은 원본 게임 데이터를 포함하지 않는 패치 형태여야 합니다.
+사용자가 합법적으로 보유한 게임의 개인 번역 패치를 지휘한다. 원본 게임 데이터·콘솔 키·
+펌웨어는 작업·배포 산출물에 포함하지 않는다. 단계·상태·정리 규칙은
+`$GT_HOME/common/pipeline-contract.json`과 `pipeline-contract.md`를 기준으로 한다.
 
-## 0. 환경 규약
+## 0. 환경과 안전
 
-| 변수 | 의미 | 해석 규칙 |
-|-----|------|-------|
-| `GT_HOME` | 지식 베이스 루트 (platforms/, engines/, common/, setup/) | **Codex 플러그인**: `.codex-plugin/`, `skills/`, `common/`이 함께 있는 설치된 플러그인 루트 → **Claude Code 플러그인**: `${CLAUDE_PLUGIN_ROOT}`. 플러그인 외 수동 설치는 지원하지 않음 |
-| `GT_WORKSPACE` | 게임 번역 작업 루트 (게임 데이터·산출물 위치) | 환경변수 또는 현재 작업 디렉터리 |
-| `GT_TOOLS` | 공용 도구 폴더 | `$GT_WORKSPACE/_tools` |
+| 변수 | 의미 |
+|---|---|
+| `GT_HOME` | `.codex-plugin/`, `skills/`, `common/`이 함께 있는 설치 플러그인 루트 또는 Claude의 `${CLAUDE_PLUGIN_ROOT}` |
+| `GT_WORKSPACE` | 게임 데이터·타이틀 작업장 루트 |
+| `GT_TOOLS` | 공용 도구 폴더. 게임 산출물은 만들지 않음 |
 
-- 시작 전 **반드시 읽기**: `$GT_HOME/common/SAFETY.md` (안전 규칙 — 모든 단계에 적용),
-  `$GT_HOME/common/project-structure.md` (표준 폴더 구조)
-- 작업 중 생성하는 모든 임시 파일·중간 아티팩트·도구 출력은 현재 타이틀의
-  `_work/<프로젝트 ID>/` 아래에만 둔다. 삭제 가능한 항목은 `tmp-<단계>-<목적>` 또는
-  `tmp_<단계>_<목적>`/`*.tmp`로 명명하고 저장소 루트·OS 임시 폴더·공용 MCP 디렉터리를
-  출력 경로로 사용하지 않는다.
-- 타이틀 루트는 원본 `.nsp`/`.xci`가 직접 있는 실제 게임 폴더로 확정한다. `_title`/`_titles`
-  컨테이너 아래에 임의의 `title` 폴더를 만들지 말고, 그 실제 폴더의 `_work/<프로젝트 ID>/`에만
-  작업물을 생성한다. 패키지가 없는 폴더를 타이틀 루트로 선택하면 `BLOCKED`로 중단한다.
-- 동일 논리 산출물은 canonical 경로·`artifact_key` 하나만 사용한다. 기존 파일이 exact로
-  일치하면 재사용하고 `-1`, `(1)`, 날짜·세션 ID 복사본을 만들지 않는다.
-- 시작 전 **반드시 읽기**: `$GT_HOME/common/preflight-checks.md` (문서·경로·배치·런타임·릴리스
-  계약의 불일치 경고 게이트)
-- emucap을 사용하는 6단계에서는 `$GT_HOME/common/emucap-integration.md`를 추가로 읽는다.
-  emucap은 선택적 런타임 QA 백엔드이며 번역·추출 단계에서 호출하지 않는다.
-- NSW의 Eden QA에서는 `$GT_HOME/common/qa-session-rules.md`를 추가로 읽는다. `SESSION.json`의
-  동일 소유 세션은 재사용하고, 이전 세션 종료와 canonical 아티팩트 manifest 확인 전에는
-  새 세션·중복 파일을 생성하지 않는다.
-- 플랫폼 판별 후 해당 어댑터 로드: `$GT_HOME/platforms/<platform>/PLATFORM.md`
-  (지원: `nsw`(완전), `sfc`/`ps1`/`ps2`/`steam`(골격 — 부족한 부분은 `_template` 양식에 맞춰 조사·보강 후 진행))
-- 엔진 판별 후(1단계에서) 해당 모듈 로드: `$GT_HOME/engines/<engine>/ENGINE.md`
+시작 전에 다음을 읽는다.
 
-### 이미지 범위 판정
+1. `$GT_HOME/common/SAFETY.md`
+2. `$GT_HOME/common/project-structure.md`
+3. `$GT_HOME/common/preflight-checks.md`
+4. `$GT_HOME/common/pipeline-contract.md`와 `pipeline-contract.json`
+5. 플랫폼 어댑터 `platforms/<platform>/PLATFORM.md`와 현재 단계 문서
+6. 엔진을 식별한 뒤 `engines/<engine>/ENGINE.md`
 
-- 1단계 분석이 끝나기 전에 프로젝트 정책 필드 `image_scope`를 `required` 또는 `N/A`로
-  확정하고 `PROJECT.md`와 `30_translation/ANALYSIS.md`에 근거를 기록한다.
-- `required`는 번역 대상에 문자 포함 이미지·텍스처·아틀라스가 하나라도 있는 경우다.
-  이 경우 4단계와 5단계, 이미지별 사용자 승인 게이트를 생략하지 않는다.
-- `N/A`는 전수 inventory와 시각 확인 결과 **번역 범위에 해당하는 문자 포함 이미지가
-  없거나 게임별 분석상 이미지 번역이 적용되지 않는 경우**에만 사용한다. 이미지 목록이
-  비어 있다는 사실만으로 추정하지 말고 0건과 판정 근거를 남긴다.
-- `image_scope`가 비어 있거나 근거가 불충분하면 `required`로 취급해 임의 생략하지 않는다.
+타이틀 루트는 원본 `.nsp`/`.xci`가 직접 있는 실제 폴더다. 작업물·임시 파일·staging·
+런타임 증거는 그 폴더의 `_work/<프로젝트 ID>/` 아래에만 둔다. `GT_HOME`, 저장소 루트,
+OS 임시 폴더, 공용 MCP 디렉터리, 임의 `title`/`output`/`temp` 폴더를 출력 경로로 쓰지
+않는다. 프로젝트·플랫폼·엔진·Title ID·정책을 확정하지 못하면 변경·삭제·런타임을 하지
+않고 `WARN`/`BLOCKED`와 Handoff만 기록한다.
 
-### 플랫폼·워크스페이스 계약
+## 1. 실제 단계 흐름
 
-- 도구 경로, 런타임 실행 파일, 릴리스 폴더·파일명·ZIP 루트는 공통 스킬이 추측하지
-  않는다. `$GT_HOME/platforms/<platform>/` 어댑터와 현재 프로젝트 `PROJECT.md`의
-  계약을 따른다.
-- `GT_WORKSPACE`의 작업 지침(`AGENTS.md`, README, 프로젝트 문서)이 플러그인 예시와
-  다르면, 안전·플랫폼 계약을 확인한 뒤 현재 워크스페이스 계약을 우선 적용한다.
-- `GT_HOME`, `GT_WORKSPACE`, 플랫폼, 엔진 또는 프로젝트 루트를 확정하지 못하면 파일을
-  생성·수정·삭제하거나 런타임을 실행하지 않는다.
+| 순서 | 단계 | 스킬 | 완료 상태 |
+|---:|---|---|---|
+| 1 | 공통 파일·엔진·언어 슬롯 분석 | `gt-analyze` | `project_status=analyzed` |
+| 2 | 텍스트 대상·왕복 계약 분석 | `gt-text-analyze` | text `analyzed` |
+| 3 | 텍스트 번역·용어집 누적 | `gt-text-translate` | text `translated` |
+| 4 | 텍스트·폰트 기술 QA·후보 생성 | `gt-text-qa` | text `qa_ready`, `font_status=verified` |
+| 5 | 텍스트 검수 handoff·에뮬레이터 준비 | `gt-text-review` | text `review_ready` |
+| 6 | 이미지 대상·atlas 계약 분석 | `gt-image-analyze` | image `analyzed` |
+| 7 | 이미지·텍스처 번역 | `gt-image-translate` | image `translated` |
+| 8 | 이미지 기술 QA·주입 후보 생성 | `gt-image-qa` | image `qa_ready` |
+| 9 | 이미지 비교·검수 handoff | `gt-image-review` | image `review_ready` |
+| 10 | 텍스트·폰트·이미지 통합 빌드·실행 QA | `gt-qa` | `qa_status=passed` |
+| 11 | 플랫폼 배포 패키징 | `gt-release` | `release_status=released` |
 
-## 0-a. 모든 단계 공통 사전 경고 게이트
+기본 실행 순서는 표와 같으며, 공통 분석 뒤 텍스트 브랜치를 먼저 끝내 이미지 안의
+문자에 glossary·STYLE을 공급한다. 프로젝트가 읽기 전용 병렬 분석을 허용해도 같은
+manifest·번역표·staging을 동시에 쓰지 않는다.
 
-각 단계를 직접 호출할 때도 다음을 먼저 실행한다.
+## 2. 검수·사용자 대기 정책
 
-1. `PROJECT.md`, `WORK_LOG.md`, 존재하면 `HANDOFF.md`, 현재 manifest와 출력 경로의
-   수정 시각·크기·SHA-256·`git status`를 확인한다.
-2. `$GT_HOME/common/preflight-checks.md`의 정책 필드(`batch_size`, `glossary_path`,
-   `runtime_policy`, `target_language_slot`, `image_scope`, `release_contract`)를 확인한다.
-   공통 배치 기본값은 80행이며, 다른 값은 프로젝트의 명시적 override와 근거가 있어야 한다.
-3. 문서 간 숫자·경로·상태·승인 조건이 다르면 추측하지 않는다. `WARN` 또는 `BLOCKED`를
-   기록하고 프로젝트 `HANDOFF.md`에 append-only로 남긴 뒤, 안전한 읽기 전용 조사만 진행한다.
-4. 도구 종료 코드 0, 로더 생존, 파일 존재, 정적 해시만으로 다음 단계나 런타임 PASS를
-   선언하지 않는다. 대상 수·구조·재로드·실제 화면 전이의 증거를 확인한다.
-5. 생성 전 기존 canonical 경로·`artifact_key`·해시를 확인한다. 같은 키가 다른 경로에
-   있거나 `SESSION.json`과 remote 세션 상태가 다르면 `BLOCKED`로 기록하고 새 파일·세션을
-   만들지 않는다.
-6. 3단계 사용자 승인과 `image_scope: required`인 경우의 5단계 사용자 승인 전에는 다음
-   단계로 넘어가지 않는다. `image_scope: N/A`는 0개 inventory와 근거를 기록한 뒤 5단계
-   사용자 검수를 생략할 수 있다. Codex의 자체 검수는 사용자 승인으로 간주하지 않는다.
+`text-review`와 `image-review`의 “검수”는 기술 QA 결과, 전체 시트, 비교 자료, hash,
+canonical staging, handoff를 만들어 다음 단계가 실행 가능하게 준비하는 뜻이다.
 
-## 1. 7단계 파이프라인
+- 기본 `text_review_policy=prepare-only`, `image_review_policy=prepare-only`: 산출물을
+  완성하고 `review_ready`로 자동 진행한다. 사용자 허락을 묻거나 대기하지 않는다.
+- 프로젝트에 `text_review_policy=user-gate` 또는 `image_review_policy=user-gate`가
+  명시된 경우에만 해당 시트를 제출하고 사용자의 명시적 완료를 기다린다.
+- `review_ready`는 사용자 승인·`PASS (runtime)`·릴리스 완료가 아니다.
+- 사용자가 나중에 수정안을 제공하면 해당 행/이미지만 branch QA부터 다시 실행한다.
 
-| # | 단계 | 스킬 | 게이트 |
-|---|------|------|-------|
-| 1 | 파일 분석 | `gt-analyze` | 산출물 검증 |
-| 2 | 텍스트 번역 | `gt-text-translate` | 구조 검증 |
-| 3 | 텍스트 검수 | `gt-text-review` | `REVIEW_TEXT.tsv` 전 행 + **사용자 승인 필수** |
-| 4 | 이미지 번역 | `gt-image-translate` | `image_scope=required`일 때만 실행; `N/A`면 명시적 생략 |
-| 5 | 이미지 검수 | `gt-image-review` | `required`일 때 전 행 **사용자 승인 필수**; `N/A`면 생략 |
-| 6 | 전체 검수 | `gt-qa` | 빌드+실행시험 통과 |
-| 7 | 배포 파일 생성 | `gt-release` | 완료 기준 체크리스트 |
+`runtime_policy`는 review policy와 별개다. `static-first`에서는 사용자의 명시적 실행
+요청 전까지 bench와 `PENDING_RUNTIME`만 기록한다.
 
-각 단계는 해당 스킬의 SKILL.md 절차를 따른다. 단계별 산출물이 다음 단계의 입력 조건이며,
-입력 조건 미충족 시 이전 단계로 돌아간다.
+## 3. 이미지 범위
 
-### 이미지 단계 생략 경로
+- `image_scope=pending`이면 이미지 단계를 생략하지 않는다.
+- `gt-image-analyze`가 전수 inventory·시각/metadata 근거를 남긴 뒤 `required` 또는
+  `N/A`로 확정한다.
+- `required`면 이미지 4단계를 모두 실행한다. `N/A`면 계획·가짜 이미지·검수 행을 만들지
+  않고 `image_status=skipped`, 0건 근거, 생략 사유를 기록한 뒤 `gt-qa`로 이동한다.
+- `N/A`여도 통합 QA에서 원본 이미지·atlas가 정상 표시되는지는 확인한다.
 
-- `image_scope=N/A`가 승인 기록되면 정상 경로는 **1 분석 → 2 텍스트 번역 → 3 텍스트
-  사용자 검수 → 6 전체 QA → 7 릴리즈**다.
-- 4·5단계는 빈 `IMAGE_PLAN.tsv`나 가짜 번역 이미지를 만들지 않고, `PROJECT.md` 단계
-  상태와 `WORK_LOG.md`에 `skipped (image_scope=N/A)`, 0건 inventory, 판정 근거를 기록한다.
-- `N/A`는 이미지 자산을 런타임에서 무시한다는 뜻이 아니다. QA에서는 원본 이미지·아틀라스가
-  깨지지 않고 화면에 정상 표시되는지 확인한다. 다만 이미지 번역 결과에 대한 5단계
-  사용자 승인 시트는 만들지 않는다.
-- 텍스트 번역·텍스트 검수가 완료된 뒤에도 `image_scope` 근거가 바뀌면 4단계를 다시
-  판정하고, `required`로 바뀐 경우 이미지를 생략한 채 QA나 릴리즈로 진행하지 않는다.
+## 4. 공통 preflight와 상태
 
-## 2. PDCA 루프 운영
+각 단계를 직접 호출할 때도 `PROJECT.md`, `WORK_LOG.md`, `HANDOFF.md`, 입력 manifest·
+출력 경로의 수정 시각/크기/SHA-256/`git status`를 읽는다. 정책 필수값은
+`batch_size`, `glossary_path`, `runtime_policy`, `runtime_authorization`,
+`target_language_slot`, `image_scope`, `text_review_policy`, `image_review_policy`,
+`text_review_approval`, `image_review_approval`, `font_status`, `release_contract`다.
 
-- **Plan**: 단계 시작 시 대상 범위(배치 목록·이미지 목록)와 완료 기준을 `PROJECT.md`에 기록
-- **Do**: 스킬 절차 실행. 병렬 서브에이전트 사용 시 `common/glossary-rules.md`의
-  동시 작업 게이트(읽기 전용 서브에이전트, 단일 메인 에이전트 chunk 처리) 준수
-- **Check**: 단계 산출물을 완료 기준과 대조. 구조 검증(플레이스홀더·태그·개행 보존) 실행
-- **Act**: 갭 발견 시 해당 배치만 재작업 후 재검증. 동일 실패 2회 반복 시 접근을 바꾸고
-  원인 분석을 `PROJECT.md` 작업 로그에 기록
-- **Handoff (모든 단계 공통)**: 문서와 실제가 다르거나, 문서에 없는 절차가 필요했거나,
-  우회법으로 해결한 순간 **즉시** 프로젝트 루트 `HANDOFF.md`에 기록한다
-  — 형식·유형·반영 절차는 `$GT_HOME/common/handoff-rules.md`
+행 상태, 브랜치 상태, QA 상태, 사용자 승인, 런타임 상태, 릴리스 상태를 한 값으로 합치지
+않는다. `qa_ready ≠ review_ready ≠ user-approved ≠ PASS (runtime) ≠ released`다.
 
-## 3. 진행 상태 관리
+문서·manifest·세션·파일 해시가 충돌하면 추측하지 않는다. `HANDOFF.md`에 append-only로
+관찰·영향·결정·증거·상태를 기록하고 현재 branch를 `blocked`로 유지한다.
 
-- 프로젝트 루트의 `PROJECT.md`에 단계별 상태 테이블 유지:
-  `단계 | 상태(pending/in-progress/blocked/done) | 산출물 경로 | 완료일 | 비고`
-- 행 상태(`new/translated/reviewed/injected/device_verified/blocked`), 검수 배치 상태,
-  단계 상태, 런타임·릴리스 상태를 한 필드에 섞지 않는다. `approved`, `released`,
-  `PASS (bench)`, `PASS (runtime)`, `PENDING_RUNTIME`은 각각 별도 증거를 요구한다.
-- 세션 재개 시 `PROJECT.md`부터 읽고 마지막 미완료 단계부터 재개
-- 사용자 검수 게이트(3단계와 `image_scope=required`일 때의 5단계)에서는 **작업을
-  중단하고 명시적 승인을 기다린다**. `image_scope=N/A`일 때는 5단계 승인을 요구하지
-  않고 3단계 승인 후 6단계 QA로 이동한다.
+## 5. 폰트와 런타임 안전 게이트
 
-## 4. 중단·재개 규칙
+`gt-text-qa`는 `$GT_HOME/common/font-atlas-contract.md`에 따라 전체 가시 코드포인트,
+실제 font consumer/fallback, glyph ID·atlas rect·UV 원점·padding·bearing·advance·
+baseline·line metrics, 기존 glyph 보존, 왕복 추출, render probe를 증명한다. 이 증거가
+없거나 `font_status=verified`가 아니면 text review-ready나 통합 QA로 진행하지 않는다.
 
-- 사용자가 중단을 요청하기 전까지 임의로 작업을 중단하지 않는다 (검수 게이트 제외)
-- 중단 시 진행 중 배치의 상태를 `PROJECT.md`에 기록한다. 재개에 필요한 부분 산출물은
-  정규 산출물 경로에 `status=partial`을 표시하고, 폐기 가능한 보조 파일은 프로젝트
-  `_work` 아래 `tmp-<단계>-<목적>`으로 만든다.
-- 재개 시 실패/부분 배치만 재실행 (전체 재실행 금지)
+`gt-qa`는 깨끗한 원본에서 한 번만 통합하고, 실제 실행 시에만 입력 경로·Title ID·active
+mod·교체 파일 수·session key·화면 전이·캡처를 현재 build에 귀속한다. 로더 생존·종료
+코드·패치 적용 로그만으로 PASS하지 않는다.
 
-## 5. 스킬 개선 루프 (프로젝트 완료 시)
+## 6. 세션·중복 파일 방지
 
-7단계 완료(또는 사용자 요청) 시 `HANDOFF.md`의 `open` 엔트리를 수집해
-`$GT_HOME/common/handoff-rules.md` §3 절차로 지식 베이스에 반영한다:
-특정 게임 정보 제거 → 대상 문서 수정 → 가능하면 수정 절차 재실행 검증 →
-엔트리 `applied` 마킹 → 저장소 커밋/PR 제안. 골격 어댑터(SFC/PS1/PS2/Steam)의
-`⚠️ 미검증` 항목은 이 루프로만 해제된다.
+NSW Eden은 프로젝트당 `50_test/eden/SESSION.json`과 `ARTIFACT_MANIFEST.tsv` 하나만
+사용한다. 실행 전에 capability와 remote session 목록/status를 조회한다.
 
-### 완료 후 임시 파일 정리
+- 같은 session key면 새 세션을 만들지 않고 재사용한다.
+- `pending` 상태에서 create를 재호출하지 않는다. remote를 재조회하고 `BLOCKED`로 조정한다.
+- 이전 `last_session_id`가 있으면 exact remote close와 local `close` 기록을 먼저 증명하고,
+  새 prepare에는 `--previous-session-id <동일 ID>`를 전달한다.
+- 세션·런 폴더, timestamp/session/copy 파일, 다른 Title ID의 staging·로그를 만들지 않는다.
+- create/launch 실패 후 status 재조회 전 재호출하지 않는다. 종료 시 현재 ID만 close한다.
+- 동일 `artifact_key`·canonical path가 있으면 hash를 비교해 재사용/원자 교체하고 복사본을
+  만들지 않는다.
 
-- 7단계 릴리즈와 `PROJECT.md` 완료 상태를 확정한 뒤 `npm run project:clean --
-  --project-root "<타이틀 루트>/_work/<프로젝트 ID>"`로 먼저 dry-run한다.
-- exact allowlist의 `tmp-*`, `tmp_*`, `*.tmp`만 검토하고, Git 추적·manifest 참조·활성
-  프로세스·active Eden 세션·릴리스/QA 증거·링크/reparse point가 있는 항목은 보존한다.
-- 정리 승인 후에만 같은 명령에 `--apply`를 붙여 제거하고, 경로·개수·시각을
-  `WORK_LOG.md`에 기록한다. dry-run 후보 0건과 `project:validate -- --strict` 재실행까지
-  완료해야 정리 게이트가 통과한다.
+`qa-session` guard는 원격 Eden을 직접 삭제하지 않는다. remote close 성공을 확인한 뒤에만
+local `--action close --remote-closed`를 실행한다. 소유권을 증명할 수 없는 세션은 삭제하지
+않고 `BLOCKED`다.
 
-## 6. 신규 프로젝트 시작 절차
+## 7. PDCA와 재개
 
-1. 플랫폼 확인 → 어댑터 존재 확인 (`$GT_HOME/platforms/`)
-2. 플랫폼 어댑터가 지정한 프로젝트 생성 명령을 사용한다. 플러그인 루트
-   (`package.json`이 있는 디렉터리)가 canonical인 어댑터에서는, NSP/XCI가 직접 있는 실제
-   타이틀 폴더를 지정해 다음 npm 명령을 사용한다:
-   `npm run project:new -- --game-folder "<실제 NSP/XCI 보유 폴더>" --title-id "<16자리 베이스 Title ID>" --game-name "<게임명>" --titles-root "$GT_WORKSPACE/_title"`
-   정확한 패키지 파일을 알고 있으면 `--source-package "<titles-root 기준 NSP/XCI 경로>"`로
-   대체한다. 대기 폴더(`_waitng` 등) 하위 타이틀도 실제 패키지 보유 폴더 경로를 그대로
-   지정하며, 패키지가 없는 상위 폴더를 넘기지 않는다.
-   NSW 워크스페이스처럼 별도 스캐폴드 스크립트를 어댑터가 지정하면 그 명령을 사용한다.
-   명령 실패 시 `common/project-structure.md`의 표준 구조를 수동 생성하지 말고 원인을 먼저 기록·해결한다.
-3. 게임 레지스트리(`GAME_REGISTRY.tsv`)에 등록 (워크스페이스에 있는 경우)
-4. `gt-analyze` 호출로 1단계 시작
+- **Plan**: 단계 입력 범위·정책·완료 기준·artifact key를 `PROJECT.md`에 기록
+- **Do**: 해당 스킬 실행. 번역 manifest는 단일 메인 에이전트가 직렬 갱신
+- **Check**: 전수 구조·hash·왕복·폰트/이미지/런타임 증거를 완료 기준과 대조
+- **Act**: 실패한 배치·행·폰트 asset·이미지만 깨끗한 원본에서 재작업하고 해당 branch부터 반복
+- **Handoff**: 문서 drift·우회·미해결 제한·세션 문제를 즉시 append-only 기록
+
+재개 시 `PROJECT.md`의 마지막 미완료 단계와 실제 manifest/hash를 다시 읽는다. 완료된
+단계를 의도 없이 전체 재실행하거나, 이전 candidate·이전 세션을 새 산출물로 복제하지 않는다.
+
+## 8. 작업장·타이틀 정리
+
+정리는 `tmp` glob 삭제가 아니다. `$GT_HOME/common/cleanup-contract.md`와 다음 스킬을
+사용한다.
+
+- `gt-project-cleanup`: 하나의 타이틀 `_work/<ID>`에 대해 Handoff·manifest·세션·참조를
+  추론해 `CLEANUP_PLAN.json`과 `CLEANUP_INSTRUCTIONS.md` 생성
+- `gt-workspace-cleanup`: 작업장 루트의 타이틀 중복·미등록 폴더·세션 잔재를 Handoff와
+  프로젝트 상태로 대조해 외부 보고서/계획 생성
+
+기본은 삭제하지 않는다. `approved=true`인 exact 후보와 현재 plan SHA-256을 명시한
+`--apply --plan`만 적용하며 active 세션·보존 anchor·link/reparse point·계획 밖 경로는
+항상 거부한다. 적용 후 `project:validate -- --strict`와 root/project 재inventory를
+수행한다.
+
+## 9. 신규 프로젝트·완료
+
+신규 프로젝트는 플랫폼 어댑터가 지정한 `project:new`를 사용해 실제 NSP/XCI 보유 폴더
+아래에 생성한다. 수동 generic `title` 폴더를 만들지 않는다.
+
+완료는 `gt-qa`의 정책에 맞는 bench/runtime/hardware 증거와 `gt-release`의 exact package
+계약이 모두 충족될 때만 선언한다. 릴리스 후에도 `gt-project-cleanup`으로 정리 계획을
+생성하고, Handoff·manifest·QA·release anchor를 보존한다.

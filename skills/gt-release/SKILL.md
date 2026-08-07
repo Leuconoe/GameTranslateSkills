@@ -1,9 +1,9 @@
 ---
 name: gt-release
-description: "Stage 7 of game localization - package a verified patch using the platform adapter's exact release contract, with original-data/key exclusion, canonical filename checks, hash synchronization, and release-risk warnings. Use when creating release/배포 파일 생성/패치 배포."
+description: "Release stage after integrated QA: package a verified Korean game patch using the platform adapter's exact release contract, excluding original data and keys, enforcing canonical filenames, deterministic hashes, and cleanup evidence. Use when creating or packaging a translation release."
 ---
 
-# gt-release — 7단계: 배포용 파일 생성
+# gt-release — 통합 QA 이후: 배포용 파일 생성
 
 검증 완료된 패치를 배포 가능한 패키지로 만든다.
 
@@ -13,11 +13,15 @@ description: "Stage 7 of game localization - package a verified patch using the 
 
 ## 입력 조건
 
-- `gt-qa` 완료 기준 전 항목 통과 (실행 시험 증거 존재)
-- `image_scope=required`이면 이미지 번역·이미지 검수 완료, `image_scope=N/A`이면
-  이미지 단계 생략 사유와 0건 근거가 `PROJECT.md`/QA 보고서에 기록됨
+- `gt-qa` 완료 기준 전 항목 통과. `runtime_policy`가 static-first이고 실행을 하지 않았다면
+  `PENDING_RUNTIME`/하드웨어 제한을 릴리스 정책에서 명시적으로 허용하고 그 사실을 notes에
+  기록한다. `PASS (runtime)`으로 추론하지 않는다.
+- `text_status=review_ready`, `font_status=verified`, `image_scope=required`이면
+  `image_status=review_ready`; `image_scope=N/A`이면 이미지 단계 생략 사유와 0건 근거가
+  `PROJECT.md`/QA 보고서에 기록됨
 - 플랫폼 어댑터 로드: `$GT_HOME/platforms/<platform>/release.md`
 - `PROJECT.md`에 플랫폼 어댑터의 exact release path, filename, archive root, version ledger가 기록됨
+- `HANDOFF.md`의 open 항목·cleanup 계획·세션 상태가 릴리스 파일과 충돌하지 않음
 
 ## 절대 규칙
 
@@ -46,10 +50,12 @@ description: "Stage 7 of game localization - package a verified patch using the 
 5. **아카이브**: 릴리스 패키지·해시·증거를 플랫폼 어댑터가 지정한 canonical 경로에 보관.
    `PROJECT.md`의 상태는 모든 필수 QA·런타임/하드웨어 정책·체크섬 동기화가 끝난 뒤에만
    `released`로 갱신한다. 버전은 canonical ZIP 파일명과 분리된 원장에서 관리한다.
-6. **완료 후 정리**: 프로젝트 `_work` 루트에서 `npm run project:clean --
-   --project-root "<타이틀 루트>/_work/<프로젝트 ID>"`를 dry-run하고, exact allowlist의
-   `tmp-*`, `tmp_*`, `*.tmp` 중 불필요한 항목만 검토 후 `--apply`로 제거한다. 릴리스·QA
-   증거와 참조 중인 파일은 보존하고, 제거 결과와 후보 0건 재검증을 `WORK_LOG.md`에 남긴다.
+6. **완료 후 정리**: `gt-project-cleanup` 또는
+   `npm run project:cleanup -- --project-root "<타이틀 루트>/_work/<프로젝트 ID>"`로
+   Handoff·manifest 기반 `CLEANUP_PLAN.json`과 `CLEANUP_INSTRUCTIONS.md`를 먼저 생성한다.
+   삭제는 계획의 exact 후보를 검토해 `approved=true`로 표시하고 현재 plan SHA-256을
+   전달한 경우에만 적용한다. 단순한 `tmp` glob 삭제, active 세션 삭제, 릴리스·QA 증거
+   삭제는 금지한다. 적용 후 `project:validate -- --strict`와 plan 재검증을 수행한다.
 7. **커밋(선택)**: 저장소 추적 대상(번역 TSV·용어집·문서)만 명시적 allowlist로 커밋
    (`common/SAFETY.md`의 git 규칙 — `git add .` 금지, 롬/키/추출물/빌드 산출물 제외).
 
@@ -66,6 +72,7 @@ description: "Stage 7 of game localization - package a verified patch using the 
 - [ ] 패키지에 원본 게임 데이터·키 미포함 확인 (내용물 전수 목록 검사)
 - [ ] 깨끗한 환경 적용 스모크 테스트 통과 (증거 보존)
 - [ ] INSTALL.md / RELEASE_NOTES.md 완비, 해시 기록
-- [ ] 완료 후 `tmp-*`/`tmp_*`/`*.tmp` 정리 dry-run 후보 0건과 결과 로그 확인
+- [ ] Handoff 기반 cleanup plan·지시서가 생성되고 보존 anchor와 승인 allowlist가 검증됨
+- [ ] 승인된 정리를 적용했다면 plan SHA-256·제거 경로·`project:validate -- --strict` 결과가 기록됨
 - [ ] canonical 파일명·경로·ZIP root·파일 allowlist가 어댑터 계약과 exact 일치
 - [ ] 런타임·하드웨어 상태와 `released` 판정이 서로 혼동되지 않음

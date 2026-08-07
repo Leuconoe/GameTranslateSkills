@@ -209,8 +209,10 @@ async function main() {
     ['30_translation', 'text'],
     ['30_translation', 'text', 'translation_batches'],
     ['30_translation', 'text', 'reports'],
+    ['30_translation', 'text', 'reviews'],
     ['30_translation', 'image_translation', 'for_translation'],
     ['30_translation', 'image_translation', 'reference'],
+    ['30_translation', 'image_translation', 'reports'],
     ['40_build', 'layeredfs', id, 'romfs'],
     ['40_build', 'staging'],
     ['40_build', 'releases'],
@@ -219,6 +221,7 @@ async function main() {
     ['50_test', 'eden'],
     ['90_tools', 'scripts'],
     ['90_tools', 'environment'],
+    ['90_tools', 'cleanup'],
   ];
   for (const folder of folders) await fs.mkdir(path.join(project, ...folder), { recursive: true });
 
@@ -230,10 +233,44 @@ async function main() {
 - Version: unknown
 - Engine: unknown
 - Default Korean font: undecided — inspect the actual files under \`$GT_TOOLS/_fonts/\`, choose one, and record its exact filename and SHA-256 here
-- Image scope: undecided — set \`required\` or \`N/A\` after complete image inventory and record the evidence
+- Pipeline contract: \`$GT_HOME/common/pipeline-contract.json\`
+- project_status: registered
+- text_status: pending
+- image_status: pending
+- qa_status: pending
+- release_status: pending
+- font_status: pending — do not mark text review-ready until FONT_ATLAS_MANIFEST.tsv and render probes pass
+- image_scope: pending — set \`required\` or \`N/A\` after complete image inventory and record the evidence
+- text_review_policy: prepare-only — use \`user-gate\` only when this project explicitly requires user approval
+- image_review_policy: prepare-only — use \`user-gate\` only when this project explicitly requires user approval
+- text_review_approval: not_required — set \`pending\`/\`approved\` only when text_review_policy is \`user-gate\`
+- image_review_approval: not_required — set \`pending\`/\`approved\` only when image_review_policy is \`user-gate\`
+- batch_size: 80
+- batch_size_override_reason: none (canonical default)
+- glossary_path: 30_translation/text/glossary.tsv
+- runtime_policy: static-first
+- runtime_authorization: pending
+- target_language_slot: pending
+- release_contract: platform-adapter
 - Temporary artifacts: project-local only under this \`_work\` root; use \`tmp-<stage>-<purpose>\` or \`*.tmp\` for disposable files
 - Canonical QA state: \`50_test/eden/SESSION.json\` and \`50_test/eden/ARTIFACT_MANIFEST.tsv\`; reuse them instead of creating session/copy files
 - Status: registered; extraction not started
+
+## Stage status
+
+| Stage | Status | Evidence |
+|---|---|---|
+| overall-analyze | pending | |
+| text-analyze | pending | |
+| text-translate | pending | |
+| text-qa | pending | |
+| text-review | pending | |
+| image-analyze | pending | |
+| image-translate | pending | |
+| image-qa | pending | |
+| image-review | pending | |
+| integrated-qa | pending | |
+| release | pending | |
 
 ## Source packages
 
@@ -251,6 +288,13 @@ Identify the effective RomFS and engine before producing translation files.
 - Project registered for \`${id}\`.
 - Extraction and analysis have not started.
 `);
+  await writeIfMissing(path.join(project, 'HANDOFF.md'), `# Handoff
+
+Append-only evidence for document drift, blocked steps, workarounds, and cleanup decisions.
+
+| date | type | observed | impact | decision | evidence | status |
+|---|---|---|---|---|---|---|
+`);
 
   await writeIfMissing(path.join(project, '50_test', 'TEST_LOG.md'), `# Device test log
 
@@ -264,6 +308,7 @@ Identify the effective RomFS and engine before producing translation files.
   "session_key": null,
   "session_id": null,
   "last_session_id": null,
+  "remote_close_session_id": null,
   "status": "closed",
   "title_id": null,
   "profile_path": null,
@@ -287,7 +332,11 @@ The mandatory common procedure is \`$GT_HOME/common/glossary-rules.md\` (batch c
 - Authoritative source language: Japanese unless analysis proves otherwise
 - Secondary reference language: English when available
 - Replacement language slot: undecided; confirm on device before full injection
-- Image scope: undecided; set \`required\` or \`N/A\` after analysis. If \`N/A\`, record the 0-item inventory and reason before skipping image stages.
+- Image scope: pending; set \`required\` or \`N/A\` after analysis. If \`N/A\`, record the 0-item inventory and reason before skipping image stages.
+- Text review policy: prepare-only (default); set \`user-gate\` only with an explicit project decision.
+- Image review policy: prepare-only (default); set \`user-gate\` only with an explicit project decision.
+- Font status: pending; \`gt-text-qa\` must produce \`30_translation/text/FONT_ATLAS_MANIFEST.tsv\`, \`FONT_COVERAGE.tsv\`, and \`FONT_ATLAS_QA_REPORT.md\` before review-ready.
+- Pipeline order: \`gt-analyze\` → \`gt-text-analyze\` → \`gt-text-translate\` → \`gt-text-qa\` → \`gt-text-review\` → conditional image branch → \`gt-qa\` → \`gt-release\`
 - Temporary artifacts: keep all disposable outputs under the project \`_work\` root and name them \`tmp-<stage>-<purpose>\` or \`*.tmp\`; clean them with the project cleanup CLI after release.
 - Eden QA: reuse the single \`50_test/eden/SESSION.json\` state and \`ARTIFACT_MANIFEST.tsv\`; do not create timestamped session/copy files.
 - Batch size: fixed 80 editable rows (canonical rule: \`$GT_HOME/common/glossary-rules.md\` section 3); combined source/reference/draft text at most 48,000 characters

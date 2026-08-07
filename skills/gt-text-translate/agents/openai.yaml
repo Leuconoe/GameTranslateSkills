@@ -1,6 +1,6 @@
 interface:
   display_name: "Game Text Translation"
-  short_description: "Batch-translate game text with glossary control"
-  default_prompt: "Use $gt-text-translate to translate extracted game text into Korean with structure checks."
+  short_description: "Translate text with glossary and structure checks"
+  default_prompt: "Use $gt-text-translate to batch-translate the analyzed game text into Korean with glossary, tone, and structure checks."
 policy:
   allow_implicit_invocation: true

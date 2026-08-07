@@ -1,0 +1,6 @@
+interface:
+  display_name: "Game Text QA"
+  short_description: "QA text, glyphs, atlases, and staging"
+  default_prompt: "Use $gt-text-qa to validate translated text, Korean glyph coverage, font atlas metrics, round-trips, and an emulator-ready candidate."
+policy:
+  allow_implicit_invocation: true

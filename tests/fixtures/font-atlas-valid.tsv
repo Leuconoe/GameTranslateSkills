@@ -1,0 +1,2 @@
+codepoint	character	glyph_id	atlas_page	atlas_width	atlas_height	x	y	width	height	bearing_x	bearing_y	advance_x	line_height	padding	uv_origin	source_sha256	target_sha256	roundtrip_status	render_probe_status	status	notes
+U+AC00	가	100	0	256	256	2	2	32	32	0	28	32	40	2	top-left	0000000000000000000000000000000000000000000000000000000000000000	1111111111111111111111111111111111111111111111111111111111111111	pass	pass	verified	fixture

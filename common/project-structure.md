@@ -7,6 +7,9 @@
 ## 1. 프로젝트 격리 원칙
 
 - 프로젝트의 식별자는 플랫폼별 고유 ID(예: NSW의 베이스 Title ID)다. 생성물은 반드시 `<릴리스 폴더>/_work/<프로젝트 ID>/` 아래에만 둔다.
+- 실제 타이틀 루트는 원본 `.nsp` 또는 `.xci`가 직접 존재하는 폴더로 확정한다. `_title`/`_titles`는
+  타이틀 컨테이너일 뿐이며, 그 안에 패키지가 없는 `title`·`game`·`output` 폴더를 새로 만들어
+  작업 루트로 사용하지 않는다. 패키지를 가진 폴더의 `_work/<프로젝트 ID>/`를 canonical로 사용한다.
 - 워크스페이스 루트는 항상 깨끗하게 유지한다. 추출물, 참고 자료, 번역 배치, 빌드, 시험 증거, 보고서, 로그, 캐시, 임시 파일 — 모든 타이틀별 작업물은 해당 타이틀의 `_work/<프로젝트 ID>/` 하위에 생성한다. 도구가 현재 디렉터리·OS 임시 폴더·공용 MCP 작업 디렉터리에 기본 출력하면 실행 전에 프로젝트 내부 단계별 폴더나 `90_tools/tmp-<purpose>`로 출력 경로를 명시한다.
 - 워크스페이스 루트나 타이틀 루트에 `data`, `output`, `temp`, `romfs` 같은 공용 작업 폴더를 만들지 않는다.
 - 작업 중 생성되는 임시 파일·중간 아티팩트·도구 출력은 `$GT_TOOLS`, 저장소 루트, `%TEMP%`, MCP 서버의 현재 디렉터리에 만들지 않는다. 반드시 현재 타이틀의 `_work/<프로젝트 ID>/` 아래에 생성한다.
@@ -36,6 +39,7 @@ _work/<프로젝트 ID>/
                            text(glossary, manifest, batches, reports) / image_translation
   40_build/                staging / 패치 트리 / releases / BUILD_MANIFEST.tsv
   50_test/                 TEST_LOG.md / screenshots / logs / emucap(선택적 원장·증거)
+                           eden/SESSION.json / ARTIFACT_MANIFEST.tsv (각각 프로젝트당 1개)
   90_tools/                게임별 scripts / environment
 ```
 
@@ -47,6 +51,19 @@ _work/<프로젝트 ID>/
 - 번역 기준 데이터는 `30_translation/text/translation_manifest.tsv`이며 최소 스키마는 `id, source_file, source_key, 원문, (참고 언어), target_ko, status, notes`. 상태값은 `new / translated / reviewed / injected / device_verified / blocked`로 통일한다.
 - 용어집의 canonical 경로는 `30_translation/text/glossary.tsv`다. 프로젝트 문서·스크립트·검수 시트에서 대문자 `GLOSSARY.tsv`나 다른 상대 경로를 새로 참조하지 않는다.
 - 행 번호가 아닌 **안정적인 키·리소스 ID·오프셋 조합**으로 원문과 번역을 연결한다.
+
+### Canonical 생성·세션 재사용 게이트
+
+- 생성 전 `artifact_key=<프로젝트 ID>/<단계>/<logical_name>`와 canonical 경로를 먼저
+  예약한다. 같은 키·같은 해시면 기존 파일을 재사용하고, 다른 경로의 중복 파일이나
+  `-1`·`(1)`·날짜·세션 ID 복사본을 만들지 않는다.
+- 기존 canonical 파일을 갱신할 때는 같은 디렉터리의 `tmp-*` 파일에 완성·검증 후 원자적
+  rename/replace한다. 중간 파일은 프로젝트 `_work` 밖에 만들지 않는다.
+- NSW Eden QA는 `common/qa-session-rules.md`를 따르고 `50_test/eden/SESSION.json`과
+  `ARTIFACT_MANIFEST.tsv`를 단일 상태·manifest로 유지한다. active 세션 키가 exact로
+  일치하면 재사용하고, 새 세션을 만들기 전에 이전 소유 세션을 정확한 ID로 종료한다.
+- `project:qa-session`은 이 local guard만 갱신한다. remote close 성공을 확인하지 않은
+  상태에서 local `closed`로 바꾸지 않으며, 소유권을 증명할 수 없는 세션은 `BLOCKED`로 둔다.
 
 ### 단계 실행 정책과 경고 게이트
 
@@ -61,11 +78,11 @@ _work/<프로젝트 ID>/
 
 ### 완료 후 임시 파일 정리 게이트
 
-1. `PROJECT.md`가 `released` 또는 사용자가 지정한 완료 상태인지 확인하고, 실행 중인 도구·에뮬레이터가 정리 대상 파일을 사용하지 않는지 확인한다.
+1. `PROJECT.md`가 `released` 또는 사용자가 지정한 완료 상태인지 확인하고, 실행 중인 도구·에뮬레이터가 정리 대상 파일을 사용하지 않는지 확인한다. Eden을 사용했다면 remote 세션 종료와 `SESSION.json`의 `closed` 상태도 확인한다.
 2. 프로젝트 루트에서 기본 dry-run을 실행한다: `npm run project:clean -- --project-root "<타이틀 루트>/_work/<프로젝트 ID>"`.
 3. 출력된 exact allowlist 중 `tmp-*`, `tmp_*`, `*.tmp` 항목만 검토한다. Git 추적 파일, manifest·보고서가 참조하는 파일, 활성 staging·릴리스·QA 증거, 링크/reparse point가 포함되거나 정체가 불명확한 항목은 보존하고 정리하지 않는다.
 4. 정리 대상이 안전하다고 확인된 뒤에만 같은 명령에 `--apply`를 추가해 제거하고, 제거 경로·개수·시각을 `WORK_LOG.md`에 기록한다. 워크스페이스 전체 재귀 삭제나 이름 기반 `rm -rf`는 금지한다.
-5. dry-run을 다시 실행해 후보 0건을 확인하고 `npm run project:validate -- --titles-root "$GT_WORKSPACE/_titles" --strict`를 재실행한다. 최종 릴리스·로그·QA 증거는 삭제하지 않는다.
+5. dry-run을 다시 실행해 후보 0건을 확인하고 `npm run project:validate -- --titles-root "$GT_WORKSPACE/_titles" --strict`를 재실행한다. `_title` 컨테이너를 쓰는 워크스페이스는 해당 경로로 바꾼다. 최종 릴리스·로그·QA 증거는 삭제하지 않는다.
 
 ### 실행 환경
 

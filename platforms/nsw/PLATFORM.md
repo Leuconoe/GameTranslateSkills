@@ -90,6 +90,9 @@ Eden 실행은 `eden-mcp`가 연결 가능하고 대상 작업을 지원하면 �
     TEST_LOG.md
     screenshots/
     logs/
+    eden/
+      SESSION.json          프로젝트당 하나의 Eden 세션 상태
+      ARTIFACT_MANIFEST.tsv 프로젝트당 하나의 런타임 아티팩트 manifest
   90_tools/
     scripts/               게임별 조사·주입 스크립트
     environment/           프로젝트 전용 실행 환경
@@ -98,6 +101,9 @@ Eden 실행은 `eden-mcp`가 연결 가능하고 대상 작업을 지원하면 �
 - `20_reference`는 읽기 전용 원본과 재조립 정보만 보관한다. 직접 수정하는 이미지는 `for_translation`에만 둔다.
 - 실패한 빌드나 조사용 출력물을 최종 `layeredfs`에 섞지 않는다.
 - 원본 NSP/XCI는 릴리스 폴더에 유지하고, 추출 이후의 모든 결과만 `_work/<Title ID>`에 둔다.
+- 실제 릴리스 폴더는 원본 `.nsp`/`.xci`가 직접 존재하는 폴더로 확정한다. `_title`/`_titles`
+  컨테이너에 패키지가 없는 `title` 하위 폴더를 새로 만들지 않는다. 작업 환경은 패키지 보유
+  폴더 바로 아래 `_work/<Title ID>`에만 생성한다.
 
 ## 프로젝트 격리 원칙
 
@@ -140,10 +146,14 @@ Eden 실행은 `eden-mcp`가 연결 가능하고 대상 작업을 지원하면 �
 3. 워크스페이스 루트에서 스캐폴드 스크립트로 프로젝트를 생성한다.
 
 ```text
-npm run project:new -- --game-folder "<게임 릴리스 폴더명 (대기 폴더 하위면 예: _waitng/<폴더명>)>" --title-id "<16자리 베이스 Title ID>" --game-name "<게임명>" --titles-root "$GT_WORKSPACE/_titles"
+npm run project:new -- --game-folder "<실제 NSP/XCI 보유 폴더 (예: _waitng/<폴더명>)>" --title-id "<16자리 베이스 Title ID>" --game-name "<게임명>" --titles-root "$GT_WORKSPACE/_title"
 ```
 
-명령은 `package.json`이 있는 플러그인 루트에서 실행한다. `--game-folder`에는 대기 폴더를 포함한 상대 경로를 지정한다.
+명령은 `package.json`이 있는 플러그인 루트에서 실행한다. `--game-folder`에는 대기 폴더를
+포함한 실제 패키지 보유 폴더의 상대 경로를 지정한다. 패키지 경로가 더 확실하면
+`--source-package "<titles-root 기준 .nsp/.xci 경로>"`를 사용한다. 스크립트는 폴더에 직접
+있는 `.nsp`/`.xci`를 확인하지 못하면 실패하며, 새 `title` 폴더나 상위 컨테이너 아래에
+작업 환경을 만들지 않는다.
 
 4. `PROJECT.md`에 업데이트 Title ID, 버전, 엔진, 원본 파일명을 기록한다.
 5. `00_source/SOURCE_INVENTORY.tsv`에 원본 크기와 SHA-256을 기록한다.
@@ -156,7 +166,7 @@ npm run project:new -- --game-folder "<게임 릴리스 폴더명 (대기 폴더
 폴더 이동, 새 게임 등록, 빌드 완료 후 다음을 실행한다.
 
 ```text
-npm run project:validate -- --titles-root "$GT_WORKSPACE/_titles" --strict
+npm run project:validate -- --titles-root "$GT_WORKSPACE/_title" --strict
 ```
 
 이 검사는 필수 폴더·매니페스트 누락, Title ID 중복, 다른 게임의 LayeredFS ID 혼입, 루트에 생성된 공용 작업 폴더를 오류로 보고해야 한다.

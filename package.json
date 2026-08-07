@@ -11,6 +11,7 @@
     "tools:install": "node setup/install-tools.mjs",
     "project:new": "node scripts/new-translation-project.mjs",
     "project:validate": "node scripts/validate-translation-projects.mjs",
-    "project:clean": "node scripts/clean-translation-project.mjs"
+    "project:clean": "node scripts/clean-translation-project.mjs",
+    "project:qa-session": "node scripts/qa-session.mjs"
   }
 }

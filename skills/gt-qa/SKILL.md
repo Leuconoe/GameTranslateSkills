@@ -9,6 +9,7 @@ description: "Stage 6 of game localization - full verification with fail-closed 
 
 > `$GT_HOME` = 지식 베이스 루트. Codex에서는 이 스킬이 설치된 플러그인 루트(상위에 `.codex-plugin/`, `skills/`, `common/`이 있는 디렉터리)로 해석하고, Claude Code 플러그인에서는 `${CLAUDE_PLUGIN_ROOT}`를 사용한다. 플러그인 외 수동 설치는 지원하지 않는다.
 > 시작 전에 `$GT_HOME/common/preflight-checks.md`를 읽고 사용자 승인·runtime policy·canonical staging·세션 소유권을 확인한다.
+> NSW에서 Eden을 시험하면 `$GT_HOME/common/qa-session-rules.md`도 읽고, 프로젝트의 `50_test/eden/SESSION.json`·`ARTIFACT_MANIFEST.tsv`를 단일 상태점으로 사용한다.
 > 작업 중 문서와 실제의 괴리·막힌 지점·우회법을 발견하면 **즉시** 프로젝트 `HANDOFF.md`에 기록한다 (`$GT_HOME/common/handoff-rules.md`).
 
 ## 입력 조건
@@ -23,6 +24,8 @@ description: "Stage 6 of game localization - full verification with fail-closed 
 - 엔진 모듈 로드: `$GT_HOME/engines/<engine>/ENGINE.md`
 - emucap을 사용할 경우 `$GT_HOME/common/emucap-integration.md`를 추가로 읽는다. emucap은
   선택 사항이며, 미설치·미지원이면 플랫폼 어댑터의 기존 실행시험으로 진행한다.
+- Eden QA는 active 세션을 먼저 조회해 exact session key면 재사용한다. 이전 세션의 소유권·
+  종료 결과를 증명할 수 없으면 새 세션을 만들지 않고 `BLOCKED`로 남긴다.
 
 ## 절차
 
@@ -31,7 +34,8 @@ description: "Stage 6 of game localization - full verification with fail-closed 
    SHA-256이 현재 프로젝트와 일치하는지 확인한다. `runtime_policy=static-first`이면 중간
    배치에서 에뮬레이터를 실행하지 않고, 최종 시험도 사용자의 명시적 요청 전에는 정적/bench
    검증만 수행한다. 다른 세션·다른 Title ID·이전 candidate의 로그나 active mod는 현재 PASS의
-   근거로 사용하지 않는다.
+   근거로 사용하지 않는다. `50_test/eden/SESSION.json`과 remote status가 다르거나
+   `ARTIFACT_MANIFEST.tsv`에 중복 `artifact_key`가 있으면 `BLOCKED`로 중단한다.
 
 1. **폰트 준비**: 번역 텍스트의 전체 사용 문자 집합을 추출해 폰트의 한글 글리프
    커버리지를 검증. 부족하면 엔진 모듈의 폰트 주입 절차 수행
@@ -50,8 +54,13 @@ description: "Stage 6 of game localization - full verification with fail-closed 
    - **중간 배치마다 실행하지 않는다** — 번역·병합·빌드·정적 검사·패키징을 끝낸 뒤
      최종 산출물에 대해 1회 수행하는 것이 기본
    - NSW에서 `eden-mcp`를 사용할 수 있고 대상 실행을 지원하면 Eden 실행·상태 확인·캡처
-     경로로 우선 사용한다. `eden-mcp`가 없거나 해당 게임/작업을 지원하지 않을 때만
-     직접 Eden 실행으로 대체하고 그 사유를 `50_test/TEST_LOG.md`에 기록한다.
+     경로로 우선 사용한다. 실행 전 `SESSION.json`의 세션 키를 계산하고 remote 세션 목록/status와
+     대조한다. active 세션이 exact로 일치하면 새 launch/create를 호출하지 않고 재사용한다.
+     stale인 **현재 프로젝트 소유 세션**만 정확한 `session_id`로 한 번 close한 뒤 새 세션을
+     만들며, 종료 성공 전 재시도·추가 생성은 금지한다. `npm run project:qa-session --
+     --project-root "<프로젝트 루트>" --action prepare ...`로 local guard를 갱신한다.
+     `eden-mcp`가 없거나 해당 게임/작업을 지원하지 않을 때만 직접 Eden 실행으로 대체하고
+     그 사유를 `50_test/TEST_LOG.md`에 기록한다.
    - emucap을 선택했다면 Control/Tracking MCP의 `bootstrap` → capability 확인 →
      `launch_plan`/`launch` → `status` → `get_rom_info`/`run_start` 순서로 시작하고,
      프로젝트별 `50_test/emucap/` 원장 경계를 먼저 확인
@@ -64,6 +73,11 @@ description: "Stage 6 of game localization - full verification with fail-closed 
      `PASS (hardware)`로 추론하지 않는다.
    - 환경(에뮬레이터/펌웨어/입력·설정)·종료 코드·로그·캡처를 `50_test/`에 보존
    - 실행 중 인스턴스는 새 패치를 핫리로드하지 않음 — 재시작 필요를 기록
+   - 세션 종료 시 remote close 성공을 확인한 뒤 현재 `session_id`로 `npm run project:qa-session --
+     --project-root "<프로젝트 루트>" --action close --title-id "<실행 Title ID>" \
+     --profile-path "<격리 프로파일 절대경로>" --profile-sha256 "<64자리 SHA-256>" \
+     --emulator-version "<버전>" --session-id "<현재 ID>" --remote-closed`를
+     실행한다. 세션 ID·시각을 파일명에 넣은 로그/캡처·`sessions/`/`runs/` 폴더는 만들지 않는다.
 6. **화면 검수**: 실행 캡처에서 확인 — 한글 렌더링(깨짐·두부문자 없음), 텍스트 넘침/
    잘림, 폰트 크기 일관성, 이미지 표시 정상. `image_scope=N/A`여도 기존 이미지·아틀라스의
    표시 정상 여부는 확인하며, 이미지 번역 승인 여부를 요구하지 않는다.
@@ -78,6 +92,8 @@ description: "Stage 6 of game localization - full verification with fail-closed 
 | `40_build/` | 패치 빌드 산출물 |
 | `50_test/logs/`, `50_test/captures/` | 실행 로그·스크린샷 (환경 정보 포함) |
 | `50_test/emucap/` | 선택적 emucap Tracking 원장·런타임 증거 |
+| `50_test/eden/SESSION.json` | 프로젝트당 하나의 Eden 세션 상태·소유권 기록 |
+| `50_test/eden/ARTIFACT_MANIFEST.tsv` | 프로젝트당 하나의 canonical 런타임 아티팩트 manifest |
 | `30_translation/QA_REPORT.md` | 정적 검사 결과, 실행 판정, 발견·수정 내역 |
 
 ## 완료 기준
@@ -88,6 +104,9 @@ description: "Stage 6 of game localization - full verification with fail-closed 
 - [ ] `image_scope=required`이면 이미지 주입·검수 완료, `N/A`이면 0건 근거와 생략
   상태가 기록됨
 - [ ] emucap 사용 시 `run_finish`, 개입 기록, 산출물 해시가 프로젝트 원장에 남음
+- [ ] Eden 사용 시 동일 session key 재사용 또는 정확한 이전 세션 종료가 증명되고,
+  `SESSION.json`이 remote status와 일치함
+- [ ] `ARTIFACT_MANIFEST.tsv`의 `artifact_key`가 유일하고 timestamp/session/copy 중복 파일이 없음
 - [ ] 발견 문제 전건 수정 완료 또는 알려진 제한으로 문서화
 - [ ] `PASS (bench)`, `PASS (runtime)`, `PASS (hardware)`, `PENDING_RUNTIME`이 서로 혼동되지 않음
 

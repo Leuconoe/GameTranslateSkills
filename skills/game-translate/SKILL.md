@@ -22,10 +22,18 @@ description: "Orchestrates the full 7-stage game Korean-localization workflow (a
   `_work/<프로젝트 ID>/` 아래에만 둔다. 삭제 가능한 항목은 `tmp-<단계>-<목적>` 또는
   `tmp_<단계>_<목적>`/`*.tmp`로 명명하고 저장소 루트·OS 임시 폴더·공용 MCP 디렉터리를
   출력 경로로 사용하지 않는다.
+- 타이틀 루트는 원본 `.nsp`/`.xci`가 직접 있는 실제 게임 폴더로 확정한다. `_title`/`_titles`
+  컨테이너 아래에 임의의 `title` 폴더를 만들지 말고, 그 실제 폴더의 `_work/<프로젝트 ID>/`에만
+  작업물을 생성한다. 패키지가 없는 폴더를 타이틀 루트로 선택하면 `BLOCKED`로 중단한다.
+- 동일 논리 산출물은 canonical 경로·`artifact_key` 하나만 사용한다. 기존 파일이 exact로
+  일치하면 재사용하고 `-1`, `(1)`, 날짜·세션 ID 복사본을 만들지 않는다.
 - 시작 전 **반드시 읽기**: `$GT_HOME/common/preflight-checks.md` (문서·경로·배치·런타임·릴리스
   계약의 불일치 경고 게이트)
 - emucap을 사용하는 6단계에서는 `$GT_HOME/common/emucap-integration.md`를 추가로 읽는다.
   emucap은 선택적 런타임 QA 백엔드이며 번역·추출 단계에서 호출하지 않는다.
+- NSW의 Eden QA에서는 `$GT_HOME/common/qa-session-rules.md`를 추가로 읽는다. `SESSION.json`의
+  동일 소유 세션은 재사용하고, 이전 세션 종료와 canonical 아티팩트 manifest 확인 전에는
+  새 세션·중복 파일을 생성하지 않는다.
 - 플랫폼 판별 후 해당 어댑터 로드: `$GT_HOME/platforms/<platform>/PLATFORM.md`
   (지원: `nsw`(완전), `sfc`/`ps1`/`ps2`/`steam`(골격 — 부족한 부분은 `_template` 양식에 맞춰 조사·보강 후 진행))
 - 엔진 판별 후(1단계에서) 해당 모듈 로드: `$GT_HOME/engines/<engine>/ENGINE.md`
@@ -64,7 +72,10 @@ description: "Orchestrates the full 7-stage game Korean-localization workflow (a
    기록하고 프로젝트 `HANDOFF.md`에 append-only로 남긴 뒤, 안전한 읽기 전용 조사만 진행한다.
 4. 도구 종료 코드 0, 로더 생존, 파일 존재, 정적 해시만으로 다음 단계나 런타임 PASS를
    선언하지 않는다. 대상 수·구조·재로드·실제 화면 전이의 증거를 확인한다.
-5. 3단계 사용자 승인과 `image_scope: required`인 경우의 5단계 사용자 승인 전에는 다음
+5. 생성 전 기존 canonical 경로·`artifact_key`·해시를 확인한다. 같은 키가 다른 경로에
+   있거나 `SESSION.json`과 remote 세션 상태가 다르면 `BLOCKED`로 기록하고 새 파일·세션을
+   만들지 않는다.
+6. 3단계 사용자 승인과 `image_scope: required`인 경우의 5단계 사용자 승인 전에는 다음
    단계로 넘어가지 않는다. `image_scope: N/A`는 0개 inventory와 근거를 기록한 뒤 5단계
    사용자 검수를 생략할 수 있다. Codex의 자체 검수는 사용자 승인으로 간주하지 않는다.
 
@@ -140,7 +151,7 @@ description: "Orchestrates the full 7-stage game Korean-localization workflow (a
 - 7단계 릴리즈와 `PROJECT.md` 완료 상태를 확정한 뒤 `npm run project:clean --
   --project-root "<타이틀 루트>/_work/<프로젝트 ID>"`로 먼저 dry-run한다.
 - exact allowlist의 `tmp-*`, `tmp_*`, `*.tmp`만 검토하고, Git 추적·manifest 참조·활성
-  프로세스·릴리스/QA 증거·링크/reparse point가 있는 항목은 보존한다.
+  프로세스·active Eden 세션·릴리스/QA 증거·링크/reparse point가 있는 항목은 보존한다.
 - 정리 승인 후에만 같은 명령에 `--apply`를 붙여 제거하고, 경로·개수·시각을
   `WORK_LOG.md`에 기록한다. dry-run 후보 0건과 `project:validate -- --strict` 재실행까지
   완료해야 정리 게이트가 통과한다.
@@ -149,9 +160,12 @@ description: "Orchestrates the full 7-stage game Korean-localization workflow (a
 
 1. 플랫폼 확인 → 어댑터 존재 확인 (`$GT_HOME/platforms/`)
 2. 플랫폼 어댑터가 지정한 프로젝트 생성 명령을 사용한다. 플러그인 루트
-   (`package.json`이 있는 디렉터리)가 canonical인 어댑터에서는 다음 npm 명령을 사용한다:
-   `npm run project:new -- --game-folder "<게임 릴리스 폴더명>" --title-id "<16자리 베이스 Title ID>" --game-name "<게임명>" --titles-root "$GT_WORKSPACE/_titles"`
-   대기 폴더(`_waitng` 등) 하위 타이틀은 `--game-folder`에 대기 폴더 포함 상대 경로를 그대로 지정한다.
+   (`package.json`이 있는 디렉터리)가 canonical인 어댑터에서는, NSP/XCI가 직접 있는 실제
+   타이틀 폴더를 지정해 다음 npm 명령을 사용한다:
+   `npm run project:new -- --game-folder "<실제 NSP/XCI 보유 폴더>" --title-id "<16자리 베이스 Title ID>" --game-name "<게임명>" --titles-root "$GT_WORKSPACE/_title"`
+   정확한 패키지 파일을 알고 있으면 `--source-package "<titles-root 기준 NSP/XCI 경로>"`로
+   대체한다. 대기 폴더(`_waitng` 등) 하위 타이틀도 실제 패키지 보유 폴더 경로를 그대로
+   지정하며, 패키지가 없는 상위 폴더를 넘기지 않는다.
    NSW 워크스페이스처럼 별도 스캐폴드 스크립트를 어댑터가 지정하면 그 명령을 사용한다.
    명령 실패 시 `common/project-structure.md`의 표준 구조를 수동 생성하지 말고 원인을 먼저 기록·해결한다.
 3. 게임 레지스트리(`GAME_REGISTRY.tsv`)에 등록 (워크스페이스에 있는 경우)

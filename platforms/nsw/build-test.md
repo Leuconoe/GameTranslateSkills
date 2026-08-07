@@ -10,7 +10,8 @@
 4. `BUILD_MANIFEST.tsv`에 입력 원본, 출력 파일, 크기, 해시, 시험 결과를 기록한다.
 5. 패키징 전에 모든 패치 파일 목록과 파싱 가능 여부를 검사한다.
 6. 다른 Title ID 폴더가 LayeredFS 아래에 있으면 **빌드를 폐기**하고 경로부터 수정한다.
-7. 빌드 완료 후 `npm run project:validate -- --titles-root "$GT_WORKSPACE/_titles" --strict`를 실행한다.
+7. 빌드 완료 후 실제 타이틀 컨테이너 경로(예: `$GT_WORKSPACE/_title`)를 넘겨
+   `npm run project:validate -- --titles-root "<실제 타이틀 컨테이너>" --strict`를 실행한다.
 
 ### LayeredFS 구조
 
@@ -31,6 +32,9 @@ emucap은 NSW 어댑터를 제공하지 않으므로 이 절차에서는 사용�
 
 ### 에뮬레이터 선택·격리 preflight
 
+- 시작 전에 `$GT_HOME/common/qa-session-rules.md`를 읽는다. 프로젝트당 단일 Eden 세션과
+  canonical 아티팩트 manifest를 사용하며, 세션 ID·프로파일 해시·파일 해시는 `50_test/eden/`
+  아래에 기록한다.
 - `eden-mcp`가 연결 가능하고 대상 게임·작업을 지원하면 Eden 실행, 상태 확인, 캡처·로그
   수집에 `eden-mcp`를 우선 사용한다. MCP를 사용할 수 없거나 지원 범위를 벗어날 때만
   직접 `eden.exe`를 실행하고, fallback 사유를 `50_test/TEST_LOG.md`에 기록한다.
@@ -54,6 +58,31 @@ emucap은 NSW 어댑터를 제공하지 않으므로 이 절차에서는 사용�
 - 기존 로그·캡처는 실행 파일, 입력 패키지, 게임/업데이트 버전, 활성 mod와 파일별 SHA-256이 현재 대상과 exact로 일치할 때만 재사용한다. 하나라도 다르면 과거 증거로 보존하되 현재 빌드의 PASS로 승격하지 않는다.
 - 다른 세션에서 에뮬레이터가 실행 중이어도 패치 주입·정적/라운드트립 검증은 중단하지 않는다. 주입 전에 현재 타이틀의 활성 mod 트리와 실행 중 세션의 대상 타이틀·mod 경로가 충돌하지 않는지 확인한다. 동일 타이틀이거나 mod 트리를 공유하면 파일 잠금·불완전 reload 위험을 기록하고 분리한 뒤 진행하며, **다른 세션의 프로세스는 종료하거나 수정하지 않는다.**
 
+### Eden 세션·파일 중복 방지
+
+1. `50_test/eden/SESSION.json`을 읽고 `backend + project_id + Title ID + 격리 프로파일 절대경로·SHA-256 + 에뮬레이터 버전`으로 session key를 계산한다. `build_id`·시각은 키에 넣지 않는다.
+2. `eden-mcp` capability와 세션 목록/status를 확인한다. 같은 소유 키의 active 세션이 있으면
+   **재사용**하고 `launch/create`를 다시 호출하지 않는다. 같은 타이틀이라도 프로파일·Title ID·
+   실행 파일 버전이 다르면 다른 세션으로 간주한다.
+3. 이전 세션이 현재 프로젝트 소유이고 stale인 경우에만 backend가 반환한 정확한 `session_id`로
+   close/stop한다. 성공 응답을 `SESSION.json`·`WORK_LOG.md`에 남기기 전에는 새 세션을 만들지
+   않는다. 소유권을 증명할 수 없는 세션이나 remote/local 상태 불일치는 `BLOCKED`로 둔다.
+4. 새 세션이 정말 필요한 `CREATE_REQUIRED` 상태에서만 한 번 launch/create한다. 오류가 나도
+   목록/status를 다시 확인하기 전에는 재호출하지 않는다. local guard는 다음처럼 갱신한다.
+
+   ```text
+   npm run project:qa-session -- --project-root "<타이틀 루트>/_work/<BASE_TITLE_ID>" --action prepare \
+     --title-id "<실행 Title ID>" --profile-path "<격리 프로파일 절대경로>" \
+     --profile-sha256 "<64자리 SHA-256>" --emulator-version "<버전>" --build-id "<현재 build ID>"
+   ```
+
+5. 실행 종료 뒤에는 현재 세션 ID만 close/stop하고, remote 성공을 확인한 뒤 `--action close
+   --remote-closed --session-id "<현재 세션 ID>"`로 local 상태를 `closed`로 갱신한다. 프로세스
+   이름 기반 종료, 전역 세션 삭제, 다른 타이틀 세션 조작은 하지 않는다.
+6. 로그·캡처·덤프는 session ID·시각이 붙은 새 파일로 복제하지 않는다. `50_test/eden/`
+   `ARTIFACT_MANIFEST.tsv`의 유일한 `artifact_key`와 프로젝트 canonical 경로를 갱신하며,
+   같은 키의 기존 해시가 같으면 재사용한다. 변경 시에만 `tmp-*` sibling 파일을 원자 교체한다.
+
 ### 단계별 추가 순서 (한 번에 한 종류만)
 
 1. 빈 LayeredFS 구조
@@ -64,7 +93,7 @@ emucap은 NSW 어댑터를 제공하지 않으므로 이 절차에서는 사용�
 6. UI 이미지
 7. 통합 후보
 
-`50_test/TEST_LOG.md`에 날짜, 빌드 ID, 게임 버전, UI/자막/보조 자막 언어, 시험 장면, 결과를 남기고 화면 증거는 `screenshots`에 둔다.
+`50_test/TEST_LOG.md`에 날짜, 빌드 ID, 게임 버전, UI/자막/보조 자막 언어, 시험 장면, 결과를 남기고 화면 증거는 canonical `screenshots`에 둔다. Eden 세션 상태는 `50_test/eden/SESSION.json` 하나에만 둔다.
 
 ## 3. 실패 복구
 

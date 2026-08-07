@@ -31,6 +31,11 @@ NSW 에뮬레이터 시험은 사용 가능한 경우 `eden-mcp` 경로를 권�
 격리 프로파일은 시스템 지역 `한국`/`대한민국`, 시스템 언어 `한국어`를 필수로 사용하고
 실제 유효 설정과 실행 증거를 기록합니다.
 
+작업 루트는 원본 `.nsp`/`.xci`가 직접 있는 실제 타이틀 폴더의
+`_work/<베이스 Title ID>/`로 고정합니다. `_title`/`_titles` 아래에 임의의 `title` 폴더를
+새로 만들지 않습니다. Eden QA는 프로젝트당 `50_test/eden/SESSION.json` 하나를 재사용하고,
+remote 세션을 정확한 ID로 종료하기 전에는 새 세션을 추가하지 않습니다.
+
 ## 설치
 
 ### 플러그인 (권장)
@@ -84,6 +89,7 @@ game-translate 스킬로 <게임명> 한글화를 시작해줘. 플랫폼은 nsw
 - 세션 재개: 프로젝트의 `PROJECT.md`를 읽고 마지막 단계부터 재개
 - 안전 규칙: 모든 작업 전 `common/SAFETY.md` 필독 (프로젝트 경계 보호, allowlist 커밋 등)
 - 완료 정리: `npm run project:clean -- --project-root "<타이틀 루트>/_work/<프로젝트 ID>"`로 dry-run 후, 검토한 exact allowlist에만 `--apply` 사용
+- Eden 세션 guard: `npm run project:qa-session -- --project-root "<타이틀 루트>/_work/<프로젝트 ID>" --action prepare ...`로 기존 세션을 먼저 조회·재사용
 - 사전 경고: 모든 단계에서 `common/preflight-checks.md`를 읽고 배치·경로·언어 슬롯·승인·릴리스 계약의 불일치를 `WARN`/`BLOCKED`로 기록
 
 ## 구조
@@ -96,10 +102,10 @@ skills/       Codex/Claude Code 공용 스킬 8종 (게이트·절차 — 플랫
 platforms/    플랫폼 어댑터: nsw(완전) / sfc·ps1·ps2·steam(골격) / _template(양식)
 engines/      엔진 모듈: unity / vn-common / lucasystem (플랫폼과 직교)
 common/       SAFETY.md(안전 규칙) · preflight-checks.md(사전 경고 게이트) ·
-              emucap-integration.md(선택적 런타임 QA) · glossary-rules.md ·
+              qa-session-rules.md(Eden 세션·중복 산출물 규칙) · emucap-integration.md(선택적 런타임 QA) · glossary-rules.md ·
               project-structure.md · handoff-rules.md
 setup/        도구 자동 설치 (tools.manifest.json + install-tools.mjs)
-scripts/      프로젝트 생성·검증·임시 파일 정리 Node CLI
+scripts/      프로젝트 생성·검증·임시 파일 정리·QA 세션 guard Node CLI
 docs/         PDCA 문서 (plan / design / analysis / report)
 ```
 

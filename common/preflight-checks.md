@@ -14,6 +14,8 @@
 4. 프로젝트의 `PROJECT.md`, `WORK_LOG.md`, 존재하면 `HANDOFF.md`
 5. 현재 입력 manifest·검수 시트·출력 폴더의 수정 시각, 크기, SHA-256, `git status`
 6. 현재 문서가 참조하는 상대 경로의 존재 여부와 대소문자·폴더 위치
+7. NSW QA이면 `$GT_HOME/common/qa-session-rules.md`와 `50_test/eden/SESSION.json`,
+   `ARTIFACT_MANIFEST.tsv`
 
 규칙의 우선순위는 다음과 같다.
 
@@ -44,6 +46,9 @@ runtime_authorization: pending         # pending | approved | not_required
 target_language_slot: pending          # 증명 전에는 pending
 image_scope: required                  # required | N/A
 release_contract: platform-adapter    # 플랫폼 문서의 정확한 경로·파일명 사용
+qa_session_backend: eden-mcp           # NSW QA 권장 backend
+qa_session_state: 50_test/eden/SESSION.json
+artifact_manifest: 50_test/eden/ARTIFACT_MANIFEST.tsv
 ```
 
 - 공통 번역 배치는 편집 대상 80행이다. 타이틀이 40행을 사용해야 하면 `PROJECT.md`에
@@ -69,6 +74,12 @@ release_contract: platform-adapter    # 플랫폼 문서의 정확한 경로·�
 - 입력 대상 수가 0이거나 예상 수와 다르고, 유효한 `N/A` 범위 근거 없이 빈 반복문·빈 report를 PASS로 만들 가능성이 있음
 - 문서·스크립트가 참조한 상대 경로가 없거나 같은 파일을 대소문자만 다르게 가리킴
 - 이전 candidate·다른 타이틀·다른 세션의 파일이 섞였거나 source/staging의 해시가 바뀜
+- 타이틀 루트에 직접 `.nsp`/`.xci`가 없거나, 패키지가 없는 상위 폴더 아래에 임의의 `title`
+  작업 폴더를 만들려 함
+- `SESSION.json`의 active 세션과 remote Eden status가 다르거나, 같은 소유 키의 세션을
+  확인하지 않고 새 세션·timestamp 세션 폴더를 만들려 함
+- 동일 `artifact_key`가 여러 경로에 있거나 `SESSION-2.json`, `session-*`, `run-*`, `(1)`·`copy`
+  산출물이 발견됨
 
 경고는 다음처럼 분류한다.
 
@@ -106,3 +117,7 @@ date | type | observed | impact | decision | evidence | status(open/applied/reje
 - [ ] 배치 크기·용어집 경로·런타임 정책·릴리스 계약이 서로 일치함
 - [ ] 대상 수가 0이 아니거나 명시적 `N/A` 근거가 있으며, 실패·미확인 항목은 `blocked` 또는 `PENDING`으로 기록됨
 - [ ] 불일치는 `HANDOFF.md`에 기록했고, 추측으로 진행하지 않음
+- [ ] 타이틀 루트가 NSP/XCI 직접 보유 폴더이고 `_work/<프로젝트 ID>`가 그 아래에 있음
+- [ ] Eden 세션 키·소유권·remote status가 local `SESSION.json`과 일치하거나, 불일치가
+  `BLOCKED`로 기록됨
+- [ ] 생성할 산출물의 canonical 경로·논리 키가 기존 manifest와 중복되지 않음

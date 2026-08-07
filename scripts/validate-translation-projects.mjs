@@ -135,7 +135,8 @@ async function main() {
   const rootLeakNames = new Set(['data', 'output', 'temp', 'romfs', 'image_translation', '.codex_m2_probe']);
   for (const searchRoot of [path.dirname(titlesRoot), titlesRoot]) {
     for (const candidate of await directDirectories(searchRoot)) {
-      if (rootLeakNames.has(path.basename(candidate))) {
+      const candidateName = path.basename(candidate);
+      if (rootLeakNames.has(candidateName) || /^tmp[-_]/i.test(candidateName)) {
         issues.push({
           severity: flag(args, 'strict') ? 'ERROR' : 'WARN',
           titleId: '-',

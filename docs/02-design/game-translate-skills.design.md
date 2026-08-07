@@ -43,7 +43,8 @@ E:\GameTranslateSkills\
 │   └── tools.manifest.json      # 도구별 이름·버전·URL·용도·배치 경로
 ├── scripts/
 │   ├── new-translation-project.mjs   # 원본 작업장에서 범용화 이식
-│   └── validate-translation-projects.mjs
+│   ├── validate-translation-projects.mjs
+│   └── clean-translation-project.mjs # tmp-* / *.tmp dry-run·allowlist 정리
 ├── docs/                        # PDCA 문서
 └── README.md
 ```
@@ -66,16 +67,17 @@ E:\GameTranslateSkills\
 | 1 | gt-analyze | `SOURCE_INVENTORY.tsv`, `ANALYSIS.md` (엔진·포맷·언어슬롯·폰트·이미지 목록) |
 | 2 | gt-text-translate | `30_translation/text/*.tsv` (원문│번역│상태), `GLOSSARY.tsv`, `STYLE.md` |
 | 3 | gt-text-review | `REVIEW_TEXT.tsv` 검수 시트 → 사용자 수정 반영 후 `approved` 마킹 |
-| 4 | gt-image-translate | codex: 번역 이미지 파일 / claude: `IMAGE_PLAN.tsv` (분석·보류) |
-| 5 | gt-image-review | `REVIEW_IMAGE.tsv` (before/after 경로) → 사용자 승인 |
+| 4 | gt-image-translate | `image_scope=required`일 때 codex: 번역 이미지 파일 / claude: `IMAGE_PLAN.tsv` (분석·보류); `N/A`면 생략 기록 |
+| 5 | gt-image-review | `required`일 때 `REVIEW_IMAGE.tsv` (before/after 경로) → 사용자 승인; `N/A`면 생략 |
 | 6 | gt-qa | 구조 무결성 리포트, 빌드 산출물, 실행시험 로그·캡처 |
 | 7 | gt-release | 배포 패키지 (플랫폼별: LayeredFS ZIP 등) + `RELEASE_NOTES.md` |
 
-## 4. 사용자 검수 게이트 (3·5단계)
+## 4. 사용자 검수 게이트 (3단계 + `image_scope=required`일 때 5단계)
 
 - 검수 시트(TSV) 생성 후 **작업을 명시적으로 중단**하고 사용자에게 시트 경로 안내
 - 사용자가 시트 수정 → "검수 완료" 응답 시 수정분 diff 반영 후 다음 단계
-- 게이트 통과 없이 다음 단계 진행 금지 (오케스트레이터가 강제)
+- 게이트 통과 없이 다음 단계 진행 금지 (오케스트레이터가 강제). `image_scope=N/A`면
+  0건 inventory·근거를 기록하고 5단계 게이트 없이 QA로 이동한다.
 
 ## 5. 에이전트별 분기 (4단계)
 

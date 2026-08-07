@@ -136,6 +136,8 @@ async function main() {
 - Version: unknown
 - Engine: unknown
 - Default Korean font: undecided — inspect the actual files under \`$GT_TOOLS/_fonts/\`, choose one, and record its exact filename and SHA-256 here
+- Image scope: undecided — set \`required\` or \`N/A\` after complete image inventory and record the evidence
+- Temporary artifacts: project-local only under this \`_work\` root; use \`tmp-<stage>-<purpose>\` or \`*.tmp\` for disposable files
 - Status: registered; extraction not started
 
 ## Source packages
@@ -157,8 +159,8 @@ Identify the effective RomFS and engine before producing translation files.
 
   await writeIfMissing(path.join(project, '50_test', 'TEST_LOG.md'), `# Device test log
 
-| Date | Build | Game version | UI language | Subtitle | Secondary subtitle | Test area | Result | Notes |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Date | Build | Game version | System region | System language | UI language | Subtitle | Secondary subtitle | Emulator/MCP | Test area | Result | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 `);
   await writeIfMissing(path.join(project, '30_translation', 'text', 'glossary.tsv'), 'source\treading\tko\tcategory\tevidence\tnotes\n');
   await writeIfMissing(path.join(project, '30_translation', 'text', 'translation_manifest.tsv'), 'id\tsource_file\tsource_key\tja\ten\ttarget_ko\tstatus\tnotes\n');
@@ -172,6 +174,8 @@ The mandatory common procedure is \`$GT_HOME/common/glossary-rules.md\` (batch c
 - Authoritative source language: Japanese unless analysis proves otherwise
 - Secondary reference language: English when available
 - Replacement language slot: undecided; confirm on device before full injection
+- Image scope: undecided; set \`required\` or \`N/A\` after analysis. If \`N/A\`, record the 0-item inventory and reason before skipping image stages.
+- Temporary artifacts: keep all disposable outputs under the project \`_work\` root and name them \`tmp-<stage>-<purpose>\` or \`*.tmp\`; clean them with the project cleanup CLI after release.
 - Batch size: fixed 80 editable rows (canonical rule: \`$GT_HOME/common/glossary-rules.md\` section 3); combined source/reference/draft text at most 48,000 characters
 - Codex reasoning effort: high
 - First-pass status: not started

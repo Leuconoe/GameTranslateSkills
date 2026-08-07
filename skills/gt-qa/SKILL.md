@@ -12,7 +12,8 @@ description: "Stage 6 of game localization - full verification: structure integr
 
 ## 입력 조건
 
-- 3단계(텍스트)·5단계(이미지) 사용자 승인 완료
+- 3단계(텍스트) 사용자 승인 완료. `image_scope=required`이면 5단계(이미지) 사용자
+  승인도 완료되어야 하며, `image_scope=N/A`이면 5단계는 생략 상태·0건 근거로 대체한다.
 - 플랫폼 어댑터 로드: `$GT_HOME/platforms/<platform>/build-test.md`
 - 엔진 모듈 로드: `$GT_HOME/engines/<engine>/ENGINE.md`
 - emucap을 사용할 경우 `$GT_HOME/common/emucap-integration.md`를 추가로 읽는다. emucap은
@@ -23,8 +24,10 @@ description: "Stage 6 of game localization - full verification: structure integr
 1. **폰트 준비**: 번역 텍스트의 전체 사용 문자 집합을 추출해 폰트의 한글 글리프
    커버리지를 검증. 부족하면 엔진 모듈의 폰트 주입 절차 수행
    (Unity TMP/SDF는 원본 메트릭 보존 + 공통 스케일 1개 — 엔진 문서 참조).
-2. **재삽입**: 승인된 TSV를 게임 포맷으로 역변환, 번역 이미지를 원본 위치에 재삽입.
-   왕복 무손실 검증(2단계에서 증명한 스크립트)을 전체 파일에 재실행.
+2. **재삽입**: 승인된 텍스트 TSV를 게임 포맷으로 역변환한다. `image_scope=required`일
+   때만 승인된 번역 이미지를 원본 위치에 재삽입하고, `N/A`이면 이미지 번역 산출물을
+   만들거나 주입하지 않는다. 왕복 무손실 검증(2단계에서 증명한 스크립트)은 전체 파일에
+   재실행한다.
 3. **정적 무결성 검사** (빌드 전 — 실행 시험보다 먼저, 저비용 검사 우선):
    - 파일 수·구조 일치, 컨테이너 포맷 유효성 (플랫폼 어댑터의 검증 명령)
    - 플레이스홀더·제어코드 보존 전수 스캔
@@ -34,6 +37,9 @@ description: "Stage 6 of game localization - full verification: structure integr
 5. **실행 시험** (플랫폼 어댑터의 실기 시험 절차):
    - **중간 배치마다 실행하지 않는다** — 번역·병합·빌드·정적 검사·패키징을 끝낸 뒤
      최종 산출물에 대해 1회 수행하는 것이 기본
+   - NSW에서 `eden-mcp`를 사용할 수 있고 대상 실행을 지원하면 Eden 실행·상태 확인·캡처
+     경로로 우선 사용한다. `eden-mcp`가 없거나 해당 게임/작업을 지원하지 않을 때만
+     직접 Eden 실행으로 대체하고 그 사유를 `50_test/TEST_LOG.md`에 기록한다.
    - emucap을 선택했다면 Control/Tracking MCP의 `bootstrap` → capability 확인 →
      `launch_plan`/`launch` → `status` → `get_rom_info`/`run_start` 순서로 시작하고,
      프로젝트별 `50_test/emucap/` 원장 경계를 먼저 확인
@@ -43,7 +49,8 @@ description: "Stage 6 of game localization - full verification: structure integr
    - 환경(에뮬레이터/펌웨어/입력·설정)·종료 코드·로그·캡처를 `50_test/`에 보존
    - 실행 중 인스턴스는 새 패치를 핫리로드하지 않음 — 재시작 필요를 기록
 6. **화면 검수**: 실행 캡처에서 확인 — 한글 렌더링(깨짐·두부문자 없음), 텍스트 넘침/
-   잘림, 폰트 크기 일관성, 이미지 표시 정상.
+   잘림, 폰트 크기 일관성, 이미지 표시 정상. `image_scope=N/A`여도 기존 이미지·아틀라스의
+   표시 정상 여부는 확인하며, 이미지 번역 승인 여부를 요구하지 않는다.
 7. **갭 분석·수정 (PDCA Check→Act)**: 발견된 문제를 유형별로 기록하고 해당 배치/이미지만
    수정 → 3번부터 재실행. 런타임 실패는 번역·폰트 변경과 분리해 원인 조사
    (로그 먼저, 우회책은 마지막).
@@ -62,6 +69,8 @@ description: "Stage 6 of game localization - full verification: structure integr
 - [ ] 정적 무결성 검사 전 항목 통과
 - [ ] 최종 산출물로 실행 시험 통과 (실제 입력·화면 전이·저장 확인, 증거 보존)
 - [ ] 한글 렌더링·레이아웃 이상 없음 (캡처로 확인)
+- [ ] `image_scope=required`이면 이미지 주입·검수 완료, `N/A`이면 0건 근거와 생략
+  상태가 기록됨
 - [ ] emucap 사용 시 `run_finish`, 개입 기록, 산출물 해시가 프로젝트 원장에 남음
 - [ ] 발견 문제 전건 수정 완료 또는 알려진 제한으로 문서화
 

@@ -29,8 +29,22 @@
 실기 전에 `$GT_TOOLS/Eden/<version>/eden.exe`를 표준 에뮬레이터 테스트 환경으로 사용한다.
 emucap은 NSW 어댑터를 제공하지 않으므로 이 절차에서는 사용하지 않는다.
 
+### 에뮬레이터 선택·격리 preflight
+
+- `eden-mcp`가 연결 가능하고 대상 게임·작업을 지원하면 Eden 실행, 상태 확인, 캡처·로그
+  수집에 `eden-mcp`를 우선 사용한다. MCP를 사용할 수 없거나 지원 범위를 벗어날 때만
+  직접 `eden.exe`를 실행하고, fallback 사유를 `50_test/TEST_LOG.md`에 기록한다.
+- Eden 또는 Ryubing을 포터블/격리 프로파일로 사용할 때 프로파일의 시스템 지역은
+  `한국`/`대한민국`, 시스템 언어는 `한국어`로 고정한다. 호스트 Windows의 지역·언어
+  표시나 환경변수만 확인하고 통과시키지 말고, 에뮬레이터가 실제로 읽는 유효 설정 또는
+  시작 로그에서 두 값을 확인한다.
+- baseline과 번역 후보의 프로파일·시스템 지역·시스템 언어가 다르면 비교하지 않는다.
+  프로파일 경로, 실행 파일·버전, 두 설정값, `eden-mcp` 사용 여부와 확인 근거를
+  `50_test/TEST_LOG.md` 및 `WORK_LOG.md`에 남긴다. 확인 불가 시 결과는
+  `PENDING_RUNTIME`이다.
+
 - 실행 전 에뮬레이터 mod 트리(`load/<BASE_TITLE_ID>/<mod name>/romfs`)와 현재 canonical staging 트리를 상대 경로·SHA-256으로 비교해 **누락·추가·이전 후보 잔존 파일이 0건**인지 확인한다.
-- 실행 파일 경로·버전, 게임/업데이트 버전, 로케일, 활성 mod 경로와 inventory hash, 화면 캡처, 에뮬레이터 로그를 `50_test`에 기록한다.
+- 실행 파일 경로·버전, 게임/업데이트 버전, 시스템 지역, 시스템 언어, 활성 mod 경로와 inventory hash, `eden-mcp` 사용 여부, 화면 캡처, 에뮬레이터 로그를 `50_test`에 기록한다.
 - 에뮬레이터 PASS는 런타임 증거이지만 `PASS (hardware)`와 구분하며 실기 PASS를 대체하지 않는다.
 
 ### Eden 실행 빈도 정책
@@ -89,6 +103,7 @@ emucap은 NSW 어댑터를 제공하지 않으므로 이 절차에서는 사용�
 ## 7. 재발 방지 팁 (일반화)
 
 - 릴리스·staging 정리 시 **파일명이나 폴더명만으로 재생성 가능성을 추정하지 않는다.** `cache`, `backup`, `staging` 같은 이름이 있어도 Git 추적 여부, 원본 입력의 실재, 대체본과의 크기·SHA-256 exact 또는 재생성 명령, canonical 릴리스 보존을 모두 확인한 대상만 exact allowlist로 삭제한다. 전제가 하나라도 어긋나면 fail-closed로 중단한다. 삭제 전 resolve한 절대 경로가 프로젝트 안에 있고 link/junction/reparse point가 없는지 확인하며, 실행 뒤 같은 정리 계획을 dry-run으로 재실행해 잔여 대상 0과 보존 anchor의 현재 해시를 기록한다.
+- 작업 중 생성하는 임시 파일·중간 아티팩트·도구 출력은 타이틀 `_work/<BASE_TITLE_ID>/` 아래에만 두고, 삭제 후보는 `tmp-<단계>-<목적>`, `tmp_<단계>_<목적>` 또는 `*.tmp`로 명명한다. 완료 후 `npm run project:clean -- --project-root "<타이틀 루트>/_work/<BASE_TITLE_ID>"`를 dry-run하고 exact allowlist를 검토한 뒤 `--apply`로 정리한다. 제거 경로·개수와 후보 0건 재검증을 `WORK_LOG.md`에 기록하며, 릴리스·QA 증거·활성 staging은 보존한다.
 - 아카이브 빌더가 추출 작업 트리를 보존해야 하면 **시작 전에 디스크 공간을 점검**한다(깨끗한 입력 + staging + compile + round-trip 추출 + 원자적 출력). 공간 확보를 위해 깨끗한 입력, 검증 완료 이전본, 사용자 번역 원본을 삭제하지 않는다.
 - 번역하지 못한 행·해결하지 못한 실패는 빈 값이나 기존 초안으로 조용히 대체하지 않는다. `blocked` 상태와 원인, 다음 검증 조건을 매니페스트·작업 로그에 남겨 다음 사이클의 입력으로 삼는다.
 - 상태값은 최소 `new`, `translated`, `reviewed`, `injected`, `device_verified`, `blocked`로 통일한다.

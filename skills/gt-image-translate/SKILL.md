@@ -16,6 +16,11 @@ description: "Stage 4 of game localization - translate text-bearing images/textu
 - `gt-text-review` 승인 완료 (이미지 내 텍스트 번역어가 승인된 용어집·문체를 따라야 하므로)
 - `ANALYSIS.md`의 이미지 대상 목록
 - 엔진 모듈 로드: `$GT_HOME/engines/<engine>/ENGINE.md` (텍스처 추출/재삽입 방식)
+- 프로젝트의 `image_scope` 확인:
+  - `required`: 아래 절차를 수행한다.
+  - `N/A`: 이 단계는 적용하지 않는다. 빈 계획표나 가짜 산출물을 만들지 말고
+    `PROJECT.md`와 `WORK_LOG.md`에 `skipped (image_scope=N/A)`, 0건 inventory, 근거를
+    기록한 뒤 `gt-qa`로 이동한다.
 
 ## 에이전트별 분기 (필수 준수)
 
@@ -28,22 +33,24 @@ Claude 환경에서 이미지 생성을 시도하거나, 생성 없이 원본을
 
 ## 절차
 
-1. **이미지 인벤토리 정밀화**: `ANALYSIS.md`의 이미지 목록을 기반으로
+1. **이미지 범위 게이트**: `image_scope=N/A`이면 위 생략 규칙만 기록하고 즉시 종료한다.
+   `required`가 아니면 이미지 번역을 시작하지 않는다.
+2. **이미지 인벤토리 정밀화**: `ANALYSIS.md`의 이미지 목록을 기반으로
    `30_translation/images/IMAGE_PLAN.tsv` 작성:
    - 컬럼: `경로 │ 포맷·크기 │ 원문 텍스트 │ 번역 텍스트 │ 폰트·스타일 메모 │ 우선순위 │ 상태`
    - 번역 텍스트는 승인된 `GLOSSARY.tsv`/`STYLE.md` 준수
    - 우선순위: 타이틀·메뉴·UI > 튜토리얼 이미지 > 배경 장식 텍스트
-2. **원본 추출**: 대상 이미지를 원본 해상도·포맷 그대로 `30_translation/images/original/`에
+3. **원본 추출**: 대상 이미지를 원본 해상도·포맷 그대로 `30_translation/images/original/`에
    추출. 아틀라스는 좌표 맵(어느 영역이 어떤 텍스트인지)도 기록.
-3. **스타일 분석**: 각 이미지의 폰트 계열·크기·색·외곽선·그라데이션·배치를 메모
+4. **스타일 분석**: 각 이미지의 폰트 계열·크기·색·외곽선·그라데이션·배치를 메모
    (재생성 시 시각적 일치 기준).
-4. **[Codex 전용] 이미지 생성**: `$imagegen` 스킬로 번역 이미지 생성 →
+5. **[Codex 전용] 이미지 생성**: `$imagegen` 스킬로 번역 이미지 생성 →
    `30_translation/images/translated/` (원본과 동일 파일명·해상도·포맷).
    생성 후 원본과 나란히 비교하여 스타일 일치 확인.
-5. **[Claude 전용] 보류 처리**: `IMAGE_PLAN.tsv` 상태를 `hold-for-generation`으로 표시하고
+6. **[Claude 전용] 보류 처리**: `IMAGE_PLAN.tsv` 상태를 `hold-for-generation`으로 표시하고
    사용자에게 안내: 계획 시트 경로 + "이미지 생성은 Codex(imagegen) 또는 수동 편집으로
    진행해주세요. 완성 이미지를 `translated/`에 넣으면 5단계 검수로 진행합니다."
-6. **재삽입 사전 검증**: 생성/수급된 이미지의 크기·포맷·알파채널이 엔진 요구사항과
+7. **재삽입 사전 검증**: 생성/수급된 이미지의 크기·포맷·알파채널이 엔진 요구사항과
    일치하는지 확인 (엔진 모듈의 텍스처 규격 준수). 아틀라스는 원본 좌표에 맞게 합성.
 
 ## 산출물
@@ -56,8 +63,11 @@ Claude 환경에서 이미지 생성을 시도하거나, 생성 없이 원본을
 
 ## 완료 기준
 
-- [ ] 전 대상 이미지가 `IMAGE_PLAN.tsv`에 상태와 함께 기록됨
-- [ ] Codex: `translated/`에 전 이미지 생성 완료 / Claude: 전 항목 `hold-for-generation` 처리 및 사용자 안내 완료
-- [ ] 번역 이미지의 규격(크기·포맷·알파)이 원본과 일치
+- [ ] `required`: 전 대상 이미지가 `IMAGE_PLAN.tsv`에 상태와 함께 기록됨
+- [ ] `required`: Codex는 `translated/`에 전 이미지 생성 완료 / Claude는 전 항목을
+  `hold-for-generation` 처리하고 사용자에게 안내함
+- [ ] `required`: 번역 이미지의 규격(크기·포맷·알파)이 원본과 일치
+- [ ] `N/A`: 0건 inventory·판정 근거·생략 상태가 `PROJECT.md`와 `WORK_LOG.md`에 기록됨
 
-완료 시 `gt-image-review`(사용자 검수 게이트)로 진행한다.
+`required`면 완료 시 `gt-image-review`(사용자 검수 게이트)로 진행하고, `N/A`면
+`gt-qa`로 바로 진행한다.

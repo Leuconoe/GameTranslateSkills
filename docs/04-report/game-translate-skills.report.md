@@ -29,9 +29,9 @@ skills/          game-translate(오케스트레이터) + gt-analyze/text-transla
 platforms/       nsw(완전: PLATFORM+extract+build-test+release) / sfc·ps1·ps2·steam(골격) / _template
 engines/         unity(TMP·SDF 폰트) / vn-common(GARbro·msg-tool·pfs-rs) / lucasystem(LuckSystem)
 common/          SAFETY.md / emucap-integration.md / glossary-rules.md(80행 배치 canonical) / project-structure.md
-package.json     크로스플랫폼 npm 명령(project:new, project:validate, tools:install)
+package.json     크로스플랫폼 npm 명령(project:new, project:validate, project:clean, tools:install)
 setup/           tools.manifest.json + install-tools.mjs (GitHub 최신 릴리스 자동 설치)
-scripts/         new-translation-project.mjs(--titles-root, 재귀 중복검사) / validate-translation-projects.mjs
+scripts/         new-translation-project.mjs(--titles-root, 재귀 중복검사) / validate-translation-projects.mjs / clean-translation-project.mjs(tmp-* dry-run·allowlist 정리)
                  emucap은 SFC/PS1/PS2의 선택적 런타임 QA 백엔드로 문서화하고 NSW/Steam에는 강제하지 않음
 .codex-plugin/   plugin.json (Codex 플러그인 manifest)
 .agents/plugins/ marketplace.json (Codex repo marketplace)

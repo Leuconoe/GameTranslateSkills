@@ -15,12 +15,21 @@
 | 1 | 파일 분석 | `gt-analyze` | 추출·엔진 식별·인벤토리 |
 | 2 | 텍스트 번역 | `gt-text-translate` | 배치·용어집·구조 검증 |
 | 3 | 텍스트 검수 | `gt-text-review` | **사용자 승인 게이트** |
-| 4 | 이미지 번역 | `gt-image-translate` | Codex=imagegen 생성 / Claude=분석·보류 |
-| 5 | 이미지 검수 | `gt-image-review` | **사용자 승인 게이트** |
+| 4 | 이미지 번역 | `gt-image-translate` | `image_scope=required`일 때 실행; `N/A`면 생략 |
+| 5 | 이미지 검수 | `gt-image-review` | `required`일 때 **사용자 승인 게이트**; `N/A`면 생략 |
 | 6 | 전체 검수 | `gt-qa` | 폰트·빌드·실행 시험 |
 | 7 | 배포 파일 생성 | `gt-release` | 델타/모드 패치 패키징 |
 
 전체 흐름은 오케스트레이터 스킬 **`game-translate`** 가 PDCA 루프로 지휘합니다.
+
+게임 분석에서 이미지 번역 대상이 없거나 게임별로 이미지 번역이 적용되지 않는다고
+증명되면 `image_scope=N/A`로 기록하고, 텍스트 번역·검수 뒤 이미지 4·5단계를 생략해
+QA와 릴리즈로 진행할 수 있습니다. 이때도 QA에서 기존 이미지 표시 이상 여부는 확인하고,
+릴리스 노트에 `N/A` 근거를 남깁니다.
+
+NSW 에뮬레이터 시험은 사용 가능한 경우 `eden-mcp` 경로를 권장합니다. Eden/Ryubing
+격리 프로파일은 시스템 지역 `한국`/`대한민국`, 시스템 언어 `한국어`를 필수로 사용하고
+실제 유효 설정과 실행 증거를 기록합니다.
 
 ## 설치
 
@@ -74,6 +83,7 @@ game-translate 스킬로 <게임명> 한글화를 시작해줘. 플랫폼은 nsw
 - 언어 방향: 일/영/중 → 한 (한글화 특화)
 - 세션 재개: 프로젝트의 `PROJECT.md`를 읽고 마지막 단계부터 재개
 - 안전 규칙: 모든 작업 전 `common/SAFETY.md` 필독 (프로젝트 경계 보호, allowlist 커밋 등)
+- 완료 정리: `npm run project:clean -- --project-root "<타이틀 루트>/_work/<프로젝트 ID>"`로 dry-run 후, 검토한 exact allowlist에만 `--apply` 사용
 
 ## 구조
 
@@ -87,7 +97,7 @@ engines/      엔진 모듈: unity / vn-common / lucasystem (플랫폼과 직교
 common/       SAFETY.md(안전 규칙) · emucap-integration.md(선택적 런타임 QA) ·
               glossary-rules.md · project-structure.md · handoff-rules.md
 setup/        도구 자동 설치 (tools.manifest.json + install-tools.mjs)
-scripts/      프로젝트 생성·검증 Node CLI
+scripts/      프로젝트 생성·검증·임시 파일 정리 Node CLI
 docs/         PDCA 문서 (plan / design / analysis / report)
 ```
 

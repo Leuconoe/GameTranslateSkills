@@ -28,15 +28,15 @@
 | D7 | 타 플랫폼 깊이 | **골격 + 확장 가이드만** — 1차는 NSW 어댑터만 완전 이식 |
 | D8 | 문서 언어 | **한국어** (frontmatter description은 영어 병기) |
 | D9 | 언어 방향 | **일/영/중 → 한 고정** — 한글화 특화 품질 규칙 유지 |
-| D10 | 런타임 QA 연동 | **emucap 선택적 사용** — SFC/PS1/PS2 capability가 광고될 때만 사용, NSW/Steam 절차는 유지 |
+| D10 | 런타임 QA 연동 | **emucap 선택적 사용** — SFC/PS1/PS2 capability가 광고될 때만 사용, NSW는 `eden-mcp`를 우선 권장하고 기존 실행 절차를 fallback으로 유지 |
 
 ## 2. 핵심 워크플로우 (사용자 정의 7단계)
 
 1. **파일 분석** — 롬/패키지 추출, 엔진 식별, 텍스트/이미지/폰트 인벤토리
 2. **텍스트 번역** — 배치 번역, 용어집 누적, 말투 일관성, 구조 검증
 3. **사용자 텍스트 검수** — 검수 게이트 (사용자 승인 전 다음 단계 진행 금지)
-4. **이미지 번역** — Codex: imagegen 스킬로 생성 / Claude: 분석만 하고 보류
-5. **사용자 이미지 검수** — 검수 게이트
+4. **이미지 번역** — `image_scope=required`일 때 Codex: imagegen 스킬로 생성 / Claude: 분석만 하고 보류; `N/A`면 명시적 생략
+5. **사용자 이미지 검수** — `required`일 때만 검수 게이트, `N/A`면 생략 기록
 6. **전체 검수** — 구조 무결성, 빌드, 에뮬레이터/실행 시험
 7. **배포용 파일 생성** — 패치 패키징 (NSW: LayeredFS ZIP 등 플랫폼별 산출물)
 
@@ -83,7 +83,7 @@ setup/                       ← Node/npm 도구 자동화 CLI (D3)
 | §13-16 (실패 복구, 검증, 재발 방지, 완료 기준) | gt-qa + 각 스킬 분산 |
 | `CODEX_TRANSLATION_WORKFLOW_KO.md` (배치, 2차 검수, PDCA 반복) | gt-text-translate + gt-text-review |
 | `AGENTS.md` 안전 규칙 (타이틀 경계, 정션 보호, 원자적 주입) | 공통 안전 규칙 문서로 추출 |
-| `scripts/*.mjs` (프로젝트 생성·검증 등) | npm CLI로 범용화 이식 |
+| `scripts/*.mjs` (프로젝트 생성·검증·완료 후 tmp 정리) | npm CLI로 범용화 이식 |
 
 ## 5. Success Criteria
 

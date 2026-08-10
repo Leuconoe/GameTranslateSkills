@@ -16,6 +16,7 @@
     "project:qa-session": "node scripts/qa-session.mjs",
     "workspace:cleanup": "node scripts/workspace-cleanup.mjs",
     "font:validate": "node scripts/validate-font-atlas.mjs",
+    "image:validate": "node scripts/validate-image-translation.mjs",
     "skills:validate": "node scripts/validate-skill-bundle.mjs",
     "test": "node --test tests/harness.test.mjs"
   }

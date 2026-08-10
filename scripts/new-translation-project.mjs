@@ -6,6 +6,18 @@ import { flag, option, parseArgs, requiredOption } from './lib/args.mjs';
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const sourcePackageExtensions = new Set(['.nsp', '.xci']);
+const imageGenerationManifestHeader = [
+  'stable_key', 'source_path', 'source_sha256', 'reference_path', 'reference_sha256',
+  'candidate_path', 'candidate_sha256', 'source_rgba_path', 'source_rgba_sha256',
+  'candidate_rgba_path', 'candidate_rgba_sha256', 'source_width', 'source_height',
+  'candidate_width', 'candidate_height', 'source_format', 'candidate_format',
+  'source_color_mode', 'candidate_color_mode', 'alpha_policy', 'edit_regions', 'source_anchors',
+  'candidate_anchors', 'atlas_page', 'source_atlas_rect', 'candidate_atlas_rect',
+  'origin', 'generator', 'generation_mode', 'prompt_path', 'prompt_sha256',
+  'receipt_path', 'receipt_sha256', 'style_contract', 'atmosphere_contract',
+  'style_status', 'atmosphere_status', 'alpha_status', 'layout_status', 'korean_text_status',
+  'roundtrip_status', 'status', 'notes',
+].join('\t');
 
 function isWithin(root, target) {
   const relative = path.relative(path.resolve(root), path.resolve(target));
@@ -212,6 +224,9 @@ async function main() {
     ['30_translation', 'text', 'reviews'],
     ['30_translation', 'image_translation', 'for_translation'],
     ['30_translation', 'image_translation', 'reference'],
+    ['30_translation', 'image_translation', 'prompts'],
+    ['30_translation', 'image_translation', 'receipts'],
+    ['30_translation', 'image_translation', 'probes'],
     ['30_translation', 'image_translation', 'reports'],
     ['40_build', 'layeredfs', id, 'romfs'],
     ['40_build', 'staging'],
@@ -234,6 +249,7 @@ async function main() {
 - Engine: unknown
 - Default Korean font: undecided — inspect the actual files under \`$GT_TOOLS/_fonts/\`, choose one, and record its exact filename and SHA-256 here
 - Pipeline contract: \`$GT_HOME/common/pipeline-contract.json\`
+- Image generation contract: \`$GT_HOME/common/image-translation-contract.md\` — agent raster edits require \`image_gen.imagegen\`, never Python/Pillow/OpenCV
 - project_status: registered
 - text_status: pending
 - image_status: pending
@@ -335,6 +351,7 @@ The mandatory common procedure is \`$GT_HOME/common/glossary-rules.md\` (batch c
 - Image scope: pending; set \`required\` or \`N/A\` after analysis. If \`N/A\`, record the 0-item inventory and reason before skipping image stages.
 - Text review policy: prepare-only (default); set \`user-gate\` only with an explicit project decision.
 - Image review policy: prepare-only (default); set \`user-gate\` only with an explicit project decision.
+- Image generation: built-in \`image_gen.imagegen\` edit only; preserve atmosphere, layout, alpha, atlas, and source bytes through \`IMAGE_GENERATION_MANIFEST.tsv\`.
 - Font status: pending; \`gt-text-qa\` must produce \`30_translation/text/FONT_ATLAS_MANIFEST.tsv\`, \`FONT_COVERAGE.tsv\`, and \`FONT_ATLAS_QA_REPORT.md\` before review-ready.
 - Pipeline order: \`gt-analyze\` → \`gt-text-analyze\` → \`gt-text-translate\` → \`gt-text-qa\` → \`gt-text-review\` → conditional image branch → \`gt-qa\` → \`gt-release\`
 - Temporary artifacts: keep all disposable outputs under the project \`_work\` root and name them \`tmp-<stage>-<purpose>\` or \`*.tmp\`; clean them with the project cleanup CLI after release.
@@ -355,6 +372,7 @@ Record placeholders, ruby syntax, link markers, line-break representation, and n
   await writeIfMissing(path.join(project, '00_source', 'SOURCE_INVENTORY.tsv'), 'role\tfile_name\ttitle_id\tversion\tregion\tsize_bytes\tsha256\tnotes\n');
   await writeIfMissing(path.join(project, '20_reference', 'REFERENCE_INDEX.tsv'), 'type\tpath\torigin\tlicense_or_usage\tpurpose\tnotes\n');
   await writeIfMissing(path.join(project, '30_translation', 'image_translation', 'reference', 'image_manifest.tsv'), 'id\tsource_archive\ttexture_key\tx\ty\twidth\theight\tlanguage\thash\tsource_text\ttarget_ko\tstatus\tnotes\n');
+  await writeIfMissing(path.join(project, '30_translation', 'image_translation', 'IMAGE_GENERATION_MANIFEST.tsv'), `${imageGenerationManifestHeader}\n`);
   await writeIfMissing(path.join(project, '40_build', 'BUILD_MANIFEST.tsv'), 'build_id\tdate\tscope\tsource_clean_path\toutput_path\tsize_bytes\tsha256\tdevice_result\tnotes\n');
 
   console.log(project);

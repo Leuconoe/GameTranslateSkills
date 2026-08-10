@@ -1,6 +1,6 @@
 interface:
   display_name: "Game Image Translation"
   short_description: "Translate game images with format safeguards"
-  default_prompt: "Use $gt-image-translate to translate analyzed game images and textures while preserving canvas, alpha, atlas coordinates, style, and image scope."
+  default_prompt: "Use $gt-image-translate to edit game raster text only through imagegen, never Python, while preserving atmosphere, layout, alpha, atlases, and source files with the image harness."
 policy:
   allow_implicit_invocation: true

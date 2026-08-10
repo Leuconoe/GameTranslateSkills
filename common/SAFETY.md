@@ -46,6 +46,21 @@
 
 ## 5. 원자적 패치 주입
 
+### Raster 이미지 생성·편집
+
+- 에이전트의 게임 raster 생성·편집은 `common/image-translation-contract.md`에 따라
+  `$imagegen`과 내장 `image_gen.imagegen` edit만 사용한다. Python/Pillow/OpenCV,
+  ImageMagick, SVG/HTML/canvas 또는 임의 스크립트로 글자·배경·alpha를 만들거나 지우거나
+  합성하고 후보 파일을 저장하지 않는다.
+- 생성 전 local reference를 직접 확인하고 분위기·스타일·edit region·anchor·alpha 계약을
+  prompt에 고정한다. 생성 결과는 프로젝트 내부의 새 `tmp-imagegen-*` 경로로 받으며
+  원본, reference, 기존 canonical candidate를 직접 덮어쓰지 않는다.
+- decoded RGBA probe로 기본 전 픽셀 alpha exact를 증명한다. 글자 모양이 alpha에 들어 있는
+  자산은 분석 단계에서 선언한 `edit-region-only`일 때만 영역 안 alpha 변경을 허용하며,
+  영역 밖 alpha/RGBA diff는 항상 0이어야 한다. 이를 증명하지 못하면 후보를 게시·주입하지
+  않는다. importer는 검증된 결과를 새 staging에 encode할 수 있을 뿐 한글 raster 픽셀을
+  대신 생성할 수 없다.
+
 - 패치 스테이징·주입은 실행 중인 게임/시험 환경 프로세스와 **독립적**으로 수행한다. 창 포커스, GUI 제어, 다른 실행 세션의 종료를 전제로 하지 않는다.
 - 주입 절차:
   1. 실제 주입 대상 루트(사용자 데이터/모드 로드 경로)를 명시적으로 해석한다.

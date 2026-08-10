@@ -1,10 +1,14 @@
 #!/usr/bin/env node
+import { execFile } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { flag, option, parseArgs } from './lib/args.mjs';
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const execFileAsync = promisify(execFile);
+const imageValidatorPath = path.join(repositoryRoot, 'scripts', 'validate-image-translation.mjs');
 const sourcePackageExtensions = new Set(['.nsp', '.xci']);
 const requiredDirectories = [
   ['00_source'],
@@ -137,32 +141,57 @@ function validateProjectPolicies(policies, id, project, issues) {
 }
 
 async function validateStageArtifacts(policies, id, project, issues) {
-  const requiredWhen = (condition, relativePaths, label) => {
+  const requiredWhen = async (condition, relativePaths, label) => {
     if (!condition) return;
     for (const relativePath of relativePaths) {
-      if (!isType(path.join(project, relativePath), 'file')) {
+      if (!(await isType(path.join(project, relativePath), 'file'))) {
         issues.push({ severity: 'ERROR', titleId: id, item: relativePath, problem: `${label} requires canonical artifact` });
       }
     }
   };
-  requiredWhen(policies.font_status === 'verified', [
+  await requiredWhen(policies.font_status === 'verified', [
     path.join('30_translation', 'text', 'FONT_COVERAGE.tsv'),
     path.join('30_translation', 'text', 'FONT_ATLAS_MANIFEST.tsv'),
     path.join('30_translation', 'text', 'FONT_ATLAS_QA_REPORT.md'),
   ], 'font_status=verified');
-  requiredWhen(['qa_ready', 'review_waiting', 'review_ready'].includes(policies.text_status), [
+  await requiredWhen(['qa_ready', 'review_waiting', 'review_ready'].includes(policies.text_status), [
     path.join('30_translation', 'text', 'TEXT_QA_REPORT.md'),
     path.join('30_translation', 'text', 'TEXT_BUILD_MANIFEST.tsv'),
   ], `text_status=${policies.text_status}`);
-  requiredWhen(policies.text_status === 'review_ready', [
+  await requiredWhen(policies.text_status === 'review_ready', [
     path.join('30_translation', 'text', 'reviews', 'REVIEW_TEXT.tsv'),
     path.join('30_translation', 'text', 'reviews', 'TEXT_REVIEW_HANDOFF.md'),
   ], 'text_status=review_ready');
-  requiredWhen(policies.image_scope === 'required' && ['qa_ready', 'review_waiting', 'review_ready'].includes(policies.image_status), [
+  const imageHarnessRequired = policies.image_scope === 'required'
+    && ['translated', 'qa_ready', 'review_waiting', 'review_ready'].includes(policies.image_status);
+  const imageManifestPath = path.join('30_translation', 'image_translation', 'IMAGE_GENERATION_MANIFEST.tsv');
+  await requiredWhen(imageHarnessRequired, [imageManifestPath], `image_status=${policies.image_status}`);
+  if (imageHarnessRequired && await isType(path.join(project, imageManifestPath), 'file')) {
+    try {
+      await execFileAsync(process.execPath, [
+        imageValidatorPath,
+        '--project-root', project,
+        '--manifest', path.join(project, imageManifestPath),
+      ], { cwd: repositoryRoot, encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 });
+    } catch (error) {
+      const evidence = `${error.stdout ?? ''}${error.stderr ?? ''}`
+        .split(/\r?\n/)
+        .filter((line) => line.startsWith('ERROR\t') || line.startsWith('오류:'))
+        .slice(0, 3)
+        .join(' | ');
+      issues.push({
+        severity: 'ERROR',
+        titleId: id,
+        item: imageManifestPath,
+        problem: `Image harness validation failed${evidence ? `: ${evidence}` : ''}`,
+      });
+    }
+  }
+  await requiredWhen(policies.image_scope === 'required' && ['qa_ready', 'review_waiting', 'review_ready'].includes(policies.image_status), [
     path.join('30_translation', 'image_translation', 'reports', 'IMAGE_QA_REPORT.md'),
     path.join('30_translation', 'image_translation', 'reports', 'IMAGE_BUILD_MANIFEST.tsv'),
   ], `image_status=${policies.image_status}`);
-  requiredWhen(policies.image_scope === 'required' && policies.image_status === 'review_ready', [
+  await requiredWhen(policies.image_scope === 'required' && policies.image_status === 'review_ready', [
     path.join('30_translation', 'image_translation', 'reports', 'REVIEW_IMAGE.tsv'),
     path.join('30_translation', 'image_translation', 'reports', 'IMAGE_REVIEW_HANDOFF.md'),
   ], 'image_status=review_ready');

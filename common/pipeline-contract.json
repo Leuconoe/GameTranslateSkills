@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "entry_skill": "gt-analyze",
   "convergence_skill": "gt-qa",
   "release_skill": "gt-release",
@@ -26,6 +26,16 @@
       "default": "not_required",
       "allowed": ["not_required", "pending", "approved"]
     }
+  },
+  "image_generation_contract": {
+    "document": "common/image-translation-contract.md",
+    "manifest": "30_translation/image_translation/IMAGE_GENERATION_MANIFEST.tsv",
+    "validator": "scripts/validate-image-translation.mjs",
+    "agent_generator": "imagegen",
+    "tool": "image_gen.imagegen",
+    "operation": "edit",
+    "forbidden_generators": ["python", "pillow", "opencv", "imagemagick", "svg", "html-canvas"],
+    "exact_invariants": ["source-reference-bytes", "canvas", "format", "color-mode", "anchor", "atlas-rect", "declared-alpha-policy", "preserved-rgba"]
   },
   "stages": [
     {

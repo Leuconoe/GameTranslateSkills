@@ -101,6 +101,13 @@ baseline·line metrics, 기존 glyph 보존, 왕복 추출, render probe를 증�
 mod·교체 파일 수·session key·화면 전이·캡처를 현재 build에 귀속한다. 로더 생존·종료
 코드·패치 적용 로그만으로 PASS하지 않는다.
 
+이미지 branch는 `$GT_HOME/common/image-translation-contract.md`를 적용한다. 에이전트가
+만든 raster 후보는 `$imagegen`/`image_gen.imagegen` edit receipt가 있어야 하고,
+`IMAGE_GENERATION_MANIFEST.tsv`에 대해 `validate-image-translation.mjs`가 source/reference
+비덮어쓰기, 원어 분위기·style·anchor/atlas rect·canvas/format, 선언된 alpha policy,
+edit region 밖 decoded RGBA diff 0을 증명해야 한다. Python/Pillow/OpenCV/임의 스크립트 생성물이나
+검증기 `Issues: 0`이 없는 후보는 이미지 번역·QA 완료로 승격하지 않는다.
+
 ## 6. 세션·중복 파일 방지
 
 NSW Eden은 프로젝트당 `50_test/eden/SESSION.json`과 `ARTIFACT_MANIFEST.tsv` 하나만

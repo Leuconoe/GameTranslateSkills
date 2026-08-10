@@ -1,6 +1,6 @@
 interface:
   display_name: "Image Review Handoff"
   short_description: "Prepare image comparison and QA handoff"
-  default_prompt: "Use $gt-image-review to prepare complete before-and-after image comparisons and an image QA handoff, waiting only for an explicit user-gate policy."
+  default_prompt: "Use $gt-image-review to prepare complete before-and-after comparisons with imagegen provenance, atmosphere, layout, alpha, atlas, and QA evidence, waiting only for an explicit user-gate policy."
 policy:
   allow_implicit_invocation: true

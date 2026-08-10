@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const skillsRoot = path.join(repositoryRoot, 'skills');
 const contractPath = path.join(repositoryRoot, 'common', 'pipeline-contract.json');
+const imageContractPath = path.join(repositoryRoot, 'common', 'image-translation-contract.md');
 const forbiddenSkillText = [
   '7단계',
   '7-stage',
@@ -101,6 +102,68 @@ async function main() {
   for (const phrase of ['pipeline-contract', 'prepare-only', 'user-gate', 'text_review_policy', 'image_review_policy']) if (!orchestrator.includes(phrase)) add(issues, `game-translate: missing control phrase ${phrase}`);
   const textQa = contents.get('gt-text-qa') ?? '';
   for (const phrase of ['font-atlas-contract', 'FONT_ATLAS_MANIFEST.tsv', 'FONT_COVERAGE.tsv', 'font_status=verified', 'gt-text-review']) if (!textQa.includes(phrase)) add(issues, `gt-text-qa: missing font/review gate ${phrase}`);
+  let imageContract = '';
+  try {
+    imageContract = await read(imageContractPath);
+  } catch (error) {
+    add(issues, `image contract: cannot read ${imageContractPath} (${error.message})`);
+  }
+  for (const phrase of [
+    'IMAGE_GENERATION_MANIFEST.tsv',
+    'image_gen.imagegen',
+    'Python/Pillow/OpenCV',
+    'source/reference/candidate',
+    'alpha byte',
+    'decoded RGBA diff',
+    'validate-image-translation.mjs',
+  ]) if (!imageContract.includes(phrase)) add(issues, `image contract: missing fail-closed phrase ${phrase}`);
+  const imageAnalyze = contents.get('gt-image-analyze') ?? '';
+  for (const phrase of ['image-translation-contract', '분위기', 'edit_regions', 'byte-exact reference']) if (!imageAnalyze.includes(phrase)) add(issues, `gt-image-analyze: missing image preservation phrase ${phrase}`);
+  const imageTranslate = contents.get('gt-image-translate') ?? '';
+  for (const phrase of [
+    'image-translation-contract',
+    '$imagegen',
+    'image_gen.imagegen',
+    'view_image',
+    'Python/Pillow/OpenCV',
+    'IMAGE_GENERATION_MANIFEST.tsv',
+    'validate-image-translation.mjs',
+    '원본, reference, 기존 candidate',
+    'hold-for-imagegen',
+  ]) if (!imageTranslate.includes(phrase)) add(issues, `gt-image-translate: missing imagegen-only gate ${phrase}`);
+  const imageQa = contents.get('gt-image-qa') ?? '';
+  for (const phrase of [
+    'image-translation-contract',
+    'IMAGE_GENERATION_MANIFEST.tsv',
+    'image_gen.imagegen',
+    'Python/Pillow/OpenCV',
+    'validate-image-translation.mjs',
+    '기본은 전 픽셀 exact',
+    '영역 밖 decoded RGBA는 diff 0',
+  ]) if (!imageQa.includes(phrase)) add(issues, `gt-image-qa: missing image harness gate ${phrase}`);
+  const imageReview = contents.get('gt-image-review') ?? '';
+  for (const phrase of ['IMAGE_GENERATION_MANIFEST.tsv', 'image_gen.imagegen', 'alpha policy', 'RGBA diff 0']) if (!imageReview.includes(phrase)) add(issues, `gt-image-review: missing image evidence phrase ${phrase}`);
+  const imagePipeline = contract?.image_generation_contract;
+  for (const [field, expected] of Object.entries({
+    document: 'common/image-translation-contract.md',
+    manifest: '30_translation/image_translation/IMAGE_GENERATION_MANIFEST.tsv',
+    validator: 'scripts/validate-image-translation.mjs',
+    agent_generator: 'imagegen',
+    tool: 'image_gen.imagegen',
+    operation: 'edit',
+  })) if (imagePipeline?.[field] !== expected) add(issues, `contract: image_generation_contract.${field} must equal ${expected}`);
+  try {
+    const scaffold = await read(path.join(repositoryRoot, 'scripts', 'new-translation-project.mjs'));
+    for (const phrase of ['imageGenerationManifestHeader', "'prompts'", "'receipts'", "'probes'", 'IMAGE_GENERATION_MANIFEST.tsv']) {
+      if (!scaffold.includes(phrase)) add(issues, `project scaffold: missing image harness phrase ${phrase}`);
+    }
+    const projectValidator = await read(path.join(repositoryRoot, 'scripts', 'validate-translation-projects.mjs'));
+    for (const phrase of ['validate-image-translation.mjs', 'imageHarnessRequired', 'Image harness validation failed', 'await isType']) {
+      if (!projectValidator.includes(phrase)) add(issues, `project validator: missing image harness phrase ${phrase}`);
+    }
+  } catch (error) {
+    add(issues, `project image harness: cannot inspect scaffold/validator (${error.message})`);
+  }
   for (const cleanup of ['gt-workspace-cleanup', 'gt-project-cleanup']) {
     const text = contents.get(cleanup) ?? '';
     for (const phrase of [

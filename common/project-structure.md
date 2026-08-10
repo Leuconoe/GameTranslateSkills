@@ -37,7 +37,8 @@ _work/<프로젝트 ID>/
   20_reference/            읽기 전용 참고 자료 (외부 패치, 폰트, 문서)
   30_translation/          ANALYSIS.md (공통 분석: 엔진·언어 슬롯·번역 대상 분류·재현 명령)
                            text(manifest, glossary, STYLE, batches, reports, reviews, font QA)
-                           image_translation(reference, for_translation, reports)
+                           image_translation(IMAGE_GENERATION_MANIFEST.tsv, reference,
+                             for_translation, prompts, receipts, probes, reports)
                            text(glossary, manifest, batches, reports) / image_translation
   40_build/                staging / 패치 트리 / releases / BUILD_MANIFEST.tsv
   50_test/                 TEST_LOG.md / screenshots / logs / emucap(선택적 원장·증거)
@@ -56,6 +57,11 @@ _work/<프로젝트 ID>/
 - 텍스트 QA의 canonical 폰트 산출물은 `30_translation/text/FONT_COVERAGE.tsv`,
   `FONT_ATLAS_MANIFEST.tsv`, `FONT_ATLAS_QA_REPORT.md`다. glyph table·atlas·metrics가
   서로 다른 staging에 있으면 후보를 만들지 않는다.
+- 이미지 번역의 canonical provenance는
+  `30_translation/image_translation/IMAGE_GENERATION_MANIFEST.tsv` 하나다. `$imagegen`의
+  exact prompt는 `prompts/`, `image_gen.imagegen` receipt는 `receipts/`, 동일 decoder의
+  source/candidate RGBA8 probe는 `probes/`에 둔다. 원본/reference/candidate와 이 증거의
+  현재 hash를 `common/image-translation-contract.md`로 검증하지 않은 후보는 사용하지 않는다.
 - 행 번호가 아닌 **안정적인 키·리소스 ID·오프셋 조합**으로 원문과 번역을 연결한다.
 
 ### Canonical 생성·세션 재사용 게이트

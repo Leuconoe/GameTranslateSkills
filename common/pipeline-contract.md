@@ -61,7 +61,7 @@ qa_ready ≠ review_ready ≠ user-approved ≠ PASS (runtime) ≠ released
 | `gt-text-qa` | `TEXT_QA_REPORT.md`, `TEXT_BUILD_MANIFEST.tsv`, text staging | 텍스트 review |
 | `gt-text-review` | `30_translation/text/reviews/REVIEW_TEXT.tsv`, `30_translation/text/reviews/TEXT_REVIEW_HANDOFF.md` | 이미지 또는 통합 QA |
 | `gt-image-analyze` | `IMAGE_ANALYSIS.md`, `IMAGE_SOURCE_INVENTORY.tsv`, `IMAGE_PLAN.tsv` | 이미지 번역 |
-| `gt-image-translate` | `for_translation/`, 계획 상태 | 이미지 QA |
+| `gt-image-translate` | `for_translation/`, `IMAGE_GENERATION_MANIFEST.tsv`, imagegen prompt/receipt/RGBA probe, 계획 상태 | 이미지 QA |
 | `gt-image-qa` | `30_translation/image_translation/reports/IMAGE_QA_REPORT.md`, `30_translation/image_translation/reports/IMAGE_BUILD_MANIFEST.tsv`, image staging | 이미지 review |
 | `gt-image-review` | `30_translation/image_translation/reports/REVIEW_IMAGE.tsv`, `30_translation/image_translation/reports/IMAGE_REVIEW_HANDOFF.md` | 통합 QA |
 | `gt-qa` | build/test manifest, font·runtime evidence | 릴리스 |
@@ -70,3 +70,15 @@ qa_ready ≠ review_ready ≠ user-approved ≠ PASS (runtime) ≠ released
 각 스킬은 시작 전에 프로젝트 정책·입력 해시·canonical 경로를 확인하고, 계약을
 증명할 수 없으면 `WARN` 또는 `BLOCKED`를 기록한다. 파일 존재나 종료 코드 0만으로
 단계 완료를 선언하지 않는다.
+
+## 이미지 생성·보존 하네스
+
+`image_scope=required`인 raster 번역은 [`image-translation-contract.md`](image-translation-contract.md)를
+따른다. 에이전트가 생성한 후보는 `$imagegen`의 내장 `image_gen.imagegen` edit provenance를
+가져야 하며 Python/Pillow/OpenCV/임의 스크립트 생성물은 허용하지 않는다. 원본/reference/
+기존 candidate를 생성 도구로 직접 덮어쓰지 않는다.
+
+`gt-image-translate`와 `gt-image-qa`는 현재 `IMAGE_GENERATION_MANIFEST.tsv`에 대해
+`scripts/validate-image-translation.mjs`를 실행한다. source/reference/candidate 경로·hash,
+canvas/format/color mode, anchor/atlas rect, 선언된 alpha policy, edit region 밖 decoded RGBA,
+분위기/style/layout/한글/왕복 상태가 모두 통과하지 않으면 이미지 branch를 승격하지 않는다.

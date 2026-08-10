@@ -1,6 +1,6 @@
 {
   "name": "game-translate",
-  "description": "Branch-based game Korean-localization workflow skills for Codex and Claude Code (overall analysis, text/image branches, font and asset QA, conditional review handoffs, session-safe runtime QA, cleanup planning, and release) across NSW/SFC/PS1/PS2/Steam.",
+  "description": "Branch-based game Korean-localization workflow skills for Codex and Claude Code with imagegen-only raster preservation, text/font/asset QA, conditional review handoffs, session-safe runtime QA, recoverable cleanup, and release across NSW/SFC/PS1/PS2/Steam.",
   "version": "1.4.0",
   "author": {
     "name": "Leuconoe"

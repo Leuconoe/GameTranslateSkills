@@ -11,17 +11,21 @@ const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url))
 const scriptsRoot = path.join(repositoryRoot, 'scripts');
 const fixtureRoot = path.join(repositoryRoot, 'tests', 'fixtures');
 
-function runNode(script, args = []) {
-  return execFileSync(process.execPath, [path.join(scriptsRoot, script), ...args], { cwd: repositoryRoot, encoding: 'utf8' });
+function runNode(script, args = [], env = {}) {
+  return execFileSync(process.execPath, [path.join(scriptsRoot, script), ...args], {
+    cwd: repositoryRoot,
+    encoding: 'utf8',
+    env: { ...process.env, ...env },
+  });
 }
 
-function runNodeFailure(script, args = []) {
-  assert.throws(() => runNode(script, args));
+function runNodeFailure(script, args = [], env = {}) {
+  assert.throws(() => runNode(script, args, env));
 }
 
-function runNodeFailureOutput(script, args = []) {
+function runNodeFailureOutput(script, args = [], env = {}) {
   try {
-    runNode(script, args);
+    runNode(script, args, env);
   } catch (error) {
     return `${error.stdout ?? ''}${error.stderr ?? ''}`;
   }
@@ -30,6 +34,16 @@ function runNodeFailureOutput(script, args = []) {
 
 test('skill bundle contract validates', () => {
   assert.match(runNode('validate-skill-bundle.mjs'), /Issues: 0/);
+});
+
+test('cleanup finalization exposes only recoverable Trash backends', async () => {
+  const source = await fs.readFile(path.join(scriptsRoot, 'lib', 'cleanup-archive.mjs'), 'utf8');
+  assert.match(source, /RecycleOption\]::SendToRecycleBin/);
+  assert.match(source, /execFileAsync\('\/usr\/bin\/osascript'/);
+  assert.match(source, /execFileAsync\('gio', \['trash'/);
+  assert.doesNotMatch(source, /DeletePermanently/);
+  assert.doesNotMatch(source, /fs\.unlink\(target\)/);
+  assert.match(source, /no permanent-delete fallback was attempted/);
 });
 
 test('font atlas validator accepts a verified manifest', () => {
@@ -105,10 +119,12 @@ test('qa session guard requires the exact previous ID before a new session', asy
   await fs.rm(tempRoot, { recursive: true, force: true });
 });
 
-test('project cleanup archives first and purges only after a separate reviewed user approval', async () => {
+test('project cleanup archives first and moves only approved files to recoverable Trash', async () => {
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'game-translate-cleanup-'));
   const projectRoot = path.join(tempRoot, 'title', '_work', '0123456789ABCDEF');
   const toolsRoot = path.join(projectRoot, '90_tools');
+  const trashRoot = path.join(tempRoot, 'isolated-trash');
+  const trashEnv = { NODE_ENV: 'test', GT_CLEANUP_TEST_TRASH_ROOT: trashRoot };
   await fs.mkdir(toolsRoot, { recursive: true });
   await fs.writeFile(path.join(projectRoot, 'HANDOFF.md'), '# Handoff\n\nOpen evidence: `90_tools/tmp-referenced.tmp`\n\n| date | type | observed | impact | decision | evidence | status |\n');
   await fs.writeFile(path.join(projectRoot, 'tmp-test-artifact.tmp'), 'fixture');
@@ -150,35 +166,35 @@ test('project cleanup archives first and purges only after a separate reviewed u
   const reviewText = await fs.readFile(path.join(archiveRoot, 'CLEANUP_ARCHIVE_REVIEW.md'), 'utf8');
   assert.match(reviewText, /Full reinspection completed: `true`/);
   assert.match(reviewText, /Files permanently deleted in this stage: 0/);
-  const deletePlanPath = path.join(archiveRoot, 'DELETE_PLAN.json');
-  const deletePlan = JSON.parse(await fs.readFile(deletePlanPath, 'utf8'));
-  assert.equal(deletePlan.review_reported_to_user, false);
-  assert.equal(deletePlan.user_delete_approval, false);
+  const trashPlanPath = path.join(archiveRoot, 'TRASH_PLAN.json');
+  const trashPlan = JSON.parse(await fs.readFile(trashPlanPath, 'utf8'));
+  assert.equal(trashPlan.review_reported_to_user, false);
+  assert.equal(trashPlan.user_trash_approval, false);
   runNodeFailure('clean-translation-project.mjs', [
     '--project-root', projectRoot,
-    '--purge',
-    '--delete-plan', deletePlanPath,
-    '--delete-plan-sha256', crypto.createHash('sha256').update(await fs.readFile(deletePlanPath)).digest('hex'),
-    '--user-confirmed-delete',
+    '--trash',
+    '--trash-plan', trashPlanPath,
+    '--trash-plan-sha256', crypto.createHash('sha256').update(await fs.readFile(trashPlanPath)).digest('hex'),
+    '--user-confirmed-trash',
   ]);
-  deletePlan.review_reported_to_user = true;
-  deletePlan.user_delete_approval = true;
-  for (const candidate of deletePlan.candidates) candidate.approved = true;
-  await fs.writeFile(deletePlanPath, `${JSON.stringify(deletePlan, null, 2)}\n`);
-  const deletePlanSha = crypto.createHash('sha256').update(await fs.readFile(deletePlanPath)).digest('hex');
+  trashPlan.review_reported_to_user = true;
+  trashPlan.user_trash_approval = true;
+  for (const candidate of trashPlan.candidates) candidate.approved = true;
+  await fs.writeFile(trashPlanPath, `${JSON.stringify(trashPlan, null, 2)}\n`);
+  const trashPlanSha = crypto.createHash('sha256').update(await fs.readFile(trashPlanPath)).digest('hex');
   runNodeFailure('clean-translation-project.mjs', [
     '--project-root', projectRoot,
-    '--purge',
-    '--delete-plan', deletePlanPath,
-    '--delete-plan-sha256', deletePlanSha,
+    '--trash',
+    '--trash-plan', trashPlanPath,
+    '--trash-plan-sha256', trashPlanSha,
   ]);
   await fs.appendFile(path.join(projectRoot, 'HANDOFF.md'), '\nReview input changed after report.\n');
   runNodeFailure('clean-translation-project.mjs', [
     '--project-root', projectRoot,
-    '--purge',
-    '--delete-plan', deletePlanPath,
-    '--delete-plan-sha256', deletePlanSha,
-    '--user-confirmed-delete',
+    '--trash',
+    '--trash-plan', trashPlanPath,
+    '--trash-plan-sha256', trashPlanSha,
+    '--user-confirmed-trash',
   ]);
   const archiveManifestSha = crypto.createHash('sha256').update(await fs.readFile(archiveManifestPath)).digest('hex');
   const rereviewOutput = runNode('clean-translation-project.mjs', [
@@ -187,26 +203,30 @@ test('project cleanup archives first and purges only after a separate reviewed u
     '--archive-manifest', archiveManifestPath,
     '--archive-manifest-sha256', archiveManifestSha,
   ]);
-  assert.match(rereviewOutput, /Deletion approvals were reset/);
-  const rereviewedDeletePlan = JSON.parse(await fs.readFile(deletePlanPath, 'utf8'));
-  assert.equal(rereviewedDeletePlan.review_reported_to_user, false);
-  assert.equal(rereviewedDeletePlan.user_delete_approval, false);
-  rereviewedDeletePlan.review_reported_to_user = true;
-  rereviewedDeletePlan.user_delete_approval = true;
-  for (const candidate of rereviewedDeletePlan.candidates) candidate.approved = true;
-  await fs.writeFile(deletePlanPath, `${JSON.stringify(rereviewedDeletePlan, null, 2)}\n`);
-  const rereviewedDeletePlanSha = crypto.createHash('sha256').update(await fs.readFile(deletePlanPath)).digest('hex');
-  const purgeOutput = runNode('clean-translation-project.mjs', [
+  assert.match(rereviewOutput, /Trash approvals were reset/);
+  const rereviewedTrashPlan = JSON.parse(await fs.readFile(trashPlanPath, 'utf8'));
+  assert.equal(rereviewedTrashPlan.review_reported_to_user, false);
+  assert.equal(rereviewedTrashPlan.user_trash_approval, false);
+  rereviewedTrashPlan.review_reported_to_user = true;
+  rereviewedTrashPlan.user_trash_approval = true;
+  for (const candidate of rereviewedTrashPlan.candidates) candidate.approved = true;
+  await fs.writeFile(trashPlanPath, `${JSON.stringify(rereviewedTrashPlan, null, 2)}\n`);
+  const rereviewedTrashPlanSha = crypto.createHash('sha256').update(await fs.readFile(trashPlanPath)).digest('hex');
+  const trashOutput = runNode('clean-translation-project.mjs', [
     '--project-root', projectRoot,
-    '--purge',
-    '--delete-plan', deletePlanPath,
-    '--delete-plan-sha256', rereviewedDeletePlanSha,
-    '--user-confirmed-delete',
-  ]);
-  assert.match(purgeOutput, /Permanently deleted from archive: 1/);
+    '--trash',
+    '--trash-plan', trashPlanPath,
+    '--trash-plan-sha256', rereviewedTrashPlanSha,
+    '--user-confirmed-trash',
+  ], trashEnv);
+  assert.match(trashOutput, /Moved from archive to OS Recycle Bin\/Trash: 1; permanently deleted: 0/);
   await assert.rejects(() => fs.access(archivedArtifact));
-  const receipt = JSON.parse(await fs.readFile(path.join(archiveRoot, 'PURGE_RECEIPT.json'), 'utf8'));
+  const receipt = JSON.parse(await fs.readFile(path.join(archiveRoot, 'TRASH_RECEIPT.json'), 'utf8'));
   assert.equal(receipt.status, 'complete');
+  assert.equal(receipt.permanent_deletions, 0);
+  assert.equal(receipt.items[0].status, 'trashed');
+  assert.equal(receipt.items[0].trash_backend, 'isolated-test-trash');
+  assert.equal(await fs.readFile(receipt.items[0].recovery_path, 'utf8'), 'fixture');
   await fs.rm(tempRoot, { recursive: true, force: true });
 });
 
@@ -237,8 +257,10 @@ test('project scaffold emits branch policies and validates', async () => {
   await fs.rm(tempRoot, { recursive: true, force: true });
 });
 
-test('workspace cleanup keeps active title state and archives before separately approved purge', async () => {
+test('workspace cleanup keeps active title state and legacy purge aliases still use recoverable Trash', async () => {
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'game-translate-workspace-cleanup-'));
+  const trashRoot = path.join(tempRoot, 'isolated-trash');
+  const trashEnv = { NODE_ENV: 'test', GT_CLEANUP_TEST_TRASH_ROOT: trashRoot };
   const workspaceRoot = path.join(tempRoot, 'NSW');
   const projectRoot = path.join(workspaceRoot, '_titles', 'FixtureGame', '_work', '0123456789ABCDEF');
   const edenRoot = path.join(projectRoot, '50_test', 'eden');
@@ -282,12 +304,16 @@ test('workspace cleanup keeps active title state and archives before separately 
   const archiveManifest = JSON.parse(await fs.readFile(path.join(archiveRoot, 'ARCHIVE_MANIFEST.json'), 'utf8'));
   const archivedArtifact = path.join(archiveRoot, archiveManifest.items[0].archive_path);
   assert.equal(await fs.readFile(archivedArtifact, 'utf8'), 'root fixture');
+  const trashPlanPath = path.join(archiveRoot, 'TRASH_PLAN.json');
   const deletePlanPath = path.join(archiveRoot, 'DELETE_PLAN.json');
-  const deletePlan = JSON.parse(await fs.readFile(deletePlanPath, 'utf8'));
+  const deletePlan = JSON.parse(await fs.readFile(trashPlanPath, 'utf8'));
   assert.equal(deletePlan.full_reinspection_complete, true);
+  deletePlan.kind = 'workspace-cleanup-delete-plan';
   deletePlan.review_reported_to_user = true;
   deletePlan.user_delete_approval = true;
+  delete deletePlan.user_trash_approval;
   for (const item of deletePlan.candidates) item.approved = true;
+  await fs.rename(trashPlanPath, deletePlanPath);
   await fs.writeFile(deletePlanPath, `${JSON.stringify(deletePlan, null, 2)}\n`);
   const deletePlanSha = crypto.createHash('sha256').update(await fs.readFile(deletePlanPath)).digest('hex');
   const purgeOutput = runNode('workspace-cleanup.mjs', [
@@ -296,8 +322,13 @@ test('workspace cleanup keeps active title state and archives before separately 
     '--delete-plan', deletePlanPath,
     '--delete-plan-sha256', deletePlanSha,
     '--user-confirmed-delete',
-  ]);
-  assert.match(purgeOutput, /Permanently deleted from archive: 1/);
+  ], trashEnv);
+  assert.match(purgeOutput, /Compatibility notice: --purge now moves files to the OS Trash and never permanently deletes them/);
+  assert.match(purgeOutput, /Moved from archive to OS Recycle Bin\/Trash: 1; permanently deleted: 0/);
   await assert.rejects(() => fs.access(archivedArtifact));
+  const receipt = JSON.parse(await fs.readFile(path.join(archiveRoot, 'TRASH_RECEIPT.json'), 'utf8'));
+  assert.equal(receipt.plan_format, 'legacy-delete-plan');
+  assert.equal(receipt.permanent_deletions, 0);
+  assert.equal(await fs.readFile(receipt.items[0].recovery_path, 'utf8'), 'root fixture');
   await fs.rm(tempRoot, { recursive: true, force: true });
 });

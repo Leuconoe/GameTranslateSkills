@@ -1,6 +1,6 @@
 {
   "name": "game-translate",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Branch-based Korean game-localization workflow with text/image analysis, translation, font and asset QA, conditional review handoffs, session-safe runtime QA, cleanup planning, and patch release guidance.",
   "author": {
     "name": "Leuconoe"

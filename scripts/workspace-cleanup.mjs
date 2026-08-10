@@ -7,10 +7,10 @@ import {
   atomicWrite,
   generateArchiveReview,
   isWithin,
-  purgeArchive,
   samePath,
   sha256File,
   sha256Text,
+  trashArchive,
 } from './lib/cleanup-archive.mjs';
 
 const titleIdPattern = /^[0-9A-Fa-f]{16}$/;
@@ -233,7 +233,7 @@ function renderInstructions(plan) {
     '|---|---|---|---:|---|---|---|',
   ];
   for (const candidate of plan.candidates) lines.push(`| ${candidate.approved ? 'yes' : 'no'} | ${candidate.risk} | \`${candidate.path}\` | ${candidate.size ?? '-'} | ${candidate.sha256 ? `\`${candidate.sha256}\`` : '-'} | ${candidate.reason} | ${candidate.blocked ? candidate.evidence : 'review contents, ownership, and Handoff before approval'} |`);
-  lines.push('', '발견된 구조 문제:', '', `- 중복 Title ID: ${plan.findings.duplicate_title_ids.length || '없음'}`, `- active/pending 세션: ${plan.findings.active_or_pending_sessions.length || '없음'}`, '', '아카이브 적용 전 체크:', '', '- [ ] active/pending/소유권 불명 세션을 정리 후보로 사용하지 않음', '- [ ] Handoff evidence와 canonical manifest를 보존함', '- [ ] 계획의 exact path만 승인함', '- [ ] 계획 파일 SHA-256을 기록함', '', '`--apply`는 승인 파일을 작업장 밖 전용 아카이브로 이동하고 전수 재검토 보고서와 별도 삭제 계획을 만든다. 이 단계에서는 영구 삭제하지 않는다.', '');
+  lines.push('', '발견된 구조 문제:', '', `- 중복 Title ID: ${plan.findings.duplicate_title_ids.length || '없음'}`, `- active/pending 세션: ${plan.findings.active_or_pending_sessions.length || '없음'}`, '', '아카이브 적용 전 체크:', '', '- [ ] active/pending/소유권 불명 세션을 정리 후보로 사용하지 않음', '- [ ] Handoff evidence와 canonical manifest를 보존함', '- [ ] 계획의 exact path만 승인함', '- [ ] 계획 파일 SHA-256을 기록함', '', '`--apply`는 승인 파일을 작업장 밖 전용 아카이브로 이동하고 전수 재검토 보고서와 별도 휴지통 이동 계획을 만든다. 이 단계에서는 영구 삭제하거나 휴지통으로 보내지 않는다.', '');
   return `${lines.join('\n')}\n`;
 }
 
@@ -346,10 +346,21 @@ async function archivePlan(planPath, workspaceRoot, expectedSha) {
   console.log(`Archive manifest SHA-256: ${archived.manifestSha256}`);
   console.log(`Detailed review: ${review.reviewReportPath}`);
   console.log(`Detailed review SHA-256: ${review.reviewReportSha256}`);
-  console.log(`Delete plan: ${review.deletePlanPath}`);
-  console.log(`Delete plan SHA-256: ${review.deletePlanSha256}`);
-  console.log(`Archived: ${approved.length}; permanently deleted: 0`);
-  if (!review.fullReinspectionComplete) throw new Error('Post-archive full reinspection is blocked; do not request purge');
+  console.log(`Trash plan: ${review.trashPlanPath}`);
+  console.log(`Trash plan SHA-256: ${review.trashPlanSha256}`);
+  console.log(`Archived: ${approved.length}; moved to OS Trash: 0; permanently deleted: 0`);
+  if (!review.fullReinspectionComplete) throw new Error('Post-archive full reinspection is blocked; do not request --trash');
+}
+
+function requiredAliasedOption(args, primary, legacy) {
+  const primaryValue = option(args, primary);
+  const legacyValue = option(args, legacy);
+  if (primaryValue !== undefined && legacyValue !== undefined) {
+    throw new Error(`Use only --${primary} or legacy --${legacy}, not both`);
+  }
+  const value = primaryValue ?? legacyValue;
+  if (typeof value !== 'string' || value.trim() === '') throw new Error(`Missing required option: --${primary}`);
+  return value.trim();
 }
 
 function usage() {
@@ -363,16 +374,21 @@ Options:
   --plan <path>            Reviewed plan JSON path for --apply
   --apply                  Move approved=true files into an external cleanup archive
   --plan-sha256 <sha256>   Required with --apply; SHA-256 of reviewed plan
-  --review-archive         Re-run the full post-archive review and reset deletion approvals
+  --review-archive         Re-run the full post-archive review and reset Trash approvals
   --archive-manifest <path>
                           Completed ARCHIVE_MANIFEST.json for --review-archive
   --archive-manifest-sha256 <sha256>
                           Required with --review-archive
-  --purge                  Permanently delete a fully reviewed and separately approved archive transaction
-  --delete-plan <path>     DELETE_PLAN.json with report/user/item approvals recorded
+  --trash                  Move a fully reviewed and separately approved archive transaction to the OS Trash
+  --trash-plan <path>      TRASH_PLAN.json with report/user/item approvals recorded
+  --trash-plan-sha256 <sha256>
+                          Required with --trash; current reviewed trash-plan hash
+  --user-confirmed-trash   Required with --trash after a separate explicit user request
+  --purge                  Legacy alias for --trash; never permanently deletes
+  --delete-plan <path>     Legacy alias accepting a prior DELETE_PLAN.json
   --delete-plan-sha256 <sha256>
-                          Required with --purge; current reviewed delete-plan hash
-  --user-confirmed-delete  Required with --purge after a separate explicit user deletion request
+                          Legacy alias for --trash-plan-sha256
+  --user-confirmed-delete  Legacy alias for --user-confirmed-trash; still sends only to Trash
   --help                   Show this help`);
 }
 
@@ -383,8 +399,12 @@ async function main() {
   if (path.parse(workspaceRoot).root === workspaceRoot) throw new Error('Refusing to inspect a filesystem root');
   if (!(await isDirectory(workspaceRoot))) throw new Error(`Workspace root does not exist: ${workspaceRoot}`);
   if (path.basename(workspaceRoot) === '_work' || titleIdPattern.test(path.basename(workspaceRoot))) throw new Error('Pass the workspace root, not a project _work or project directory');
-  const modeCount = ['apply', 'review-archive', 'purge'].filter((name) => flag(args, name)).length;
-  if (modeCount > 1) throw new Error('Choose exactly one of --apply, --review-archive, or --purge');
+  const primaryTrash = flag(args, 'trash');
+  const legacyPurge = flag(args, 'purge');
+  if (primaryTrash && legacyPurge) throw new Error('Use only --trash or legacy --purge, not both');
+  const wantsTrash = primaryTrash || legacyPurge;
+  const modeCount = [flag(args, 'apply'), flag(args, 'review-archive'), wantsTrash].filter(Boolean).length;
+  if (modeCount > 1) throw new Error('Choose exactly one of --apply, --review-archive, or --trash');
   if (flag(args, 'review-archive')) {
     const review = await generateReview(
       workspaceRoot,
@@ -393,25 +413,26 @@ async function main() {
     );
     console.log(`Detailed review: ${review.reviewReportPath}`);
     console.log(`Detailed review SHA-256: ${review.reviewReportSha256}`);
-    console.log(`Delete plan: ${review.deletePlanPath}`);
-    console.log(`Delete plan SHA-256: ${review.deletePlanSha256}`);
-    console.log('Deletion approvals were reset. Report the full review to the user and stop.');
-    if (!review.fullReinspectionComplete) throw new Error('Full archive reinspection is blocked; purge remains unavailable');
+    console.log(`Trash plan: ${review.trashPlanPath}`);
+    console.log(`Trash plan SHA-256: ${review.trashPlanSha256}`);
+    console.log('Trash approvals were reset. Report the full review to the user and stop.');
+    if (!review.fullReinspectionComplete) throw new Error('Full archive reinspection is blocked; --trash remains unavailable');
     return;
   }
-  if (flag(args, 'purge')) {
+  if (wantsTrash) {
+    if (legacyPurge) console.log('Compatibility notice: --purge now moves files to the OS Trash and never permanently deletes them.');
     const currentState = reviewState(await buildPlan(workspaceRoot));
-    const result = await purgeArchive({
+    const result = await trashArchive({
       cleanupKind: 'workspace-cleanup',
       sourceRoot: workspaceRoot,
-      deletePlanPath: requiredOption(args, 'delete-plan'),
-      expectedDeletePlanSha256: requiredOption(args, 'delete-plan-sha256'),
-      userConfirmedDelete: flag(args, 'user-confirmed-delete'),
+      trashPlanPath: requiredAliasedOption(args, 'trash-plan', 'delete-plan'),
+      expectedTrashPlanSha256: requiredAliasedOption(args, 'trash-plan-sha256', 'delete-plan-sha256'),
+      userConfirmedTrash: flag(args, 'user-confirmed-trash') || flag(args, 'user-confirmed-delete'),
       currentReviewState: currentState,
     });
-    console.log(`Purge receipt: ${result.receiptPath}`);
-    console.log(`Purge receipt SHA-256: ${result.receiptSha256}`);
-    console.log(`Permanently deleted from archive: ${result.purged}`);
+    console.log(`Trash receipt: ${result.receiptPath}`);
+    console.log(`Trash receipt SHA-256: ${result.receiptSha256}`);
+    console.log(`Moved from archive to OS Recycle Bin/Trash: ${result.trashed}; permanently deleted: 0`);
     return;
   }
   if (flag(args, 'apply')) {

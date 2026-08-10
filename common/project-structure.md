@@ -91,8 +91,8 @@ _work/<프로젝트 ID>/
 3. `tmp` 이름은 후보 근거 중 하나일 뿐이다. open Handoff evidence, canonical manifest, 현재/소유권 불명 세션, 링크/reparse point, 활성 staging·릴리스·QA 증거는 보존하거나 `BLOCKED`로 둔다.
 4. 지시서의 exact 파일만 `approved=true`로 표시하고 계획 SHA-256을 확인한 뒤 `--apply --plan`으로 `90_tools/cleanup-archive/<transaction>/`에 이동한다. 계획 밖 경로·glob·워크스페이스 전체 재귀 삭제·프로세스 이름 기반 세션 종료는 금지한다.
 5. `ARCHIVE_MANIFEST.json`의 모든 파일과 원래 위치, Handoff·세션·문서 해시·보존 anchor·남은 후보를 처음부터 다시 검사한다. `CLEANUP_ARCHIVE_REVIEW.md`의 전수 목록·해시·차단 항목·복원 방법·영구 삭제 0건을 사용자에게 상세히 보고하고 같은 turn에서 멈춘다.
-6. 이후 사용자가 별도 요청으로 영구 삭제를 승인한 경우에만 `DELETE_PLAN.json`의 보고·사용자·항목별 승인을 기록하고 현재 SHA-256과 `--purge --user-confirmed-delete`를 사용한다. 상태가 달라졌으면 `--review-archive`로 재검토하고 승인을 초기화한다.
-7. purge 후 `PURGE_RECEIPT.json`, 아카이브 삭제 경로·개수·시각·해시를 `WORK_LOG.md`에 기록하고 `project:validate -- --strict`를 실행한다. 최종 릴리스·로그·QA·폰트·cleanup evidence는 삭제하지 않는다.
+6. 이후 사용자가 별도 요청으로 휴지통 이동을 승인한 경우에만 `TRASH_PLAN.json`의 보고·사용자·항목별 승인을 기록하고 현재 SHA-256과 `--trash --user-confirmed-trash`를 사용한다. 상태가 달라졌으면 `--review-archive`로 재검토하고 승인을 초기화한다.
+7. 휴지통 이동 후 `TRASH_RECEIPT.json`, backend·원래 아카이브 경로·개수·시각·해시·복구 지침을 `WORK_LOG.md`에 기록하고 `project:validate -- --strict`를 실행한다. 휴지통 실패 시 영구 삭제로 폴백하지 않는다. 최종 릴리스·로그·QA·폰트·cleanup evidence는 삭제하지 않는다.
 
 ### 실행 환경
 

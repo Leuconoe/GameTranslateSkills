@@ -98,9 +98,9 @@ game-translate 스킬로 <게임명> 한글화를 시작해줘. 플랫폼은 nsw
 - 언어 방향: 일/영/중 → 한 (한글화 특화)
 - 세션 재개: 프로젝트의 `PROJECT.md`를 읽고 마지막 단계부터 재개
 - 안전 규칙: 모든 작업 전 `common/SAFETY.md` 필독 (프로젝트 경계 보호, allowlist 커밋 등)
-- 완료 정리: `gt-project-cleanup` 또는 `npm run project:cleanup -- --project-root "<타이틀 루트>/_work/<프로젝트 ID>"`로 계획을 만들고, 승인된 exact allowlist와 plan SHA-256의 `--apply`는 파일을 아카이브로 이동함. 이어서 전체 재검토 보고서를 사용자에게 상세히 보고하고 멈추며, 이후 별도 삭제 승인에만 `--purge --user-confirmed-delete` 사용
+- 완료 정리: `gt-project-cleanup` 또는 `npm run project:cleanup -- --project-root "<타이틀 루트>/_work/<프로젝트 ID>"`로 계획을 만들고, 승인된 exact allowlist와 plan SHA-256의 `--apply`는 파일을 아카이브로 이동함. 이어서 전체 재검토 보고서를 사용자에게 상세히 보고하고 멈추며, 이후 별도 승인에만 `--trash --trash-plan "<TRASH_PLAN.json>" --trash-plan-sha256 "<SHA-256>" --user-confirmed-trash` 사용. 파일은 복구 가능한 운영체제 휴지통으로만 이동하며 실패 시 영구 삭제하지 않음
 - Eden 세션 guard: `npm run project:qa-session -- --project-root "<타이틀 루트>/_work/<프로젝트 ID>" --action prepare ...`로 기존 세션을 먼저 조회·재사용
-- 작업장 루트 정리: `gt-workspace-cleanup` 또는 `npm run workspace:cleanup -- --workspace-root "<루트>" --report "<외부 보고서 경로>"`; 기본은 이동·삭제하지 않고, 적용 시에도 외부 아카이브·전체 재검토·사용자 상세 보고를 거친 뒤 별도 승인에만 purge
+- 작업장 루트 정리: `gt-workspace-cleanup` 또는 `npm run workspace:cleanup -- --workspace-root "<루트>" --report "<외부 보고서 경로>"`; 기본은 이동·삭제하지 않고, 적용 시에도 외부 아카이브·전체 재검토·사용자 상세 보고를 거친 뒤 별도 승인에만 운영체제 휴지통 이동
 - 사전 경고: 모든 단계에서 `common/preflight-checks.md`를 읽고 배치·경로·언어 슬롯·review policy·폰트·세션·릴리스 계약의 불일치를 `WARN`/`BLOCKED`로 기록
 
 ## 구조
@@ -116,7 +116,7 @@ common/       SAFETY.md(안전 규칙) · preflight-checks.md(사전 경고 게�
               qa-session-rules.md(Eden 세션·중복 산출물 규칙) · emucap-integration.md(선택적 런타임 QA) · glossary-rules.md ·
               project-structure.md · pipeline-contract.* · font-atlas-contract.md · cleanup-contract.md · handoff-rules.md
 setup/        도구 자동 설치 (tools.manifest.json + install-tools.mjs)
-scripts/      프로젝트 생성·검증·스킬/폰트 검증·Handoff 기반 정리 계획·아카이브·재검토·승인 purge·QA 세션 guard Node CLI
+scripts/      프로젝트 생성·검증·스킬/폰트 검증·Handoff 기반 정리 계획·아카이브·재검토·승인된 휴지통 이동·QA 세션 guard Node CLI
 docs/         PDCA 문서 (plan / design / analysis / report)
 ```
 

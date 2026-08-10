@@ -22,15 +22,15 @@
 - 후보 목록에 없는 파일은 이동하거나 삭제하지 않고 보고만 한다. 직접 prune, `rm`, `Remove-Item`, glob, 재귀 삭제로 cleanup 계약을 우회하지 않는다.
 - 완료 후에는 `gt-project-cleanup` 또는 `npm run project:cleanup -- --project-root "<타이틀 루트>/_work/<프로젝트 ID>"`로 `CLEANUP_PLAN.json`과 `CLEANUP_INSTRUCTIONS.md`를 생성한다. `tmp` 이름은 후보 근거 중 하나일 뿐이며, open evidence·활성/소유권 불명 세션·canonical 산출물은 보존한다.
 - 계획의 exact 파일을 `approved=true`로 표시하고 현재 plan SHA-256을 준 `--apply --plan`은 파일을 즉시 삭제하지 않고 `cleanup-archive/<transaction>/`으로 이동한다. 원본·사본의 크기와 SHA-256이 일치하기 전에는 원래 위치에서 제거하지 않는다.
-- 아카이브 직후 전체 프로젝트/작업장과 모든 아카이브 파일을 다시 검사해 `CLEANUP_ARCHIVE_REVIEW.md`와 기본 미승인 `DELETE_PLAN.json`을 만든다. 이동 목록·해시·남은 후보·차단 항목·복원 방법·영구 삭제 0건을 사용자에게 상세히 보고하고 그 turn을 종료한다.
-- 영구 삭제는 상세 보고 이후 사용자가 **별도 요청으로 명시적으로 승인한 경우에만** 허용한다. `review_reported_to_user=true`, `user_delete_approval=true`, 모든 exact 항목의 `approved=true`, 현재 delete-plan SHA-256, `--purge --user-confirmed-delete`가 모두 필요하다. 보고 뒤 상태가 달라지면 승인을 초기화하고 전체 재검토·보고부터 반복한다.
-- purge는 아카이브의 exact 파일만 삭제하고 `PURGE_RECEIPT.json`을 남긴다. 같은 사용자 요청/turn에서 archive와 purge를 연속 실행하지 않는다.
+- 아카이브 직후 전체 프로젝트/작업장과 모든 아카이브 파일을 다시 검사해 `CLEANUP_ARCHIVE_REVIEW.md`와 기본 미승인 `TRASH_PLAN.json`을 만든다. 이동 목록·해시·남은 후보·차단 항목·아카이브 복원 방법·영구 삭제 0건을 사용자에게 상세히 보고하고 그 turn을 종료한다.
+- 상세 보고 이후 사용자가 **별도 요청으로 명시적으로 승인한 경우에만** `review_reported_to_user=true`, `user_trash_approval=true`, 모든 exact 항목의 `approved=true`, 현재 trash-plan SHA-256, `--trash --user-confirmed-trash`로 휴지통 이동을 허용한다. 보고 뒤 상태가 달라지면 승인을 초기화하고 전체 재검토·보고부터 반복한다.
+- `--trash`는 아카이브 exact 파일만 운영체제 휴지통으로 보내고 `TRASH_RECEIPT.json`을 남긴다. 휴지통 실패·미지원 시 영구 삭제로 폴백하지 않고 `BLOCKED`로 중단한다. 같은 사용자 요청/turn에서 archive와 Trash를 연속 실행하지 않는다. 예전 `--purge`는 동일한 휴지통 동작의 호환 alias일 뿐이다.
 
 ## 3. 정션/심링크/reparse point 보호
 
 - 정션, 심볼릭 링크, 마운트 포인트, 기타 reparse point는 보호된 참조로 취급한다.
 - 삭제 전에 `LinkType`, `Target`, reparse 속성을 인벤토리로 기록한다.
-- 불확실한 트리는 절대 재귀 순회·재귀 삭제하지 않는다. 명시적으로 식별된 **링크 자체**만 제거하거나, 별도로 감사된 링크 없는 하위 항목만 제거하고, 제거 후 링크 대상(target)이 온전한지 확인한다.
+- 불확실한 트리는 절대 재귀 순회·재귀 삭제하지 않는다. 링크 자체도 cleanup 자동화 대상에서 제외하고 `BLOCKED`로 보고하며, 링크 대상(target)을 그대로 보존한다.
 - 실행 시험 환경이 타이틀의 작업 트리를 링크로 참조할 수 있다. 패치가 활성 상태인 동안 참조되는 트리를 보존한다.
 
 ## 4. 원본·산출물 보존 원칙

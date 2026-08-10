@@ -1,4 +1,4 @@
 interface:
   display_name: "Workspace Cleanup"
-  short_description: "Archive and gate workspace cleanup safely"
-  default_prompt: "Use $gt-workspace-cleanup to archive exact workspace candidates, fully re-review them, and stop for a detailed user report before any purge."
+  short_description: "Archive and Trash workspace cleanup safely"
+  default_prompt: "Use $gt-workspace-cleanup to archive exact workspace candidates, fully report the review, and send separately approved files only to the recoverable OS Trash."

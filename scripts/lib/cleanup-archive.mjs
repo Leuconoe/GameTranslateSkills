@@ -1,7 +1,11 @@
 import crypto from 'node:crypto';
+import { execFile } from 'node:child_process';
 import { constants as fsConstants, createReadStream } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { promisify } from 'node:util';
+
+const execFileAsync = promisify(execFile);
 
 export function isWithin(root, target) {
   const relative = path.relative(path.resolve(root), path.resolve(target));
@@ -68,6 +72,128 @@ async function assertPlainDirectory(target, label) {
   if (created.isSymbolicLink() || !created.isDirectory()) throw new Error(`${label} is not a real directory: ${target}`);
   const real = await fs.realpath(target);
   if (!samePath(real, target)) throw new Error(`${label} resolves through a link or reparse point: ${target} -> ${real}`);
+}
+
+async function assertPlainFile(target, label) {
+  const stats = await lstatSafe(target);
+  if (!stats || stats.isSymbolicLink() || !stats.isFile()) {
+    throw new Error(`${label} must be an existing regular file, not a link: ${target}`);
+  }
+  const real = await fs.realpath(target);
+  if (!samePath(real, target)) throw new Error(`${label} resolves through a link or reparse point: ${target} -> ${real}`);
+}
+
+function commandError(label, error) {
+  const detail = String(error.stderr ?? error.stdout ?? error.message ?? error).trim();
+  return new Error(`${label} failed; no permanent-delete fallback was attempted${detail ? `: ${detail}` : ''}`);
+}
+
+async function moveToWindowsRecycleBin(target) {
+  if (target.startsWith('\\\\')) throw new Error(`Windows Recycle Bin is not guaranteed for UNC paths; refusing: ${target}`);
+  const script = [
+    "$ErrorActionPreference = 'Stop'",
+    'Add-Type -AssemblyName Microsoft.VisualBasic',
+    "$target = [Environment]::GetEnvironmentVariable('GT_CLEANUP_TRASH_TARGET')",
+    "if ([string]::IsNullOrWhiteSpace($target)) { throw 'Missing recycle target' }",
+    '$item = Get-Item -LiteralPath $target -Force',
+    "if ($item.PSIsContainer) { throw 'Recycle target is not a file' }",
+    "if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'Recycle target is a reparse point' }",
+    '$drive = [System.IO.DriveInfo]::new([System.IO.Path]::GetPathRoot($item.FullName))',
+    "if ($drive.DriveType -ne [System.IO.DriveType]::Fixed) { throw ('Recycle target is not on a fixed local drive: ' + $drive.DriveType) }",
+    '[Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile(',
+    '  $item.FullName,',
+    '  [Microsoft.VisualBasic.FileIO.UIOption]::OnlyErrorDialogs,',
+    '  [Microsoft.VisualBasic.FileIO.RecycleOption]::SendToRecycleBin,',
+    '  [Microsoft.VisualBasic.FileIO.UICancelOption]::ThrowException',
+    ')',
+    "if ([System.IO.File]::Exists($item.FullName)) { throw 'File still exists after Recycle Bin operation' }",
+  ].join('\n');
+  const encoded = Buffer.from(script, 'utf16le').toString('base64');
+  try {
+    await execFileAsync('powershell.exe', [
+      '-NoLogo',
+      '-NoProfile',
+      '-NonInteractive',
+      '-EncodedCommand',
+      encoded,
+    ], {
+      env: { ...process.env, GT_CLEANUP_TRASH_TARGET: target },
+      windowsHide: true,
+      timeout: 30_000,
+      maxBuffer: 1024 * 1024,
+    });
+  } catch (error) {
+    throw commandError('Windows Recycle Bin operation', error);
+  }
+  return { backend: 'windows-recycle-bin' };
+}
+
+async function moveToMacTrash(target) {
+  const script = [
+    'on run argv',
+    '  tell application "Finder"',
+    '    delete POSIX file (item 1 of argv)',
+    '  end tell',
+    'end run',
+  ].join('\n');
+  try {
+    await execFileAsync('/usr/bin/osascript', ['-e', script, target], {
+      timeout: 30_000,
+      maxBuffer: 1024 * 1024,
+    });
+  } catch (error) {
+    throw commandError('macOS Trash operation', error);
+  }
+  return { backend: 'macos-finder-trash' };
+}
+
+async function moveToGioTrash(target) {
+  try {
+    await execFileAsync('gio', ['trash', target], {
+      timeout: 30_000,
+      maxBuffer: 1024 * 1024,
+    });
+  } catch (error) {
+    throw commandError('GIO Trash operation', error);
+  }
+  return { backend: 'gio-trash' };
+}
+
+async function moveToTestTrash(target, { cleanupKind, archiveRoot, archivePath }) {
+  const configuredRoot = process.env.GT_CLEANUP_TEST_TRASH_ROOT;
+  if (process.env.NODE_ENV !== 'test' || !configuredRoot) {
+    throw new Error('The isolated trash backend is available only when NODE_ENV=test and GT_CLEANUP_TEST_TRASH_ROOT is set');
+  }
+  const testTrashRoot = path.resolve(configuredRoot);
+  if (samePath(testTrashRoot, archiveRoot) || isWithin(archiveRoot, testTrashRoot)) {
+    throw new Error('Isolated test trash must be outside the cleanup archive transaction');
+  }
+  await assertPlainDirectory(testTrashRoot, 'Isolated test trash root');
+  const destination = path.resolve(testTrashRoot, cleanupKind, path.basename(archiveRoot), archivePath);
+  if (!isWithin(testTrashRoot, destination)) throw new Error(`Isolated test trash path escaped its root: ${archivePath}`);
+  await fs.mkdir(path.dirname(destination), { recursive: true });
+  if (await lstatSafe(destination)) throw new Error(`Isolated test trash destination already exists: ${destination}`);
+  await fs.rename(target, destination);
+  await assertPlainFile(destination, 'Isolated trashed file');
+  return { backend: 'isolated-test-trash', recovery_path: destination };
+}
+
+async function moveFileToTrash(target, context) {
+  await assertPlainFile(target, 'Trash target');
+  let result;
+  if (process.env.NODE_ENV === 'test' && process.env.GT_CLEANUP_TEST_TRASH_ROOT) {
+    result = await moveToTestTrash(target, context);
+  } else if (process.platform === 'win32') {
+    result = await moveToWindowsRecycleBin(target);
+  } else if (process.platform === 'darwin') {
+    result = await moveToMacTrash(target);
+  } else if (process.platform === 'linux') {
+    result = await moveToGioTrash(target);
+  } else {
+    throw new Error(`No recoverable Trash backend is supported on ${process.platform}; no file was permanently deleted`);
+  }
+  if (await lstatSafe(target)) throw new Error(`Trash backend returned success but the file remains at ${target}`);
+  return result;
 }
 
 async function copyThenRemove(source, destination, expectedSha256, stats) {
@@ -242,7 +368,7 @@ export async function generateArchiveReview({ cleanupKind, sourceRoot, archiveMa
   const stateFingerprint = sha256Text(stateJson);
   const reviewCompletedAt = new Date().toISOString();
   const reviewReportPath = path.join(loaded.manifest.archive_root, 'CLEANUP_ARCHIVE_REVIEW.md');
-  const deletePlanPath = path.join(loaded.manifest.archive_root, 'DELETE_PLAN.json');
+  const trashPlanPath = path.join(loaded.manifest.archive_root, 'TRASH_PLAN.json');
   const totalBytes = inspections.reduce((sum, item) => sum + item.size, 0);
   const lines = [
     '# Cleanup archive review',
@@ -256,6 +382,7 @@ export async function generateArchiveReview({ cleanupKind, sourceRoot, archiveMa
     `- Source reinspection fingerprint: \`${stateFingerprint}\``,
     `- Archived files: ${inspections.length} (${totalBytes} bytes)`,
     '- Files permanently deleted in this stage: 0',
+    '- Files moved to the operating-system Trash in this stage: 0',
     '',
     '## Archived file verification',
     '',
@@ -267,16 +394,17 @@ export async function generateArchiveReview({ cleanupKind, sourceRoot, archiveMa
   }
   lines.push('', '## Full cleanup-scope reinspection', '', ...reviewStateLines, '', '## User decision gate', '',
     '- 이 보고서를 사용자에게 상세히 전달한 뒤 현재 작업을 종료한다.',
-    '- 같은 사용자 요청/turn에서 아카이브와 영구 삭제를 연속 실행하지 않는다.',
-    '- 사용자가 이후 별도 요청으로 영구 삭제를 명시적으로 승인한 경우에만 `DELETE_PLAN.json`의 `review_reported_to_user`와 `user_delete_approval`을 `true`로 바꾼다.',
-    '- 모든 파일을 다시 확인하고 각 exact 항목의 `approved`를 개별적으로 `true`로 바꾼 뒤 현재 delete-plan SHA-256과 `--user-confirmed-delete`를 사용한다.',
-    '- 원본 위치 복원이 필요하면 영구 삭제를 승인하지 말고 archive path의 파일을 original path로 되돌린 뒤 해시를 확인한다.',
+    '- 같은 사용자 요청/turn에서 아카이브와 휴지통 이동을 연속 실행하지 않는다.',
+    '- 사용자가 이후 별도 요청으로 휴지통 이동을 명시적으로 승인한 경우에만 `TRASH_PLAN.json`의 `review_reported_to_user`와 `user_trash_approval`을 `true`로 바꾼다.',
+    '- 모든 파일을 다시 확인하고 각 exact 항목의 `approved`를 개별적으로 `true`로 바꾼 뒤 현재 trash-plan SHA-256과 `--trash --user-confirmed-trash`를 사용한다.',
+    '- 이 도구는 영구 삭제를 지원하지 않는다. 휴지통 처리가 불가능하면 파일을 그대로 보존하고 `BLOCKED`로 중단한다.',
+    '- 원본 위치 복원이 필요하면 archive path의 파일을 original path로 되돌린 뒤 해시를 확인한다.',
     '');
   await atomicWrite(reviewReportPath, `${lines.join('\n')}\n`);
   const reviewReportSha256 = await sha256File(reviewReportPath);
-  const deletePlan = {
+  const trashPlan = {
     schema_version: 1,
-    kind: `${cleanupKind}-delete-plan`,
+    kind: `${cleanupKind}-trash-plan`,
     status: fullReinspectionComplete ? 'awaiting-user-approval' : 'blocked',
     generated_at: reviewCompletedAt,
     source_root: path.resolve(sourceRoot),
@@ -288,7 +416,7 @@ export async function generateArchiveReview({ cleanupKind, sourceRoot, archiveMa
     source_reinspection_fingerprint: stateFingerprint,
     full_reinspection_complete: fullReinspectionComplete,
     review_reported_to_user: false,
-    user_delete_approval: false,
+    user_trash_approval: false,
     candidates: inspections.map((item) => ({
       original_path: item.original_path,
       archive_path: item.archive_path,
@@ -297,110 +425,142 @@ export async function generateArchiveReview({ cleanupKind, sourceRoot, archiveMa
       approved: false,
     })),
   };
-  await atomicWrite(deletePlanPath, `${JSON.stringify(deletePlan, null, 2)}\n`);
+  await atomicWrite(trashPlanPath, `${JSON.stringify(trashPlan, null, 2)}\n`);
   return {
     fullReinspectionComplete,
     reviewReportPath,
     reviewReportSha256,
-    deletePlanPath,
-    deletePlanSha256: await sha256File(deletePlanPath),
+    trashPlanPath,
+    trashPlanSha256: await sha256File(trashPlanPath),
     stateFingerprint,
     inspections,
   };
 }
 
-function compareDeleteCandidates(deletePlan, manifest) {
-  if (!Array.isArray(deletePlan.candidates) || deletePlan.candidates.length !== manifest.items.length) {
-    throw new Error('Delete plan candidate set does not exactly match the archive manifest');
+function compareTrashCandidates(trashPlan, manifest) {
+  if (!Array.isArray(trashPlan.candidates) || trashPlan.candidates.length !== manifest.items.length) {
+    throw new Error('Trash plan candidate set does not exactly match the archive manifest');
   }
-  if (new Set(deletePlan.candidates.map((candidate) => candidate.original_path)).size !== deletePlan.candidates.length) {
-    throw new Error('Delete plan contains duplicate candidates');
+  if (new Set(trashPlan.candidates.map((candidate) => candidate.original_path)).size !== trashPlan.candidates.length) {
+    throw new Error('Trash plan contains duplicate candidates');
   }
   const archived = new Map(manifest.items.map((item) => [item.original_path, item]));
-  for (const candidate of deletePlan.candidates) {
+  for (const candidate of trashPlan.candidates) {
     const item = archived.get(candidate.original_path);
     if (!item || candidate.archive_path !== item.archive_path || candidate.size !== item.size || candidate.sha256 !== item.sha256) {
-      throw new Error(`Delete plan candidate differs from archive manifest: ${candidate.original_path}`);
+      throw new Error(`Trash plan candidate differs from archive manifest: ${candidate.original_path}`);
     }
   }
 }
 
-export async function purgeArchive({ cleanupKind, sourceRoot, deletePlanPath, expectedDeletePlanSha256, userConfirmedDelete, currentReviewState }) {
-  if (!userConfirmedDelete) throw new Error('--purge requires --user-confirmed-delete after a separate explicit user approval');
-  const resolvedDeletePlanPath = path.resolve(deletePlanPath);
-  const raw = await fs.readFile(resolvedDeletePlanPath, 'utf8');
-  const actualDeletePlanSha256 = sha256Text(raw);
-  if (actualDeletePlanSha256.toLowerCase() !== expectedDeletePlanSha256.toLowerCase()) {
-    throw new Error(`Delete plan SHA-256 mismatch: expected ${expectedDeletePlanSha256}, actual ${actualDeletePlanSha256}`);
+export async function trashArchive({ cleanupKind, sourceRoot, trashPlanPath, expectedTrashPlanSha256, userConfirmedTrash, currentReviewState }) {
+  if (!userConfirmedTrash) throw new Error('--trash requires --user-confirmed-trash after a separate explicit user approval');
+  const resolvedTrashPlanPath = path.resolve(trashPlanPath);
+  const raw = await fs.readFile(resolvedTrashPlanPath, 'utf8');
+  const actualTrashPlanSha256 = sha256Text(raw);
+  if (actualTrashPlanSha256.toLowerCase() !== expectedTrashPlanSha256.toLowerCase()) {
+    throw new Error(`Trash plan SHA-256 mismatch: expected ${expectedTrashPlanSha256}, actual ${actualTrashPlanSha256}`);
   }
-  const deletePlan = JSON.parse(raw);
-  if (deletePlan.kind !== `${cleanupKind}-delete-plan` || !samePath(deletePlan.source_root, sourceRoot)) {
-    throw new Error('Delete plan does not belong to this cleanup root');
+  const trashPlan = JSON.parse(raw);
+  const legacyDeletePlan = trashPlan.kind === `${cleanupKind}-delete-plan`
+    && path.basename(resolvedTrashPlanPath) === 'DELETE_PLAN.json';
+  const canonicalTrashPlan = trashPlan.kind === `${cleanupKind}-trash-plan`
+    && path.basename(resolvedTrashPlanPath) === 'TRASH_PLAN.json';
+  if ((!canonicalTrashPlan && !legacyDeletePlan) || !samePath(trashPlan.source_root, sourceRoot)) {
+    throw new Error('Trash plan does not belong to this cleanup root');
   }
-  if (deletePlan.status !== 'awaiting-user-approval' || deletePlan.full_reinspection_complete !== true) {
-    throw new Error('Delete plan has no completed full reinspection');
+  if (trashPlan.status !== 'awaiting-user-approval' || trashPlan.full_reinspection_complete !== true) {
+    throw new Error('Trash plan has no completed full reinspection');
   }
-  if (!samePath(resolvedDeletePlanPath, path.join(deletePlan.archive_root, 'DELETE_PLAN.json'))) {
-    throw new Error('Delete plan must remain at its canonical archive transaction path');
+  const canonicalPlanName = legacyDeletePlan ? 'DELETE_PLAN.json' : 'TRASH_PLAN.json';
+  if (!samePath(resolvedTrashPlanPath, path.join(trashPlan.archive_root, canonicalPlanName))) {
+    throw new Error('Trash plan must remain at its canonical archive transaction path');
   }
-  if (!samePath(deletePlan.archive_manifest, path.join(deletePlan.archive_root, 'ARCHIVE_MANIFEST.json'))
-    || !samePath(deletePlan.review_report, path.join(deletePlan.archive_root, 'CLEANUP_ARCHIVE_REVIEW.md'))) {
-    throw new Error('Delete plan references non-canonical archive evidence paths');
+  if (legacyDeletePlan && await lstatSafe(path.join(trashPlan.archive_root, 'TRASH_PLAN.json'))) {
+    throw new Error('A newer TRASH_PLAN.json exists; the legacy DELETE_PLAN.json is stale and cannot be used');
   }
-  if (deletePlan.review_reported_to_user !== true || deletePlan.user_delete_approval !== true) {
-    throw new Error('Detailed review reporting and explicit user deletion approval are not both recorded');
+  if (!samePath(trashPlan.archive_manifest, path.join(trashPlan.archive_root, 'ARCHIVE_MANIFEST.json'))
+    || !samePath(trashPlan.review_report, path.join(trashPlan.archive_root, 'CLEANUP_ARCHIVE_REVIEW.md'))) {
+    throw new Error('Trash plan references non-canonical archive evidence paths');
   }
-  if (!deletePlan.candidates.every((candidate) => candidate.approved === true)) {
-    throw new Error('Every archived file must be individually approved before this archive transaction can be purged');
+  const explicitApproval = legacyDeletePlan ? trashPlan.user_delete_approval : trashPlan.user_trash_approval;
+  if (trashPlan.review_reported_to_user !== true || explicitApproval !== true) {
+    throw new Error('Detailed review reporting and explicit user Trash approval are not both recorded');
+  }
+  if (!Array.isArray(trashPlan.candidates) || trashPlan.candidates.length === 0) {
+    throw new Error('Trash plan has no exact file candidates');
+  }
+  if (!trashPlan.candidates.every((candidate) => candidate.approved === true)) {
+    throw new Error('Every archived file must be individually approved before this archive transaction can be moved to Trash');
   }
 
   const loaded = await readArchiveManifest({
     cleanupKind,
     sourceRoot: path.resolve(sourceRoot),
-    manifestPath: deletePlan.archive_manifest,
-    expectedSha256: deletePlan.archive_manifest_sha256,
+    manifestPath: trashPlan.archive_manifest,
+    expectedSha256: trashPlan.archive_manifest_sha256,
   });
-  if (!samePath(deletePlan.archive_root, loaded.manifest.archive_root)) throw new Error('Delete plan archive root mismatch');
-  const reportSha256 = await sha256File(deletePlan.review_report);
-  if (reportSha256 !== deletePlan.review_report_sha256) throw new Error('Detailed archive review report changed after review');
-  compareDeleteCandidates(deletePlan, loaded.manifest);
+  if (!samePath(trashPlan.archive_root, loaded.manifest.archive_root)) throw new Error('Trash plan archive root mismatch');
+  const reportSha256 = await sha256File(trashPlan.review_report);
+  if (reportSha256 !== trashPlan.review_report_sha256) throw new Error('Detailed archive review report changed after review');
+  compareTrashCandidates(trashPlan, loaded.manifest);
   const inspections = await inspectArchiveItems(loaded.manifest);
   if (!inspections.every((item) => item.original_absent && item.archive_regular_file && item.size_match && item.hash_match)) {
     throw new Error('Archive contents or original paths changed; run a new full archive review and report it again');
   }
   const currentFingerprint = sha256Text(JSON.stringify(currentReviewState));
-  if (currentFingerprint !== deletePlan.source_reinspection_fingerprint) {
+  if (currentFingerprint !== trashPlan.source_reinspection_fingerprint) {
     throw new Error('Cleanup scope changed after the detailed report; run --review-archive and obtain new user approval');
   }
 
-  const receiptPath = path.join(loaded.manifest.archive_root, 'PURGE_RECEIPT.json');
-  if (await lstatSafe(receiptPath)) throw new Error(`Purge receipt already exists; inspect the prior purge before retrying: ${receiptPath}`);
+  const receiptPath = path.join(loaded.manifest.archive_root, 'TRASH_RECEIPT.json');
+  const legacyReceiptPath = path.join(loaded.manifest.archive_root, 'PURGE_RECEIPT.json');
+  if (await lstatSafe(receiptPath)) throw new Error(`Trash receipt already exists; inspect the prior operation before retrying: ${receiptPath}`);
+  if (await lstatSafe(legacyReceiptPath)) throw new Error(`Legacy purge receipt exists; inspect it before any new Trash operation: ${legacyReceiptPath}`);
   const receipt = {
     schema_version: 1,
-    kind: `${cleanupKind}-purge-receipt`,
-    status: 'purging',
+    kind: `${cleanupKind}-trash-receipt`,
+    status: 'moving-to-trash',
     started_at: new Date().toISOString(),
     completed_at: null,
     source_root: path.resolve(sourceRoot),
     archive_root: loaded.manifest.archive_root,
-    delete_plan: resolvedDeletePlanPath,
-    delete_plan_sha256: actualDeletePlanSha256,
+    trash_plan: resolvedTrashPlanPath,
+    trash_plan_sha256: actualTrashPlanSha256,
+    plan_format: legacyDeletePlan ? 'legacy-delete-plan' : 'trash-plan',
     review_report_sha256: reportSha256,
-    items: deletePlan.candidates.map((candidate) => ({ ...candidate, status: 'pending' })),
+    permanent_deletions: 0,
+    recovery: {
+      recoverable: true,
+      instructions: 'Restore items from the operating-system Recycle Bin/Trash to their original_archive_path. To restore into the source tree, then follow ARCHIVE_MANIFEST.json and verify SHA-256.',
+    },
+    items: trashPlan.candidates.map((candidate) => ({
+      ...candidate,
+      original_archive_path: path.resolve(loaded.manifest.archive_root, candidate.archive_path),
+      status: 'pending',
+    })),
   };
   await atomicWrite(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`);
   for (const item of receipt.items) {
     const target = path.resolve(loaded.manifest.archive_root, item.archive_path);
+    const filesRoot = path.join(loaded.manifest.archive_root, 'files');
     try {
-      await fs.unlink(target);
-      item.status = 'purged';
-      item.purged_at = new Date().toISOString();
+      if (!isWithin(filesRoot, target)) throw new Error(`Trash target escaped archive files root: ${item.archive_path}`);
+      const trashResult = await moveFileToTrash(target, {
+        cleanupKind,
+        archiveRoot: loaded.manifest.archive_root,
+        archivePath: item.archive_path,
+      });
+      item.status = 'trashed';
+      item.trashed_at = new Date().toISOString();
+      item.trash_backend = trashResult.backend;
+      if (trashResult.recovery_path) item.recovery_path = trashResult.recovery_path;
     } catch (error) {
       item.status = 'blocked';
       item.error = error.message;
       receipt.status = 'blocked';
       await atomicWrite(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`);
-      throw new Error(`Purge stopped at ${item.archive_path}: ${error.message}`);
+      throw new Error(`Trash operation stopped at ${item.archive_path}: ${error.message}`);
     }
     await atomicWrite(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`);
   }
@@ -410,6 +570,6 @@ export async function purgeArchive({ cleanupKind, sourceRoot, deletePlanPath, ex
   return {
     receiptPath,
     receiptSha256: await sha256File(receiptPath),
-    purged: receipt.items.length,
+    trashed: receipt.items.length,
   };
 }

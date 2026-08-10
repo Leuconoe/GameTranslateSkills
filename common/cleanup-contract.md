@@ -8,11 +8,11 @@
 PLAN (이동·삭제 0건)
   → ARCHIVED (승인 파일을 복구 가능한 아카이브로 이동, 영구 삭제 0건)
   → REVIEWED_AND_REPORTED (전체 재검토 결과를 사용자에게 상세 보고하고 turn 종료)
-  → PURGED (이후 별도 사용자 승인으로 아카이브 exact 파일만 영구 삭제)
+  → TRASHED_RECOVERABLE (이후 별도 사용자 승인으로 아카이브 exact 파일만 OS 휴지통 이동)
 ```
 
-`PLAN`에서 `PURGED`로 바로 진행하거나 같은 사용자 요청/turn에서 `ARCHIVED`와 `PURGED`를
-연속 실행하지 않는다.
+`PLAN`에서 `TRASHED_RECOVERABLE`로 바로 진행하거나 같은 사용자 요청/turn에서 `ARCHIVED`와
+`TRASHED_RECOVERABLE`을 연속 실행하지 않는다. 이 계약에는 영구 삭제 상태가 없다.
 
 ## 1. 계획
 
@@ -44,7 +44,7 @@ PLAN (이동·삭제 0건)
    보존하고 transaction을 `blocked`로 남긴다.
 5. `ARCHIVE_MANIFEST.json`에 원래 경로, 아카이브 경로, 크기, SHA-256, 상태를 기록한다.
 
-아카이브 transaction과 그 manifest·보고서·delete plan은 보존 anchor다. 일반 cleanup
+아카이브 transaction과 그 manifest·보고서·trash plan은 보존 anchor다. 일반 cleanup
 inventory나 glob 정리의 후보로 다시 넣지 않는다.
 
 ## 3. 전체 재검토와 상세 보고
@@ -58,34 +58,43 @@ inventory나 glob 정리의 후보로 다시 넣지 않는다.
 - 작업장 정리라면 전체 프로젝트 목록, 중복 Title ID, active/pending 세션
 
 결과를 `CLEANUP_ARCHIVE_REVIEW.md`에 파일별 원래/아카이브 경로·크기·해시와 함께 기록하고
-`DELETE_PLAN.json`을 생성한다. delete plan의
-`review_reported_to_user`, `user_delete_approval`, 모든 항목의 `approved`는 `false`다.
+`TRASH_PLAN.json`을 생성한다. trash plan의
+`review_reported_to_user`, `user_trash_approval`, 모든 항목의 `approved`는 `false`다.
 
 에이전트는 상세 보고서의 경로·해시, 이동 파일 전수 목록, 총 개수·크기, 재검토 결과,
-남은 후보·차단 항목, 복원 방법, 영구 삭제 0건을 사용자에게 보고하고 현재 turn을 종료한다.
-보고 뒤 상태가 바뀌면 `--review-archive`로 다시 전수 검토하며 삭제 승인을 모두 초기화한다.
+남은 후보·차단 항목, 아카이브 복원 방법, 영구 삭제 0건을 사용자에게 보고하고 현재 turn을
+종료한다. 보고 뒤 상태가 바뀌면 `--review-archive`로 다시 전수 검토하며 휴지통 이동 승인을
+모두 초기화한다.
 
-## 4. 이후 별도 사용자 승인에 따른 purge
+## 4. 이후 별도 사용자 승인에 따른 휴지통 이동
 
-상세 보고 이후 사용자가 새로운 명시적 요청으로 영구 삭제를 승인한 경우에만 다음을 모두
+상세 보고 이후 사용자가 새로운 명시적 요청으로 아카이브 파일의 휴지통 이동을 승인한 경우에만 다음을 모두
 충족시킨다.
 
-1. `DELETE_PLAN.json`의 `review_reported_to_user=true`와
-   `user_delete_approval=true`를 기록한다.
+1. `TRASH_PLAN.json`의 `review_reported_to_user=true`와
+   `user_trash_approval=true`를 기록한다.
 2. manifest의 모든 exact 항목을 다시 읽고 각 `approved=true`로 개별 승인한다.
-3. 현재 delete-plan SHA-256과 `--purge --delete-plan --user-confirmed-delete`를 사용한다.
+3. 현재 trash-plan SHA-256과 `--trash --trash-plan --user-confirmed-trash`를 사용한다.
 4. CLI가 archive manifest·review report 해시, 원본 위치 부재, 모든 아카이브 파일 해시,
    전체 cleanup 범위 fingerprint가 보고 시점과 같은지 재검증하게 한다.
 
-검증 중 하나라도 다르면 영구 삭제를 거부하고 전체 재검토·사용자 상세 보고부터 반복한다.
-직접 `rm`, `Remove-Item`, glob, 재귀 삭제로 우회하지 않는다. purge는 원래 작업 트리가
-아니라 아카이브 transaction의 exact 파일만 삭제하며 `PURGE_RECEIPT.json`을 남긴다.
+검증 중 하나라도 다르면 휴지통 이동을 거부하고 전체 재검토·사용자 상세 보고부터 반복한다.
+Windows에서는 `SendToRecycleBin`, macOS에서는 Finder 휴지통, Linux에서는 GIO Trash를
+사용한다. 지원되지 않는 볼륨·플랫폼·도구이거나 처리에 실패하면 exact 파일을 제자리에
+보존하고 `BLOCKED`로 중단한다. 직접 `rm`, `Remove-Item`, glob, 재귀 삭제나 영구 삭제 API로
+우회하거나 휴지통 실패를 영구 삭제로 폴백하지 않는다. 완료하면 `TRASH_RECEIPT.json`에
+backend, 원래 아카이브 경로, 시각, 복구 지침, `permanent_deletions=0`을 남긴다.
+
+예전 `--purge`, `--delete-plan`, `--delete-plan-sha256`, `--user-confirmed-delete`와
+`DELETE_PLAN.json`은 이전 transaction을 위한 호환 입력이다. 이 경로도 영구 삭제하지 않고
+동일한 운영체제 휴지통으로만 이동한다.
 
 ## 5. 복원과 보존 우선 목록
 
-사용자가 삭제를 승인하지 않거나 복원을 요청하면 아카이브 파일을 manifest의 원래 경로로
-되돌리고 크기·SHA-256을 재검증한다. 원래 경로에 새 파일이 생겼으면 덮어쓰지 않고
-`BLOCKED`로 보고한다.
+사용자가 휴지통 이동 전 복원을 요청하면 아카이브 파일을 manifest의 원래 경로로 되돌리고
+크기·SHA-256을 재검증한다. 휴지통 이동 후라면 먼저 운영체제 휴지통에서 receipt의
+`original_archive_path`로 복원한 다음 manifest에 따라 원래 작업 경로로 되돌린다. 어느
+단계든 목적지에 새 파일이 생겼으면 덮어쓰지 않고 `BLOCKED`로 보고한다.
 
 다음은 기본 보존한다: `PROJECT.md`, `WORK_LOG.md`, `HANDOFF.md`, 원본 inventory, 번역
 manifest·용어집·스타일, font/image/text QA 보고서, build/release manifest, 릴리스 패키지,

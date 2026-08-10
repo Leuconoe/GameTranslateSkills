@@ -145,10 +145,11 @@ local `--action close --remote-closed`를 실행한다. 소유권을 증명할 �
 아카이브 파일과 root/project·Handoff·세션·문서 해시를 다시 검사한
 `CLEANUP_ARCHIVE_REVIEW.md`를 사용자에게 상세히 보고하고 그 turn을 종료한다.
 
-영구 삭제는 사용자가 보고 이후 별도 요청으로 명시적으로 승인한 경우에만
-`DELETE_PLAN.json`의 보고·사용자·항목별 승인과 현재 SHA-256을 기록해
-`--purge --user-confirmed-delete`로 아카이브 exact 파일에 수행한다. 보고 이후 상태가
-바뀌면 `--review-archive`로 재검토하고 모든 삭제 승인을 초기화한다. active 세션·보존
+휴지통 이동은 사용자가 보고 이후 별도 요청으로 명시적으로 승인한 경우에만
+`TRASH_PLAN.json`의 보고·사용자·항목별 승인과 현재 SHA-256을 기록해
+`--trash --user-confirmed-trash`로 아카이브 exact 파일에 수행한다. 운영체제 휴지통이
+지원되지 않거나 실패하면 영구 삭제로 폴백하지 않고 `BLOCKED`로 중단한다. 보고 이후
+상태가 바뀌면 `--review-archive`로 재검토하고 모든 승인을 초기화한다. active 세션·보존
 anchor·link/reparse point·계획 밖 경로는 항상 거부한다.
 
 ## 9. 신규 프로젝트·완료

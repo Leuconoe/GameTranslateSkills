@@ -108,12 +108,14 @@ async function main() {
       'CLEANUP_INSTRUCTIONS.md',
       'ARCHIVE_MANIFEST.json',
       'CLEANUP_ARCHIVE_REVIEW.md',
-      'DELETE_PLAN.json',
+      'TRASH_PLAN.json',
       'approved=true',
-      'user_delete_approval=true',
+      'user_trash_approval=true',
       '--review-archive',
-      '--purge',
-      '--user-confirmed-delete',
+      '--trash',
+      '--user-confirmed-trash',
+      'TRASH_RECEIPT.json',
+      '영구 삭제로 폴백하지',
       'HANDOFF',
     ]) if (!text.includes(phrase)) add(issues, `${cleanup}: missing archive-first cleanup phrase ${phrase}`);
   }
@@ -123,8 +125,8 @@ async function main() {
       const raw = await read(path.join(repositoryRoot, pluginFile));
       const plugin = JSON.parse(raw);
       if (/seven-stage|7-stage|7단계/i.test(raw)) add(issues, `${pluginFile}: stale seven-stage description`);
-      if (pluginFile !== '.claude-plugin/marketplace.json' && plugin.version !== '1.3.0') add(issues, `${pluginFile}: version must match current 1.3.0 bundle`);
-      if (pluginFile === '.claude-plugin/marketplace.json' && plugin.metadata?.version !== '1.3.0') add(issues, `${pluginFile}: metadata.version must match current 1.3.0 bundle`);
+      if (pluginFile !== '.claude-plugin/marketplace.json' && plugin.version !== '1.4.0') add(issues, `${pluginFile}: version must match current 1.4.0 bundle`);
+      if (pluginFile === '.claude-plugin/marketplace.json' && plugin.metadata?.version !== '1.4.0') add(issues, `${pluginFile}: metadata.version must match current 1.4.0 bundle`);
     } catch (error) {
       add(issues, `${pluginFile}: cannot read/parse (${error.message})`);
     }

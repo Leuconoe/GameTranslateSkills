@@ -56,7 +56,8 @@ description: "Release stage after integrated QA: package a verified Korean game 
    계획의 exact 파일을 `approved=true`로 표시한 `--apply`는 cleanup archive로 이동하고
    영구 삭제하지 않는다. 아카이브·프로젝트 전체 재검토 보고서를 사용자에게 상세히
    전달한 뒤 같은 turn에서 멈춘다. 이후 사용자가 별도 요청으로 승인한 경우에만 현재
-   delete-plan SHA-256과 `--purge --user-confirmed-delete`로 아카이브 파일을 삭제한다.
+   trash-plan SHA-256과 `--trash --user-confirmed-trash`로 아카이브 파일을 운영체제
+   휴지통에 보낸다. 휴지통 실패 시 영구 삭제로 폴백하지 않는다.
    단순한 `tmp` glob 삭제, active 세션 삭제, 릴리스·QA·cleanup 증거 삭제는 금지한다.
    상태 변경 시 `--review-archive`로 재검토하고 승인을 초기화한다.
 7. **커밋(선택)**: 저장소 추적 대상(번역 TSV·용어집·문서)만 명시적 allowlist로 커밋
@@ -77,6 +78,6 @@ description: "Release stage after integrated QA: package a verified Korean game 
 - [ ] INSTALL.md / RELEASE_NOTES.md 완비, 해시 기록
 - [ ] Handoff 기반 cleanup plan·지시서가 생성되고 보존 anchor와 승인 allowlist가 검증됨
 - [ ] 승인된 정리를 적용했다면 plan SHA-256·아카이브 경로·전수 재검토·사용자 상세 보고가 기록됨
-- [ ] 이후 별도 승인으로 purge했다면 delete-plan SHA-256·아카이브 삭제 경로·receipt·`project:validate -- --strict` 결과가 기록됨
+- [ ] 이후 별도 승인으로 휴지통 이동했다면 trash-plan SHA-256·backend·원래 아카이브 경로·`TRASH_RECEIPT.json`·`project:validate -- --strict` 결과가 기록됨
 - [ ] canonical 파일명·경로·ZIP root·파일 allowlist가 어댑터 계약과 exact 일치
 - [ ] 런타임·하드웨어 상태와 `released` 판정이 서로 혼동되지 않음

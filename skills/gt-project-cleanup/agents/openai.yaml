@@ -1,4 +1,4 @@
 interface:
   display_name: "Project Cleanup"
-  short_description: "Archive and gate title cleanup safely"
-  default_prompt: "Use $gt-project-cleanup to plan exact title cleanup, archive approved files, and stop after the full user-facing review before any purge."
+  short_description: "Archive and Trash title cleanup safely"
+  default_prompt: "Use $gt-project-cleanup to archive exact title cleanup candidates, fully report the review, and send separately approved files only to the recoverable OS Trash."

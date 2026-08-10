@@ -66,5 +66,14 @@ date | type | observed | impact | decision | evidence | status(open/applied/reje
 자동 삭제로 추론하지 않는다.
 
 정리 계획의 후보는 기본 `approved=false`다. 사용자가 exact 경로를 검토해 승인하고
-계획의 현재 SHA-256을 확인한 경우에만 `--apply --plan`으로 적용한다. 계획 밖 경로,
-glob, link/reparse point, 프로젝트 root 전체, 다른 타이틀의 산출물은 항상 거부한다.
+계획의 현재 SHA-256을 확인한 경우에만 `--apply --plan`으로 **아카이브 이동**한다.
+계획 밖 경로, glob, link/reparse point, 프로젝트 root 전체, 다른 타이틀의 산출물은 항상
+거부한다.
+
+아카이브 후 `ARCHIVE_MANIFEST.json`의 모든 파일과 원래 위치, Handoff evidence, 문서 해시,
+세션, 남은 후보를 다시 검사해 `CLEANUP_ARCHIVE_REVIEW.md`와 기본 미승인
+`DELETE_PLAN.json`을 만든다. 결과를 사용자에게 상세히 보고하고 같은 turn에서 영구 삭제를
+실행하지 않는다. 이후 사용자가 별도 요청으로 승인한 경우에만 보고·사용자·항목별 승인과
+현재 delete-plan SHA-256을 기록해 `--purge --user-confirmed-delete`를 실행한다. 보고 이후
+Handoff나 다른 cleanup 입력이 바뀌면 purge를 거부하고 `--review-archive`로 재검토하며 모든
+삭제 승인을 초기화한다.

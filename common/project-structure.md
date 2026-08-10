@@ -42,7 +42,7 @@ _work/<프로젝트 ID>/
   40_build/                staging / 패치 트리 / releases / BUILD_MANIFEST.tsv
   50_test/                 TEST_LOG.md / screenshots / logs / emucap(선택적 원장·증거)
                            eden/SESSION.json / ARTIFACT_MANIFEST.tsv (각각 프로젝트당 1개)
-  90_tools/                게임별 scripts / environment
+  90_tools/                게임별 scripts / environment / cleanup-archive(정리 복구 영역)
 ```
 
 - `20_reference`는 읽기 전용 원본과 재조립 정보만. 직접 수정하는 이미지는 `30_translation/.../for_translation`에만.
@@ -89,8 +89,10 @@ _work/<프로젝트 ID>/
 1. `PROJECT.md`가 `released` 또는 사용자가 지정한 완료 상태인지 확인하고, 실행 중인 도구·에뮬레이터가 정리 대상 파일을 사용하지 않는지 확인한다. Eden을 사용했다면 remote close, `SESSION.json=closed`, 마지막 ID 귀속을 확인한다.
 2. `gt-project-cleanup` 또는 `npm run project:cleanup -- --project-root "<타이틀 루트>/_work/<프로젝트 ID>"`로 Handoff·PROJECT·WORK_LOG·manifest·QA·release 참조를 추론해 `CLEANUP_PLAN.json`과 `CLEANUP_INSTRUCTIONS.md`를 생성한다.
 3. `tmp` 이름은 후보 근거 중 하나일 뿐이다. open Handoff evidence, canonical manifest, 현재/소유권 불명 세션, 링크/reparse point, 활성 staging·릴리스·QA 증거는 보존하거나 `BLOCKED`로 둔다.
-4. 지시서의 exact 후보만 `approved=true`로 표시하고 계획 SHA-256을 확인한 뒤 `--apply --plan`을 실행한다. 계획 밖 경로·glob·워크스페이스 전체 재귀 삭제·프로세스 이름 기반 세션 종료는 금지한다.
-5. 적용 후 제거 경로·개수·시각·plan hash를 `WORK_LOG.md`에 기록하고, `project:validate -- --strict`와 동일 cleanup 명령의 재계획을 실행한다. 최종 릴리스·로그·QA·폰트 evidence는 삭제하지 않는다.
+4. 지시서의 exact 파일만 `approved=true`로 표시하고 계획 SHA-256을 확인한 뒤 `--apply --plan`으로 `90_tools/cleanup-archive/<transaction>/`에 이동한다. 계획 밖 경로·glob·워크스페이스 전체 재귀 삭제·프로세스 이름 기반 세션 종료는 금지한다.
+5. `ARCHIVE_MANIFEST.json`의 모든 파일과 원래 위치, Handoff·세션·문서 해시·보존 anchor·남은 후보를 처음부터 다시 검사한다. `CLEANUP_ARCHIVE_REVIEW.md`의 전수 목록·해시·차단 항목·복원 방법·영구 삭제 0건을 사용자에게 상세히 보고하고 같은 turn에서 멈춘다.
+6. 이후 사용자가 별도 요청으로 영구 삭제를 승인한 경우에만 `DELETE_PLAN.json`의 보고·사용자·항목별 승인을 기록하고 현재 SHA-256과 `--purge --user-confirmed-delete`를 사용한다. 상태가 달라졌으면 `--review-archive`로 재검토하고 승인을 초기화한다.
+7. purge 후 `PURGE_RECEIPT.json`, 아카이브 삭제 경로·개수·시각·해시를 `WORK_LOG.md`에 기록하고 `project:validate -- --strict`를 실행한다. 최종 릴리스·로그·QA·폰트·cleanup evidence는 삭제하지 않는다.
 
 ### 실행 환경
 

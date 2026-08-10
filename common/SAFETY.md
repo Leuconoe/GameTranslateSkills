@@ -16,11 +16,15 @@
 
 ## 2. 정리(cleanup) 규칙
 
-- 삭제·이동 전에 모든 후보를 **정확한 절대경로로 해석**하고, 프로젝트/타이틀 소속, Git 상태, 원본 여부(authoritative source), 확정 릴리스 여부, 복구 가능성을 각각 확인한다.
+- 이동·삭제 전에 모든 후보를 **정확한 절대경로로 해석**하고, 프로젝트/타이틀 소속, Git 상태, 원본 여부(authoritative source), 확정 릴리스 여부, 복구 가능성을 각각 확인한다.
 - `tmp`, `staging`, `cache`, `archive` 같은 폴더·파일 이름은 삭제 승인이 아니다. 이름이 아니라 검증된 정체로 판단한다.
 - 정리는 **정확한 allowlist**만 사용한다. 워크스페이스 전역 재귀 정리는 어떤 경우에도 금지한다.
-- 후보 목록에 없는 파일은 기본적으로 삭제하지 않고 보고만 한다. 명시적인 prune 옵션이 지정된 경우에만, 정확히 지정된 디렉터리 내부에서만 제거한다.
-- 완료 후에는 `gt-project-cleanup` 또는 `npm run project:cleanup -- --project-root "<타이틀 루트>/_work/<프로젝트 ID>"`로 Handoff·PROJECT·WORK_LOG·manifest·세션·QA·release 참조를 추론한 `CLEANUP_PLAN.json`과 `CLEANUP_INSTRUCTIONS.md`를 생성한다. `tmp` 이름은 후보 근거 중 하나일 뿐이며, open evidence·활성/소유권 불명 세션·canonical 산출물은 보존한다. 지시서의 exact 후보를 `approved=true`로 표시하고 현재 plan SHA-256을 함께 넘긴 `--apply --plan`에서만 제거한다. 제거 후 plan hash·경로·개수와 구조 검증 결과를 `WORK_LOG.md`에 남긴다.
+- 후보 목록에 없는 파일은 이동하거나 삭제하지 않고 보고만 한다. 직접 prune, `rm`, `Remove-Item`, glob, 재귀 삭제로 cleanup 계약을 우회하지 않는다.
+- 완료 후에는 `gt-project-cleanup` 또는 `npm run project:cleanup -- --project-root "<타이틀 루트>/_work/<프로젝트 ID>"`로 `CLEANUP_PLAN.json`과 `CLEANUP_INSTRUCTIONS.md`를 생성한다. `tmp` 이름은 후보 근거 중 하나일 뿐이며, open evidence·활성/소유권 불명 세션·canonical 산출물은 보존한다.
+- 계획의 exact 파일을 `approved=true`로 표시하고 현재 plan SHA-256을 준 `--apply --plan`은 파일을 즉시 삭제하지 않고 `cleanup-archive/<transaction>/`으로 이동한다. 원본·사본의 크기와 SHA-256이 일치하기 전에는 원래 위치에서 제거하지 않는다.
+- 아카이브 직후 전체 프로젝트/작업장과 모든 아카이브 파일을 다시 검사해 `CLEANUP_ARCHIVE_REVIEW.md`와 기본 미승인 `DELETE_PLAN.json`을 만든다. 이동 목록·해시·남은 후보·차단 항목·복원 방법·영구 삭제 0건을 사용자에게 상세히 보고하고 그 turn을 종료한다.
+- 영구 삭제는 상세 보고 이후 사용자가 **별도 요청으로 명시적으로 승인한 경우에만** 허용한다. `review_reported_to_user=true`, `user_delete_approval=true`, 모든 exact 항목의 `approved=true`, 현재 delete-plan SHA-256, `--purge --user-confirmed-delete`가 모두 필요하다. 보고 뒤 상태가 달라지면 승인을 초기화하고 전체 재검토·보고부터 반복한다.
+- purge는 아카이브의 exact 파일만 삭제하고 `PURGE_RECEIPT.json`을 남긴다. 같은 사용자 요청/turn에서 archive와 purge를 연속 실행하지 않는다.
 
 ## 3. 정션/심링크/reparse point 보호
 

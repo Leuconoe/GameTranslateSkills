@@ -140,10 +140,16 @@ local `--action close --remote-closed`를 실행한다. 소유권을 증명할 �
 - `gt-workspace-cleanup`: 작업장 루트의 타이틀 중복·미등록 폴더·세션 잔재를 Handoff와
   프로젝트 상태로 대조해 외부 보고서/계획 생성
 
-기본은 삭제하지 않는다. `approved=true`인 exact 후보와 현재 plan SHA-256을 명시한
-`--apply --plan`만 적용하며 active 세션·보존 anchor·link/reparse point·계획 밖 경로는
-항상 거부한다. 적용 후 `project:validate -- --strict`와 root/project 재inventory를
-수행한다.
+기본은 이동·삭제하지 않는다. `approved=true`인 exact 파일과 현재 plan SHA-256을 명시한
+`--apply --plan`은 후보를 cleanup archive로 옮길 뿐 영구 삭제하지 않는다. 이어서 모든
+아카이브 파일과 root/project·Handoff·세션·문서 해시를 다시 검사한
+`CLEANUP_ARCHIVE_REVIEW.md`를 사용자에게 상세히 보고하고 그 turn을 종료한다.
+
+영구 삭제는 사용자가 보고 이후 별도 요청으로 명시적으로 승인한 경우에만
+`DELETE_PLAN.json`의 보고·사용자·항목별 승인과 현재 SHA-256을 기록해
+`--purge --user-confirmed-delete`로 아카이브 exact 파일에 수행한다. 보고 이후 상태가
+바뀌면 `--review-archive`로 재검토하고 모든 삭제 승인을 초기화한다. active 세션·보존
+anchor·link/reparse point·계획 밖 경로는 항상 거부한다.
 
 ## 9. 신규 프로젝트·완료
 

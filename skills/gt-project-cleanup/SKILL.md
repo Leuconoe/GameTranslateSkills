@@ -1,13 +1,14 @@
 ---
 name: gt-project-cleanup
-description: "Generate a Handoff- and manifest-based cleanup plan for one game title project, identify stale session and duplicate artifacts without confusing them with evidence, and apply only an explicitly approved project-local allowlist. Use when cleaning a title's _work project after QA/release or when session/file duplication is consuming storage."
+description: "Archive exact cleanup candidates for one game title project, fully re-review the moved files and remaining project state, report the result to the user, and permit permanent deletion only after a separate explicit approval. Use when cleaning a title's _work project after QA/release or when stale session and duplicate artifacts are consuming storage."
 ---
 
 # gt-project-cleanup — 타이틀 프로젝트 정리
 
 하나의 `<타이틀 루트>/_work/<16자리 프로젝트 ID>`만 대상으로 Handoff·manifest·세션
-상태를 추론해 정리 지시서를 만든다. `tmp` 파일만 지우는 방식은 사용하지 않으며,
-기본 실행은 계획 생성만 한다.
+상태를 추론한다. 정리는 `계획 → 아카이브 이동 → 전체 재검토·사용자 상세 보고 → 이후
+별도 승인에 따른 아카이브 삭제` 순서로만 수행한다. 원래 위치의 후보를 즉시 영구
+삭제하지 않는다.
 
 ## 읽기 순서와 보존 anchor
 
@@ -22,49 +23,91 @@ PROJECT.md / WORK_LOG.md / HANDOFF.md
 40_build/ BUILD_MANIFEST.tsv·현재 staging·canonical release
 50_test/ TEST_LOG.md·screenshots·logs·emucap 증거
 50_test/eden/SESSION.json·ARTIFACT_MANIFEST.tsv
-90_tools/ 재현 스크립트·환경 선언
+90_tools/ 재현 스크립트·환경 선언·cleanup-archive
 ```
 
 Handoff의 `open` evidence, manifest가 참조하는 파일, 현재 active session이 사용하는
-파일은 정리 후보로 만들지 않는다. `applied`/`rejected`도 참조·해시 재확인 전에는
-보존 또는 `WARN`으로 남긴다.
+파일은 후보로 만들지 않는다. `applied`/`rejected`도 참조·해시 재확인 전에는 보존하거나
+`WARN`으로 둔다.
 
-## 정리 계획 생성
+## 1. 정리 계획 생성
 
-1. 프로젝트 경로가 정확한 `_work/<16-hex>`인지 확인하고 타이틀 루트에 원본 패키지가
-   직접 있는지 확인한다. 다른 프로젝트를 함께 순회하지 않는다.
-2. `SESSION.json`과 remote 상태를 비교한다. active/pending/소유권 불명 세션이 있으면
-   세션·런 아티팩트를 삭제 후보에 넣지 않고 `BLOCKED`로 기록한다. 이전 세션은
-   `last_session_id`와 `remote_close_session_id`가 exact 일치하기 전까지 후보로 승인하지 않는다.
-3. `ARTIFACT_MANIFEST.tsv`의 `artifact_key`, canonical path, build/session ID, 해시를
-   읽어 duplicate key·duplicate path·timestamp/session/copy 파일을 찾는다.
-4. Handoff·PROJECT·WORK_LOG·manifest·보고서에서 경로를 수집해 보존 anchor와 후보를
-   구분한다. 후보 이유에는 관찰된 경로·상태·해시·참조 부재·해결 조건을 적는다.
-5. 다음 명령으로 계획을 생성한다.
+1. 프로젝트 경로가 정확한 `_work/<16-hex>`인지 확인하고 다른 프로젝트를 순회하지 않는다.
+2. `SESSION.json`과 remote 상태를 비교한다. active/pending/소유권 불명 세션의 파일은
+   `BLOCKED`로 둔다. 이전 세션은 `last_session_id`와 `remote_close_session_id`가 exact
+   일치하기 전까지 승인하지 않는다.
+3. `ARTIFACT_MANIFEST.tsv`, Handoff, PROJECT, WORK_LOG, QA·릴리스 문서와 파일 해시를
+   대조해 exact 파일 후보와 보존 anchor를 나눈다. 디렉터리·glob은 승인하지 않는다.
+4. 다음 명령으로 canonical 계획과 지시서를 생성한다.
 
    ```text
    npm run project:cleanup -- --project-root "<프로젝트 루트>"
    ```
 
-   이 명령은 프로젝트의 canonical `90_tools/CLEANUP_PLAN.json`과
-   `90_tools/CLEANUP_INSTRUCTIONS.md`를 갱신하며, 삭제하지 않는다. 별도 위치가
-   필요하면 `--report "<계획 파일 경로>"`를 사용한다.
+   이 명령은 `90_tools/CLEANUP_PLAN.json`과 `CLEANUP_INSTRUCTIONS.md`만 갱신하며 파일을
+   이동하거나 삭제하지 않는다. 모든 후보는 기본 `approved=false`다.
 
-## 적용 게이트
+## 2. 승인 후보 아카이브
 
-- 지시서의 exact 후보만 `approved=true`로 표시한다. 전체 폴더·glob·파일명 패턴을
-  승인하는 표현은 허용하지 않는다.
-- `npm run project:cleanup -- --project-root "<프로젝트 루트>" --plan "<계획>" --apply`
-  실행 전 계획 파일 해시와 승인 수를 다시 확인한다.
-- 스크립트는 project root 밖, link/reparse point, active session, 보존 anchor,
-  계획에 없는 경로를 거부해야 한다.
-- 적용 후 `SESSION.json`이 canonical 하나인지, artifact key/path가 유일한지,
-  `npm run project:validate -- --titles-root "<컨테이너>" --strict`가 통과하는지 확인한다.
+사용자가 정리 범위를 승인하면 지시서의 exact 파일만 `approved=true`로 바꾸고 현재 plan
+SHA-256과 함께 다음을 실행한다.
+
+```text
+npm run project:cleanup -- --project-root "<프로젝트 루트>" --plan "<CLEANUP_PLAN.json>" --apply --plan-sha256 "<SHA-256>"
+```
+
+`--apply`는 삭제 옵션이 아니다. 각 파일을 프로젝트의
+`90_tools/cleanup-archive/<transaction>/files/`로 복사하고 원본·사본 SHA-256과 크기를
+검증한 뒤 원래 위치에서 이동 처리한다. 이어서 다음 증거를 만든다.
+
+- `ARCHIVE_MANIFEST.json`: 원래 경로, 아카이브 경로, 크기, SHA-256
+- `CLEANUP_ARCHIVE_REVIEW.md`: 아카이브 무결성, 원래 위치 부재, Handoff·세션·보존
+  anchor·남은 후보를 다시 조사한 상세 보고서
+- `DELETE_PLAN.json`: 영구 삭제를 위한 별도 계획. 모든 승인 필드는 기본 `false`
+
+아카이브 경로는 후속 cleanup inventory에서 보존 영역으로 취급한다. 아카이브가 완전한
+복구본임을 증명하지 못하면 `BLOCKED`로 중단하고 삭제 단계로 이동하지 않는다.
+
+## 3. 전체 재검토와 사용자 상세 보고
+
+아카이브 후 전체 프로젝트를 다시 inventory하고 문서 해시, Handoff 상태, 세션 상태,
+보존 경로, 남은 후보, 원래 위치 부재, 아카이브 파일의 크기·SHA-256을 전수 확인한다.
+상태가 바뀌었거나 재검토가 필요하면 다음 명령을 사용한다.
+
+```text
+npm run project:cleanup -- --project-root "<프로젝트 루트>" --review-archive --archive-manifest "<ARCHIVE_MANIFEST.json>" --archive-manifest-sha256 "<SHA-256>"
+```
+
+재검토는 `CLEANUP_ARCHIVE_REVIEW.md`와 `DELETE_PLAN.json`을 다시 만들며 모든 삭제 승인을
+초기화한다. 보고서의 파일별 원래/아카이브 경로·크기·해시, 차단 항목, 남은 후보, 복원
+방법을 사용자에게 상세히 보고한 뒤 현재 turn을 종료한다. 같은 사용자 요청/turn에서
+아카이브와 영구 삭제를 연속 실행하지 않는다.
+
+## 4. 별도 승인 후 영구 삭제
+
+사용자가 상세 보고를 받은 뒤 **새로운 명시적 요청으로** 아카이브 영구 삭제를 승인한
+경우에만 진행한다. 에이전트가 승인 의사를 추론하거나 미리 표시하지 않는다.
+
+1. `DELETE_PLAN.json`의 `review_reported_to_user=true`, `user_delete_approval=true`를
+   기록하고 모든 exact 항목을 다시 확인해 각 `approved=true`로 바꾼다.
+2. 현재 delete-plan SHA-256을 계산한다.
+3. 다음 명령만 사용한다. `Remove-Item`, `rm`, glob, 재귀 삭제로 우회하지 않는다.
+
+   ```text
+   npm run project:cleanup -- --project-root "<프로젝트 루트>" --purge --delete-plan "<DELETE_PLAN.json>" --delete-plan-sha256 "<SHA-256>" --user-confirmed-delete
+   ```
+
+`--purge`는 원래 작업 트리가 아니라 승인된 아카이브 파일만 삭제한다. 보고 이후 프로젝트
+상태·문서·아카이브 해시가 바뀌면 거부하고 3단계부터 다시 수행한다. 완료 후
+`PURGE_RECEIPT.json`, 삭제 경로·개수·해시를 보고하고 `project:validate -- --strict`를
+재실행한다.
 
 ## 완료 기준
 
-- [ ] 정리 지시서에 Handoff 기반 근거와 보존 목록이 있음
-- [ ] 세션 remote close·local 상태가 일치함
-- [ ] 중복 파일·세션·artifact key가 계획에서 분리 판정됨
-- [ ] 기본 실행은 삭제 없이 완료됨
-- [ ] 적용했다면 승인된 exact allowlist만 제거되고 검증이 재실행됨
+- [ ] 기본 실행은 파일 이동·삭제 없이 계획만 생성함
+- [ ] `--apply`는 exact 승인 파일을 아카이브하고 영구 삭제 0건을 보고함
+- [ ] 아카이브 전체와 프로젝트 전체를 다시 검사한 상세 보고서가 생성됨
+- [ ] 상세 보고를 사용자에게 전달한 뒤 같은 turn에서 멈춤
+- [ ] 영구 삭제는 이후 사용자의 별도 명시적 승인과 현재 delete-plan SHA-256으로만 수행됨
+- [ ] 변경 감지 시 삭제 승인이 초기화되고 재검토됨
+- [ ] 삭제했다면 아카이브 exact 파일만 제거되고 `PURGE_RECEIPT.json`과 검증 결과가 남음

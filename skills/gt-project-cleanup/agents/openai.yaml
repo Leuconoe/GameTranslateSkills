@@ -1,4 +1,4 @@
 interface:
   display_name: "Project Cleanup"
-  short_description: "Generate safe title cleanup instructions"
-  default_prompt: "Use $gt-project-cleanup to infer a title project cleanup plan from Handoff and manifests, then prepare an explicit allowlist."
+  short_description: "Archive and gate title cleanup safely"
+  default_prompt: "Use $gt-project-cleanup to plan exact title cleanup, archive approved files, and stop after the full user-facing review before any purge."

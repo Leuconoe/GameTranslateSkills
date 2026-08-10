@@ -105,7 +105,7 @@ test('qa session guard requires the exact previous ID before a new session', asy
   await fs.rm(tempRoot, { recursive: true, force: true });
 });
 
-test('project cleanup creates a plan and never applies without explicit plan hash', async () => {
+test('project cleanup archives first and purges only after a separate reviewed user approval', async () => {
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'game-translate-cleanup-'));
   const projectRoot = path.join(tempRoot, 'title', '_work', '0123456789ABCDEF');
   const toolsRoot = path.join(projectRoot, '90_tools');
@@ -130,8 +130,83 @@ test('project cleanup creates a plan and never applies without explicit plan has
   for (const candidate of plan.candidates) if (candidate.path === 'tmp-test-artifact.tmp') candidate.approved = true;
   await fs.writeFile(planPath, `${JSON.stringify(plan, null, 2)}\n`);
   const planSha = crypto.createHash('sha256').update(await fs.readFile(planPath)).digest('hex');
-  runNode('clean-translation-project.mjs', ['--project-root', projectRoot, '--plan', planPath, '--apply', '--plan-sha256', planSha]);
+  await fs.writeFile(path.join(projectRoot, 'tmp-test-artifact.tmp'), 'changed after review');
+  runNodeFailure('clean-translation-project.mjs', ['--project-root', projectRoot, '--plan', planPath, '--apply', '--plan-sha256', planSha]);
+  assert.equal(await fs.readFile(path.join(projectRoot, 'tmp-test-artifact.tmp'), 'utf8'), 'changed after review');
+  await fs.writeFile(path.join(projectRoot, 'tmp-test-artifact.tmp'), 'fixture');
+  const archiveOutput = runNode('clean-translation-project.mjs', ['--project-root', projectRoot, '--plan', planPath, '--apply', '--plan-sha256', planSha]);
+  assert.match(archiveOutput, /ARCHIVED\s+tmp-test-artifact\.tmp/);
+  assert.match(archiveOutput, /permanently deleted: 0/);
   await assert.rejects(() => fs.access(path.join(projectRoot, 'tmp-test-artifact.tmp')));
+  const archiveBase = path.join(toolsRoot, 'cleanup-archive');
+  const archiveTransactions = await fs.readdir(archiveBase);
+  assert.equal(archiveTransactions.length, 1);
+  const archiveRoot = path.join(archiveBase, archiveTransactions[0]);
+  const archiveManifestPath = path.join(archiveRoot, 'ARCHIVE_MANIFEST.json');
+  const archiveManifest = JSON.parse(await fs.readFile(archiveManifestPath, 'utf8'));
+  assert.equal(archiveManifest.status, 'archived');
+  const archivedArtifact = path.join(archiveRoot, archiveManifest.items[0].archive_path);
+  assert.equal(await fs.readFile(archivedArtifact, 'utf8'), 'fixture');
+  const reviewText = await fs.readFile(path.join(archiveRoot, 'CLEANUP_ARCHIVE_REVIEW.md'), 'utf8');
+  assert.match(reviewText, /Full reinspection completed: `true`/);
+  assert.match(reviewText, /Files permanently deleted in this stage: 0/);
+  const deletePlanPath = path.join(archiveRoot, 'DELETE_PLAN.json');
+  const deletePlan = JSON.parse(await fs.readFile(deletePlanPath, 'utf8'));
+  assert.equal(deletePlan.review_reported_to_user, false);
+  assert.equal(deletePlan.user_delete_approval, false);
+  runNodeFailure('clean-translation-project.mjs', [
+    '--project-root', projectRoot,
+    '--purge',
+    '--delete-plan', deletePlanPath,
+    '--delete-plan-sha256', crypto.createHash('sha256').update(await fs.readFile(deletePlanPath)).digest('hex'),
+    '--user-confirmed-delete',
+  ]);
+  deletePlan.review_reported_to_user = true;
+  deletePlan.user_delete_approval = true;
+  for (const candidate of deletePlan.candidates) candidate.approved = true;
+  await fs.writeFile(deletePlanPath, `${JSON.stringify(deletePlan, null, 2)}\n`);
+  const deletePlanSha = crypto.createHash('sha256').update(await fs.readFile(deletePlanPath)).digest('hex');
+  runNodeFailure('clean-translation-project.mjs', [
+    '--project-root', projectRoot,
+    '--purge',
+    '--delete-plan', deletePlanPath,
+    '--delete-plan-sha256', deletePlanSha,
+  ]);
+  await fs.appendFile(path.join(projectRoot, 'HANDOFF.md'), '\nReview input changed after report.\n');
+  runNodeFailure('clean-translation-project.mjs', [
+    '--project-root', projectRoot,
+    '--purge',
+    '--delete-plan', deletePlanPath,
+    '--delete-plan-sha256', deletePlanSha,
+    '--user-confirmed-delete',
+  ]);
+  const archiveManifestSha = crypto.createHash('sha256').update(await fs.readFile(archiveManifestPath)).digest('hex');
+  const rereviewOutput = runNode('clean-translation-project.mjs', [
+    '--project-root', projectRoot,
+    '--review-archive',
+    '--archive-manifest', archiveManifestPath,
+    '--archive-manifest-sha256', archiveManifestSha,
+  ]);
+  assert.match(rereviewOutput, /Deletion approvals were reset/);
+  const rereviewedDeletePlan = JSON.parse(await fs.readFile(deletePlanPath, 'utf8'));
+  assert.equal(rereviewedDeletePlan.review_reported_to_user, false);
+  assert.equal(rereviewedDeletePlan.user_delete_approval, false);
+  rereviewedDeletePlan.review_reported_to_user = true;
+  rereviewedDeletePlan.user_delete_approval = true;
+  for (const candidate of rereviewedDeletePlan.candidates) candidate.approved = true;
+  await fs.writeFile(deletePlanPath, `${JSON.stringify(rereviewedDeletePlan, null, 2)}\n`);
+  const rereviewedDeletePlanSha = crypto.createHash('sha256').update(await fs.readFile(deletePlanPath)).digest('hex');
+  const purgeOutput = runNode('clean-translation-project.mjs', [
+    '--project-root', projectRoot,
+    '--purge',
+    '--delete-plan', deletePlanPath,
+    '--delete-plan-sha256', rereviewedDeletePlanSha,
+    '--user-confirmed-delete',
+  ]);
+  assert.match(purgeOutput, /Permanently deleted from archive: 1/);
+  await assert.rejects(() => fs.access(archivedArtifact));
+  const receipt = JSON.parse(await fs.readFile(path.join(archiveRoot, 'PURGE_RECEIPT.json'), 'utf8'));
+  assert.equal(receipt.status, 'complete');
   await fs.rm(tempRoot, { recursive: true, force: true });
 });
 
@@ -162,7 +237,7 @@ test('project scaffold emits branch policies and validates', async () => {
   await fs.rm(tempRoot, { recursive: true, force: true });
 });
 
-test('workspace cleanup keeps active title state and applies only an approved root file', async () => {
+test('workspace cleanup keeps active title state and archives before separately approved purge', async () => {
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'game-translate-workspace-cleanup-'));
   const workspaceRoot = path.join(tempRoot, 'NSW');
   const projectRoot = path.join(workspaceRoot, '_titles', 'FixtureGame', '_work', '0123456789ABCDEF');
@@ -196,7 +271,33 @@ test('workspace cleanup keeps active title state and applies only an approved ro
   candidate.approved = true;
   await fs.writeFile(planPath, `${JSON.stringify(plan, null, 2)}\n`);
   const planSha = crypto.createHash('sha256').update(await fs.readFile(planPath)).digest('hex');
-  runNode('workspace-cleanup.mjs', ['--workspace-root', workspaceRoot, '--report', reportPath, '--plan', planPath, '--apply', '--plan-sha256', planSha]);
+  const archiveOutput = runNode('workspace-cleanup.mjs', ['--workspace-root', workspaceRoot, '--report', reportPath, '--plan', planPath, '--apply', '--plan-sha256', planSha]);
+  assert.match(archiveOutput, /ARCHIVED\s+tmp-root-artifact\.tmp/);
+  assert.match(archiveOutput, /permanently deleted: 0/);
   await assert.rejects(() => fs.access(rootArtifact));
+  const archiveBase = path.join(tempRoot, 'workspace-cleanup-archive');
+  const archiveTransactions = await fs.readdir(archiveBase);
+  assert.equal(archiveTransactions.length, 1);
+  const archiveRoot = path.join(archiveBase, archiveTransactions[0]);
+  const archiveManifest = JSON.parse(await fs.readFile(path.join(archiveRoot, 'ARCHIVE_MANIFEST.json'), 'utf8'));
+  const archivedArtifact = path.join(archiveRoot, archiveManifest.items[0].archive_path);
+  assert.equal(await fs.readFile(archivedArtifact, 'utf8'), 'root fixture');
+  const deletePlanPath = path.join(archiveRoot, 'DELETE_PLAN.json');
+  const deletePlan = JSON.parse(await fs.readFile(deletePlanPath, 'utf8'));
+  assert.equal(deletePlan.full_reinspection_complete, true);
+  deletePlan.review_reported_to_user = true;
+  deletePlan.user_delete_approval = true;
+  for (const item of deletePlan.candidates) item.approved = true;
+  await fs.writeFile(deletePlanPath, `${JSON.stringify(deletePlan, null, 2)}\n`);
+  const deletePlanSha = crypto.createHash('sha256').update(await fs.readFile(deletePlanPath)).digest('hex');
+  const purgeOutput = runNode('workspace-cleanup.mjs', [
+    '--workspace-root', workspaceRoot,
+    '--purge',
+    '--delete-plan', deletePlanPath,
+    '--delete-plan-sha256', deletePlanSha,
+    '--user-confirmed-delete',
+  ]);
+  assert.match(purgeOutput, /Permanently deleted from archive: 1/);
+  await assert.rejects(() => fs.access(archivedArtifact));
   await fs.rm(tempRoot, { recursive: true, force: true });
 });

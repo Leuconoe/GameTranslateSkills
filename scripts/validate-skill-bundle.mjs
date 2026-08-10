@@ -103,7 +103,19 @@ async function main() {
   for (const phrase of ['font-atlas-contract', 'FONT_ATLAS_MANIFEST.tsv', 'FONT_COVERAGE.tsv', 'font_status=verified', 'gt-text-review']) if (!textQa.includes(phrase)) add(issues, `gt-text-qa: missing font/review gate ${phrase}`);
   for (const cleanup of ['gt-workspace-cleanup', 'gt-project-cleanup']) {
     const text = contents.get(cleanup) ?? '';
-    for (const phrase of ['cleanup-contract', 'CLEANUP_INSTRUCTIONS.md', 'approved=true', 'HANDOFF']) if (!text.includes(phrase)) add(issues, `${cleanup}: missing cleanup harness phrase ${phrase}`);
+    for (const phrase of [
+      'cleanup-contract',
+      'CLEANUP_INSTRUCTIONS.md',
+      'ARCHIVE_MANIFEST.json',
+      'CLEANUP_ARCHIVE_REVIEW.md',
+      'DELETE_PLAN.json',
+      'approved=true',
+      'user_delete_approval=true',
+      '--review-archive',
+      '--purge',
+      '--user-confirmed-delete',
+      'HANDOFF',
+    ]) if (!text.includes(phrase)) add(issues, `${cleanup}: missing archive-first cleanup phrase ${phrase}`);
   }
   const pluginFiles = ['.codex-plugin/plugin.json', '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json'];
   for (const pluginFile of pluginFiles) {

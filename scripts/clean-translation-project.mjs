@@ -13,6 +13,14 @@ import {
   sha256Text,
   trashArchive,
 } from './lib/cleanup-archive.mjs';
+import {
+  artifactIndexHeader,
+  artifactIndexRelative,
+  cleanupEligibleArtifactRows,
+  isArtifactHarnessPath,
+  validateArtifactLayout,
+} from './lib/project-artifacts.mjs';
+import { validateProjectBoundary } from './lib/project-boundary.mjs';
 
 const titleIdPattern = /^[0-9A-Fa-f]{16}$/;
 const canonicalFiles = new Set([
@@ -28,10 +36,12 @@ const canonicalFiles = new Set([
   path.join('50_test', 'TEST_LOG.md'),
   path.join('50_test', 'eden', 'SESSION.json'),
   path.join('50_test', 'eden', 'ARTIFACT_MANIFEST.tsv'),
+  artifactIndexRelative,
   path.join('90_tools', 'CLEANUP_PLAN.json'),
   path.join('90_tools', 'CLEANUP_INSTRUCTIONS.md'),
 ]);
 const cleanupArchiveRelative = path.join('90_tools', 'cleanup-archive');
+const maximumControlDocumentBytes = 16 * 1024 * 1024;
 
 function isTemporaryName(name) {
   return /^tmp[-_.].+/i.test(name) || /\.tmp(?:$|[.])/i.test(name);
@@ -115,13 +125,34 @@ async function readHandoffEvidence(projectRoot) {
   return { path: handoffPath, exists: Boolean(text), evidence, statuses };
 }
 
-async function readManifestReferences(projectRoot) {
+async function readManifestReferences(projectRoot, allEntries) {
   const references = new Set();
   const documents = [];
-  const files = (await collectFiles(projectRoot)).filter((entry) => entry.kind === 'file' && /(?:MANIFEST|REPORT|LOG|PROJECT|HANDOFF|REFERENCE|STYLE)/i.test(entry.path));
+  const files = allEntries.filter((entry) => {
+    if (entry.kind !== 'file') return false;
+    const relative = path.relative(projectRoot, entry.path).replaceAll('\\', '/');
+    const base = path.basename(relative);
+    if (/^(PROJECT|HANDOFF|WORK_LOG)\.md$/i.test(base)) return true;
+    if (/^30_translation\//i.test(relative) && /(?:MANIFEST|REPORT|REFERENCE|STYLE)/i.test(base) && /\.(?:md|tsv|json)$/i.test(base)) return true;
+    if (/^40_build\//i.test(relative) && /(?:MANIFEST|REPORT)/i.test(base) && /\.(?:md|tsv|json)$/i.test(base)) return true;
+    if (/^50_test\/(?:TEST_LOG\.md|RELEASE_RUNTIME_QA\.json)$/i.test(relative)) return true;
+    if (/^50_test\/release-runtime\//i.test(relative) && /(?:MANIFEST|REPORT)/i.test(base) && /\.(?:md|tsv|json)$/i.test(base)) return true;
+    return relative === artifactIndexRelative.replaceAll('\\', '/');
+  });
   for (const file of files) {
+    if ((file.size ?? 0) > maximumControlDocumentBytes) {
+      documents.push({
+        path: path.relative(projectRoot, file.path),
+        size: file.size,
+        sha256: null,
+        warning: `oversized-control-like-file>${maximumControlDocumentBytes}`,
+      });
+      continue;
+    }
     const text = await readText(file.path);
-    for (const reference of extractPathReferences(text, projectRoot)) references.add(reference);
+    if (path.relative(projectRoot, file.path) !== artifactIndexRelative) {
+      for (const reference of extractPathReferences(text, projectRoot)) references.add(reference);
+    }
     documents.push({
       path: path.relative(projectRoot, file.path),
       sha256: sha256Text(text),
@@ -168,18 +199,38 @@ async function readArtifactManifest(projectRoot) {
 }
 
 async function buildPlan(projectRoot) {
+  const allEntries = await collectFiles(projectRoot);
   const handoff = await readHandoffEvidence(projectRoot);
-  const manifestReview = await readManifestReferences(projectRoot);
+  const manifestReview = await readManifestReferences(projectRoot, allEntries);
   const sessionPath = path.join(projectRoot, '50_test', 'eden', 'SESSION.json');
   const session = await readJson(sessionPath);
   const artifactManifest = await readArtifactManifest(projectRoot);
+  const artifactLayout = await validateArtifactLayout(projectRoot);
+  const projectBoundary = await validateProjectBoundary(projectRoot, { scanLinks: false });
+  const artifactRowsByPath = new Map(artifactLayout.rows.map((row) => [row.path.toLowerCase(), row]));
+  const legacyArtifactEntries = new Map((artifactLayout.legacyEntries ?? []).map((entry) => [entry.path.toLowerCase(), entry]));
+  const cleanupEligiblePaths = new Set(cleanupEligibleArtifactRows(artifactLayout.rows).map((row) => row.path.toLowerCase()));
+  const invalidArtifactRows = new Set();
+  const invalidArtifactPaths = new Set();
+  for (const issue of artifactLayout.issues) {
+    const line = issue.path.match(/^90_tools[\\/]PROJECT_ARTIFACT_MANIFEST\.tsv:(\d+)$/i)?.[1];
+    if (line) invalidArtifactRows.add(Number(line));
+    else invalidArtifactPaths.add(issue.path.replaceAll('\\', '/').toLowerCase());
+  }
   const protectedPaths = new Set([...handoff.evidence, ...manifestReview.references]);
   for (const relative of canonicalFiles) protectedPaths.add(path.join(projectRoot, relative));
+  for (const row of artifactLayout.rows.filter((item) => ['canonical', 'evidence'].includes(item.lifecycle))) {
+    protectedPaths.add(path.resolve(projectRoot, ...row.path.split('/')));
+  }
+  const artifactIndexText = await readText(path.join(projectRoot, artifactIndexRelative));
+  if (artifactIndexText && !manifestReview.documents.some((document) => document.path === artifactIndexRelative)) {
+    manifestReview.documents.push({ path: artifactIndexRelative, sha256: sha256Text(artifactIndexText) });
+    manifestReview.documents.sort((left, right) => left.path.localeCompare(right.path));
+  }
 
   const activeSession = session && ['active', 'pending'].includes(session.status);
   const remoteCloseVerified = Boolean(session && session.status === 'closed' && session.last_session_id
     && session.remote_close_session_id === session.last_session_id);
-  const allEntries = await collectFiles(projectRoot);
   const inventory = {
     files: allEntries.filter((entry) => entry.kind === 'file').length,
     directories: allEntries.filter((entry) => entry.kind === 'directory').length,
@@ -189,19 +240,46 @@ async function buildPlan(projectRoot) {
   const candidates = [];
   for (const entry of allEntries) {
     const relativePath = path.relative(projectRoot, entry.path);
-    if (!relativePath || entry.kind === 'link') continue;
+    if (!relativePath) continue;
+    const normalizedPath = relativePath.replaceAll('\\', '/');
+    const artifactRow = artifactRowsByPath.get(normalizedPath.toLowerCase());
+    const legacyArtifact = legacyArtifactEntries.get(normalizedPath.toLowerCase());
+    const managedHarnessPath = isArtifactHarnessPath(normalizedPath);
+    if (entry.kind === 'link') {
+      if (managedHarnessPath) candidates.push({
+        path: relativePath,
+        kind: 'link',
+        size: null,
+        sha256: null,
+        reason: 'managed-harness-link',
+        evidence: 'Links/reparse points are forbidden in managed artifact roots and cannot be archived automatically.',
+        risk: 'high',
+        blocked: true,
+        approved: false,
+      });
+      continue;
+    }
     const isMcpEntry = relativePath.toLowerCase().startsWith(`${path.join('50_test', 'eden')}${path.sep}`)
       && !['SESSION.json', 'ARTIFACT_MANIFEST.tsv'].includes(path.basename(relativePath));
     const reasons = candidateReason(relativePath, isMcpEntry);
+    const managedHarnessFile = managedHarnessPath && entry.kind === 'file';
+    if (managedHarnessFile && !artifactRow) reasons.push('unregistered-managed-artifact');
+    if (artifactRow && cleanupEligiblePaths.has(normalizedPath.toLowerCase())) reasons.push(`artifact-index-${artifactRow.lifecycle}`);
+    const invalidArtifact = !legacyArtifact
+      && (invalidArtifactPaths.has(normalizedPath.toLowerCase()) || invalidArtifactRows.has(artifactRow?.line));
+    if (artifactRow && invalidArtifact) reasons.push('invalid-artifact-index-row');
+    if (legacyArtifact) reasons.push(legacyArtifact.reason);
     if (reasons.length === 0) continue;
     const protectedByReference = pathProtected(projectRoot, entry.path, [...protectedPaths]);
-    const blocked = protectedByReference || activeSession || (isMcpEntry && !remoteCloseVerified) || entry.kind === 'directory';
+    const blocked = protectedByReference || activeSession || (isMcpEntry && !remoteCloseVerified)
+      || entry.kind === 'directory' || (managedHarnessFile && !artifactRow) || invalidArtifact;
+    const finalBlocked = blocked || Boolean(legacyArtifact);
     const stats = entry.kind === 'file' ? await fs.lstat(entry.path) : null;
     candidates.push({
       path: relativePath,
       kind: entry.kind,
       size: stats?.size ?? null,
-      sha256: entry.kind === 'file' ? await sha256File(entry.path) : null,
+      sha256: entry.kind === 'file' && !finalBlocked ? await sha256File(entry.path) : null,
       reason: reasons.join(', '),
       evidence: protectedByReference
         ? 'Referenced by Handoff, project documentation, or manifest; preserve until references are reconciled.'
@@ -209,11 +287,19 @@ async function buildPlan(projectRoot) {
           ? `SESSION.json status=${session.status}; reconcile and close the owned remote session first.`
           : isMcpEntry && !remoteCloseVerified
             ? 'MCP entry has no exact remote-close proof in the shared canonical SESSION.json; reconcile both inventories, ownership, and remote status first.'
+            : managedHarnessFile && !artifactRow
+              ? 'Managed artifact is missing from 90_tools/PROJECT_ARTIFACT_MANIFEST.tsv; register ownership, lifecycle, producer, and SHA-256 before cleanup.'
+              : invalidArtifact
+                ? 'PROJECT_ARTIFACT_MANIFEST.tsv or the indexed file failed path/hash/lifecycle validation; reconcile it before cleanup.'
+                : legacyArtifact
+                  ? legacyArtifact.problem
+                : artifactRow && cleanupEligiblePaths.has(normalizedPath.toLowerCase())
+                  ? `Indexed lifecycle=${artifactRow.lifecycle}, status=${artifactRow.status}, producer=${artifactRow.producer}; exact hash still requires explicit cleanup approval.`
           : entry.kind === 'directory'
             ? 'Directory requires a child-level allowlist before removal.'
             : 'Candidate requires explicit review against Handoff and manifest evidence.',
-      risk: isMcpEntry ? 'high' : 'medium',
-      blocked,
+      risk: isMcpEntry || invalidArtifact || legacyArtifact || (managedHarnessFile && !artifactRow) ? 'high' : 'medium',
+      blocked: finalBlocked,
       approved: false,
     });
   }
@@ -246,6 +332,12 @@ async function buildPlan(projectRoot) {
     protected_paths: [...protectedPaths].map((target) => path.relative(projectRoot, target)).filter(Boolean).sort(),
     review_inputs: {
       documents: manifestReview.documents,
+    },
+    artifact_layout: {
+      manifest: artifactIndexRelative,
+      indexed: artifactLayout.rows.length,
+      managed_files: artifactLayout.files.length,
+      issues: [...projectBoundary.issues, ...artifactLayout.issues],
     },
     inventory,
     candidates: candidates.sort((left, right) => left.path.localeCompare(right.path)),
@@ -282,6 +374,7 @@ function reviewState(plan) {
     session: plan.session,
     protected_paths: plan.protected_paths,
     review_inputs: plan.review_inputs,
+    artifact_layout: plan.artifact_layout,
     inventory: plan.inventory,
     candidates: plan.candidates.map(({ path: candidatePath, kind, size, sha256, reason, evidence, risk, blocked }) => ({
       path: candidatePath,
@@ -303,6 +396,9 @@ function renderReviewState(state) {
     `- Session status: \`${state.session?.status ?? 'missing'}\``,
     `- Protected paths rechecked: ${state.protected_paths.length}`,
     `- Control documents rehashed: ${state.review_inputs.documents.length}`,
+    `- Artifact index rows: ${state.artifact_layout.indexed}`,
+    `- Managed artifact files: ${state.artifact_layout.managed_files}`,
+    `- Artifact layout issues: ${state.artifact_layout.issues.length}`,
     `- Full tree inventory: files=${state.inventory.files}, directories=${state.inventory.directories}, links=${state.inventory.links}, bytes=${state.inventory.bytes}`,
     `- Remaining cleanup candidates: ${state.candidates.length}`,
     `- Remaining blocked candidates: ${state.candidates.filter((candidate) => candidate.blocked).length}`,
@@ -362,6 +458,31 @@ async function archivePlan(planPath, projectRoot, expectedSha) {
     archiveBase: path.join(projectRoot, cleanupArchiveRelative),
     candidates: approved,
   });
+  const currentArtifactLayout = await validateArtifactLayout(projectRoot);
+  const indexedPaths = new Set(currentArtifactLayout.rows.map((row) => row.path.toLowerCase()));
+  const indexedApprovedPaths = new Set(approved
+    .map((candidate) => candidate.path.replaceAll('\\', '/').toLowerCase())
+    .filter((candidatePath) => indexedPaths.has(candidatePath)));
+  if (indexedApprovedPaths.size > 0) {
+    const artifactManifestPath = path.join(projectRoot, artifactIndexRelative);
+    const lines = (await fs.readFile(artifactManifestPath, 'utf8')).split(/\r?\n/);
+    const header = lines[0]?.split('\t') ?? [];
+    if (header.join('\t') !== artifactIndexHeader.join('\t')) throw new Error('Cannot mark archived artifacts: project artifact manifest header drifted');
+    const pathIndex = header.indexOf('path');
+    const statusIndex = header.indexOf('status');
+    const notesIndex = header.indexOf('notes');
+    const updated = [lines[0]];
+    for (const line of lines.slice(1).filter(Boolean)) {
+      const cells = line.split('\t');
+      const normalized = (cells[pathIndex] ?? '').trim().replaceAll('\\', '/').toLowerCase();
+      if (indexedApprovedPaths.has(normalized)) {
+        cells[statusIndex] = 'archived';
+        cells[notesIndex] = [cells[notesIndex], `cleanup_archive=${archived.manifestPath}`].filter(Boolean).join('; ');
+      }
+      updated.push(cells.join('\t'));
+    }
+    await atomicWrite(artifactManifestPath, `${updated.join('\n')}\n`);
+  }
   const review = await generateReview(projectRoot, archived.manifestPath, archived.manifestSha256);
   for (const candidate of approved) console.log(`ARCHIVED\t${candidate.path}`);
   console.log(`Plan SHA-256: ${actualSha}`);

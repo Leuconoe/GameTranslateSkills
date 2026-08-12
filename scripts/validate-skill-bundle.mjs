@@ -8,6 +8,8 @@ const skillsRoot = path.join(repositoryRoot, 'skills');
 const contractPath = path.join(repositoryRoot, 'common', 'pipeline-contract.json');
 const imageContractPath = path.join(repositoryRoot, 'common', 'image-translation-contract.md');
 const runtimeContractPath = path.join(repositoryRoot, 'common', 'release-runtime-contract.md');
+const artifactLayoutContractPath = path.join(repositoryRoot, 'common', 'artifact-layout-contract.md');
+const workspaceBoundaryContractPath = path.join(repositoryRoot, 'common', 'workspace-boundary-contract.md');
 const packagePath = path.join(repositoryRoot, 'package.json');
 const forbiddenSkillText = [
   '7단계',
@@ -217,6 +219,53 @@ async function main() {
     final_mcp_allowed: false,
     final_result: 'pass',
   })) if (runtimePipeline?.[field] !== expected) add(issues, `contract: runtime_qa_contract.${field} must equal ${expected}`);
+  let artifactLayoutContract = '';
+  try {
+    artifactLayoutContract = await read(artifactLayoutContractPath);
+  } catch (error) {
+    add(issues, `artifact layout contract: cannot read ${artifactLayoutContractPath} (${error.message})`);
+  }
+  for (const phrase of [
+    'PROJECT_ARTIFACT_MANIFEST.tsv',
+    'source-export',
+    'translation-output',
+    'test-artifact',
+    'test-script',
+    'reproducible',
+    'disposable',
+    'project:artifacts',
+    '미등록',
+  ]) if (!artifactLayoutContract.includes(phrase)) add(issues, `artifact layout contract: missing harness phrase ${phrase}`);
+  const artifactPipeline = contract?.artifact_layout_contract;
+  for (const [field, expected] of Object.entries({
+    document: 'common/artifact-layout-contract.md',
+    manifest: '90_tools/PROJECT_ARTIFACT_MANIFEST.tsv',
+    initializer_validator: 'scripts/artifact-harness.mjs',
+  })) if (artifactPipeline?.[field] !== expected) add(issues, `contract: artifact_layout_contract.${field} must equal ${expected}`);
+  let workspaceBoundaryContract = '';
+  try {
+    workspaceBoundaryContract = await read(workspaceBoundaryContractPath);
+  } catch (error) {
+    add(issues, `workspace boundary contract: cannot read ${workspaceBoundaryContractPath} (${error.message})`);
+  }
+  for (const phrase of [
+    '<TITLE_ROOT>/_work/<PROJECT_ID>',
+    'project:boundary',
+    '--assert-output',
+    '90_tools/work/extract/',
+    '90_tools/work/translation/',
+    '90_tools/work/build/',
+    '90_tools/work/test/',
+    'symlink/junction/reparse',
+  ]) if (!workspaceBoundaryContract.includes(phrase)) add(issues, `workspace boundary contract: missing phrase ${phrase}`);
+  const boundaryPipeline = contract?.workspace_boundary_contract;
+  for (const [field, expected] of Object.entries({
+    document: 'common/workspace-boundary-contract.md',
+    validator: 'scripts/validate-project-boundary.mjs',
+    root: '<TITLE_ROOT>/_work/<PROJECT_ID>/',
+    project_root_escape_allowed: false,
+    link_or_reparse_allowed: false,
+  })) if (boundaryPipeline?.[field] !== expected) add(issues, `contract: workspace_boundary_contract.${field} must equal ${expected}`);
   const qaSkill = contents.get('gt-qa') ?? '';
   for (const phrase of ['Eden-MCP', 'Ryubing-MCP', 'RELEASE_RUNTIME_QA.json', 'mcp_used=false', 'runtime:validate']) {
     if (!qaSkill.includes(phrase)) add(issues, `gt-qa: missing final runtime gate ${phrase}`);
@@ -267,12 +316,26 @@ async function main() {
     for (const phrase of ['basic_test_backend', 'mcp_session_scope', 'final_qa_runtime', 'final_qa_mcp_allowed', 'RELEASE_RUNTIME_QA.json', "'release-runtime'"]) {
       if (!scaffold.includes(phrase)) add(issues, `project scaffold: missing runtime harness phrase ${phrase}`);
     }
+    for (const phrase of ['artifactIndexHeader', 'artifactLayoutDirectories', 'PROJECT_ARTIFACT_MANIFEST.tsv']) {
+      if (!scaffold.includes(phrase)) add(issues, `project scaffold: missing artifact layout phrase ${phrase}`);
+    }
     const projectValidator = await read(path.join(repositoryRoot, 'scripts', 'validate-translation-projects.mjs'));
     for (const phrase of ['validate-image-translation.mjs', 'imageHarnessRequired', 'Image harness validation failed', 'await isType']) {
       if (!projectValidator.includes(phrase)) add(issues, `project validator: missing image harness phrase ${phrase}`);
     }
     for (const phrase of ['validate-release-runtime.mjs', 'Official distribution runtime validation failed', 'final_qa_mcp_allowed', 'validateMcpSessionState']) {
       if (!projectValidator.includes(phrase)) add(issues, `project validator: missing runtime harness phrase ${phrase}`);
+    }
+    for (const phrase of ['validateArtifactLayout', 'artifactLayoutDirectories', 'Artifact layout validation failed']) {
+      if (!projectValidator.includes(phrase)) add(issues, `project validator: missing artifact layout phrase ${phrase}`);
+    }
+    const artifactHarness = await read(path.join(repositoryRoot, 'scripts', 'artifact-harness.mjs'));
+    for (const phrase of ['ensureArtifactLayout', 'validateArtifactLayout', 'PROJECT_ARTIFACT_MANIFEST.tsv', '--init']) {
+      if (!artifactHarness.includes(phrase)) add(issues, `artifact harness: missing phrase ${phrase}`);
+    }
+    const boundaryValidator = await read(path.join(repositoryRoot, 'scripts', 'validate-project-boundary.mjs'));
+    for (const phrase of ['validateProjectBoundary', 'assert-output', 'project-root', 'stage']) {
+      if (!boundaryValidator.includes(phrase)) add(issues, `project boundary validator: missing phrase ${phrase}`);
     }
     const sessionGuard = await read(path.join(repositoryRoot, 'scripts', 'qa-session.mjs'));
     for (const phrase of ['eden-mcp', 'ryubing-mcp', 'inventory-backend', 'session_generation', 'exception-reason']) {
@@ -314,6 +377,7 @@ async function main() {
       'TRASH_RECEIPT.json',
       '영구 삭제로 폴백하지',
       'HANDOFF',
+      'PROJECT_ARTIFACT_MANIFEST.tsv',
     ]) if (!text.includes(phrase)) add(issues, `${cleanup}: missing archive-first cleanup phrase ${phrase}`);
   }
   const pluginFiles = ['.codex-plugin/plugin.json', '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json'];

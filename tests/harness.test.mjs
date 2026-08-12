@@ -1045,6 +1045,20 @@ test('project scaffold emits branch policies and validates', async () => {
   }
   assert.equal((await fs.stat(path.join(projectPath, '30_translation', 'image_translation', 'for_translation', 'attempts'))).isDirectory(), true);
   assert.equal((await fs.stat(path.join(projectPath, '50_test', 'release-runtime'))).isDirectory(), true);
+  for (const directory of [
+    path.join('10_extract', 'exports'),
+    path.join('30_translation', 'exports', 'source'),
+    path.join('30_translation', 'exports', 'translated'),
+    path.join('50_test', 'artifacts'),
+    path.join('90_tools', 'scripts', 'test'),
+    path.join('90_tools', 'work', 'extract'),
+    path.join('90_tools', 'work', 'translation'),
+    path.join('90_tools', 'work', 'build'),
+    path.join('90_tools', 'work', 'test'),
+  ]) assert.equal((await fs.stat(path.join(projectPath, directory))).isDirectory(), true);
+  const projectArtifactManifest = path.join(projectPath, '90_tools', 'PROJECT_ARTIFACT_MANIFEST.tsv');
+  assert.match(await fs.readFile(projectArtifactManifest, 'utf8'), /^artifact_key\tstage\tclass\tlifecycle\tpath\tproducer\treproduce_command\tsha256\tstatus\tnotes\r?\n$/);
+  assert.match(runNode('artifact-harness.mjs', ['--project-root', projectPath, '--validate']), /Issues: 0/);
   const sessionState = JSON.parse(await fs.readFile(path.join(projectPath, '50_test', 'eden', 'SESSION.json'), 'utf8'));
   assert.equal(sessionState.schema_version, 2);
   assert.equal(sessionState.backend, null);
@@ -1093,6 +1107,109 @@ test('project scaffold emits branch policies and validates', async () => {
     runNodeFailureOutput('validate-translation-projects.mjs', ['--titles-root', titlesRoot]),
     /user-gate requires text_review_approval=pending or approved/,
   );
+  await fs.rm(tempRoot, { recursive: true, force: true });
+});
+
+test('project artifact manifest owns exports, translations, test artifacts, scripts, and cleanup lifecycle', async () => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'game-translate-artifacts-'));
+  const projectRoot = path.join(tempRoot, 'title', '_work', '0123456789ABCDEF');
+  await fs.mkdir(projectRoot, { recursive: true });
+  await fs.writeFile(path.join(tempRoot, 'title', 'fixture.nsp'), 'source');
+  assert.match(runNode('artifact-harness.mjs', ['--project-root', projectRoot, '--init']), /Issues: 0/);
+
+  const files = [
+    ['extract/source-export', 'extract', 'source-export', 'reproducible', '10_extract/exports/dialogue.json', 'extractor', 'extract --output 10_extract/exports/dialogue.json', 'complete'],
+    ['translation/output', 'translation', 'translation-output', 'canonical', '30_translation/exports/translated/dialogue.ko.json', 'translator', '', 'complete'],
+    ['test/probe', 'test', 'test-artifact', 'disposable', '50_test/artifacts/layout-probe.bin', 'probe.ps1', '', 'failed'],
+    ['test/script', 'test', 'test-script', 'reproducible', '90_tools/scripts/test/probe.ps1', 'author', 'pwsh 90_tools/scripts/test/probe.ps1', 'complete'],
+  ];
+  for (const [key, stage, artifactClass, lifecycle, relative, producer, reproduce, status] of files) {
+    const absolute = path.join(projectRoot, ...relative.split('/'));
+    await fs.mkdir(path.dirname(absolute), { recursive: true });
+    await fs.writeFile(absolute, key);
+    const registerArgs = [
+      '--project-root', projectRoot,
+      '--register',
+      '--artifact-key', `0123456789ABCDEF/${key}`,
+      '--stage', stage,
+      '--class', artifactClass,
+      '--lifecycle', lifecycle,
+      '--path', relative,
+      '--producer', producer,
+      '--status', status,
+      '--notes', 'fixture',
+    ];
+    if (reproduce) registerArgs.push('--reproduce-command', reproduce);
+    assert.match(runNode('artifact-harness.mjs', registerArgs), /Registered:/);
+  }
+  const manifestPath = path.join(projectRoot, '90_tools', 'PROJECT_ARTIFACT_MANIFEST.tsv');
+  assert.match(runNode('artifact-harness.mjs', ['--project-root', projectRoot]), /Indexed: 4; Managed files: 4; Issues: 0/);
+
+  await fs.writeFile(path.join(projectRoot, 'HANDOFF.md'), '# Handoff\n');
+  await fs.mkdir(path.join(projectRoot, '50_test', 'eden'), { recursive: true });
+  runNode('clean-translation-project.mjs', ['--project-root', projectRoot]);
+  const plan = JSON.parse(await fs.readFile(path.join(projectRoot, '90_tools', 'CLEANUP_PLAN.json'), 'utf8'));
+  assert.equal(plan.artifact_layout.indexed, 4);
+  assert.equal(plan.artifact_layout.issues.length, 0);
+  const sourceExport = plan.candidates.find((candidate) => candidate.path.replaceAll('\\', '/') === '10_extract/exports/dialogue.json');
+  const testProbe = plan.candidates.find((candidate) => candidate.path.replaceAll('\\', '/') === '50_test/artifacts/layout-probe.bin');
+  assert.equal(sourceExport.blocked, false);
+  assert.match(sourceExport.reason, /artifact-index-reproducible/);
+  assert.equal(testProbe.blocked, false);
+  assert.match(testProbe.reason, /artifact-index-disposable/);
+  assert.equal(plan.candidates.some((candidate) => candidate.path.includes('dialogue.ko.json')), false);
+
+  sourceExport.approved = true;
+  const cleanupPlanPath = path.join(projectRoot, '90_tools', 'CLEANUP_PLAN.json');
+  await fs.writeFile(cleanupPlanPath, `${JSON.stringify(plan, null, 2)}\n`);
+  const cleanupPlanSha = crypto.createHash('sha256').update(await fs.readFile(cleanupPlanPath)).digest('hex');
+  assert.match(runNode('clean-translation-project.mjs', [
+    '--project-root', projectRoot,
+    '--plan', cleanupPlanPath,
+    '--apply',
+    '--plan-sha256', cleanupPlanSha,
+  ]), /ARCHIVED\s+10_extract[\\/]exports[\\/]dialogue\.json/);
+  const archivedManifestText = await fs.readFile(manifestPath, 'utf8');
+  assert.match(archivedManifestText, /10_extract\/exports\/dialogue\.json\textractor\textract --output 10_extract\/exports\/dialogue\.json\t[0-9a-f]{64}\tarchived\t/);
+  assert.match(runNode('artifact-harness.mjs', ['--project-root', projectRoot]), /Issues: 0/);
+
+  const unregistered = path.join(projectRoot, '50_test', 'artifacts', 'orphan.log');
+  await fs.writeFile(unregistered, 'orphan');
+  assert.match(runNodeFailureOutput('artifact-harness.mjs', ['--project-root', projectRoot]), /Unregistered artifact in a managed harness root/);
+  runNode('clean-translation-project.mjs', ['--project-root', projectRoot]);
+  const blockedPlan = JSON.parse(await fs.readFile(path.join(projectRoot, '90_tools', 'CLEANUP_PLAN.json'), 'utf8'));
+  const orphan = blockedPlan.candidates.find((candidate) => candidate.path.replaceAll('\\', '/') === '50_test/artifacts/orphan.log');
+  assert.equal(orphan.blocked, true);
+  assert.match(orphan.evidence, /missing from 90_tools\/PROJECT_ARTIFACT_MANIFEST\.tsv/);
+  await fs.rm(tempRoot, { recursive: true, force: true });
+});
+
+test('project boundary forbids title escape and wrong functional output roots', async () => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'game-translate-boundary-'));
+  const titleRoot = path.join(tempRoot, 'FixtureTitle');
+  const projectRoot = path.join(titleRoot, '_work', '0123456789ABCDEF');
+  await fs.mkdir(path.join(projectRoot, '30_translation', 'exports', 'translated'), { recursive: true });
+  await fs.mkdir(path.join(projectRoot, '50_test', 'artifacts'), { recursive: true });
+  await fs.writeFile(path.join(titleRoot, 'fixture.nsp'), 'source');
+  assert.match(runNode('validate-project-boundary.mjs', [
+    '--project-root', projectRoot,
+    '--stage', 'translation',
+    '--assert-output', path.join(projectRoot, '30_translation', 'exports', 'translated', 'dialogue.json'),
+  ]), /Issues: 0/);
+  assert.match(runNodeFailureOutput('validate-project-boundary.mjs', [
+    '--project-root', projectRoot,
+    '--stage', 'translation',
+    '--assert-output', path.join(titleRoot, 'escaped-output.json'),
+  ]), /escapes the exact title project workspace/);
+  assert.match(runNodeFailureOutput('validate-project-boundary.mjs', [
+    '--project-root', projectRoot,
+    '--stage', 'test',
+    '--assert-output', path.join(projectRoot, '30_translation', 'wrong-test-output.log'),
+  ]), /Output for stage=test must stay under/);
+  await fs.mkdir(path.join(projectRoot, 'unscoped-output'), { recursive: true });
+  assert.match(runNodeFailureOutput('validate-project-boundary.mjs', [
+    '--project-root', projectRoot,
+  ]), /Project-root item is outside the canonical functional roots/);
   await fs.rm(tempRoot, { recursive: true, force: true });
 });
 

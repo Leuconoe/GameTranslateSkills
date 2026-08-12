@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { flag, option, parseArgs, requiredOption } from './lib/args.mjs';
+import { artifactIndexHeader, artifactLayoutDirectories } from './lib/project-artifacts.mjs';
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const sourcePackageExtensions = new Set(['.nsp', '.xci']);
@@ -239,6 +240,7 @@ async function main() {
     ['90_tools', 'scripts'],
     ['90_tools', 'environment'],
     ['90_tools', 'cleanup'],
+    ...artifactLayoutDirectories,
   ];
   for (const folder of folders) await fs.mkdir(path.join(project, ...folder), { recursive: true });
 
@@ -279,6 +281,7 @@ async function main() {
 - target_language_slot: pending
 - release_contract: NSW-LayeredFS — \`40_build/releases/${id}.zip\`, ZIP root \`${id}/romfs/\`
 - Temporary artifacts: project-local only under this \`_work\` root; use \`tmp-<stage>-<purpose>\` or \`*.tmp\` for disposable files
+- Artifact layout: export·번역 중간물·테스트 산출물/스크립트는 \`$GT_HOME/common/artifact-layout-contract.md\`의 managed root에 두고 \`90_tools/PROJECT_ARTIFACT_MANIFEST.tsv\`에 lifecycle·producer·hash를 등록
 - Canonical MCP QA state: \`50_test/eden/SESSION.json\` and \`50_test/eden/ARTIFACT_MANIFEST.tsv\`; despite the historical folder name this is the one shared title ledger for Eden-MCP/Ryubing-MCP, and routine QA reuses it instead of creating session/copy files
 - Final QA: separately run an allowlisted official-site distribution release directly without MCP and validate \`50_test/RELEASE_RUNTIME_QA.json\`; MCP smoke evidence never qualifies as final PASS
 - Canonical NSW package: a user request for \`빌드 생성\` or \`패치 생성\` runs \`npm run release:package:nsw -- --project-root "<this project>" --replace\`; it packages only \`40_build/layeredfs/${id}/romfs/\` into \`40_build/releases/${id}.zip\` with ZIP entries rooted at \`${id}/romfs/\`
@@ -394,6 +397,7 @@ Record placeholders, ruby syntax, link markers, line-break representation, and n
   await writeIfMissing(path.join(project, '30_translation', 'image_translation', 'reference', 'image_manifest.tsv'), 'id\tsource_archive\ttexture_key\tx\ty\twidth\theight\tlanguage\thash\tsource_text\ttarget_ko\tstatus\tnotes\n');
   await writeIfMissing(path.join(project, '30_translation', 'image_translation', 'IMAGE_GENERATION_MANIFEST.tsv'), `${imageGenerationManifestHeader}\n`);
   await writeIfMissing(path.join(project, '40_build', 'BUILD_MANIFEST.tsv'), 'build_id\tdate\tscope\tsource_clean_path\toutput_path\tsize_bytes\tsha256\tdevice_result\tnotes\n');
+  await writeIfMissing(path.join(project, '90_tools', 'PROJECT_ARTIFACT_MANIFEST.tsv'), `${artifactIndexHeader.join('\t')}\n`);
 
   console.log(project);
 }

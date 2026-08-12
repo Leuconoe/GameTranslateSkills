@@ -1,5 +1,5 @@
 {
-  "schema_version": 6,
+  "schema_version": 7,
   "entry_skill": "gt-analyze",
   "convergence_skill": "gt-qa",
   "release_skill": "gt-release",
@@ -71,6 +71,37 @@
     "final_launch_mode": "direct",
     "final_mcp_allowed": false,
     "final_result": "pass"
+  },
+  "artifact_layout_contract": {
+    "document": "common/artifact-layout-contract.md",
+    "manifest": "90_tools/PROJECT_ARTIFACT_MANIFEST.tsv",
+    "initializer_validator": "scripts/artifact-harness.mjs",
+    "managed_roots": [
+      "10_extract/exports/",
+      "30_translation/exports/source/",
+      "30_translation/exports/translated/",
+      "50_test/artifacts/",
+      "90_tools/scripts/test/",
+      "90_tools/work/<stage>/"
+    ],
+    "protected_lifecycles": ["canonical", "evidence"],
+    "cleanup_lifecycles": ["reproducible", "disposable"]
+  },
+  "workspace_boundary_contract": {
+    "document": "common/workspace-boundary-contract.md",
+    "validator": "scripts/validate-project-boundary.mjs",
+    "root": "<TITLE_ROOT>/_work/<PROJECT_ID>/",
+    "project_root_escape_allowed": false,
+    "link_or_reparse_allowed": false,
+    "stage_roots": {
+      "source": ["00_source/"],
+      "extract": ["10_extract/", "90_tools/work/extract/"],
+      "reference": ["20_reference/"],
+      "translation": ["30_translation/", "90_tools/work/translation/"],
+      "build": ["40_build/", "90_tools/work/build/"],
+      "test": ["50_test/", "90_tools/scripts/test/", "90_tools/work/test/"],
+      "tools": ["90_tools/"]
+    }
   },
   "nsw_release_package_contract": {
     "skill": "gt-nsw-build",

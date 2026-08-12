@@ -13,6 +13,8 @@ description: "Archive exact cleanup candidates for one game title project, fully
 ## 읽기 순서와 보존 anchor
 
 먼저 `$GT_HOME/common/SAFETY.md`, `project-structure.md`, `cleanup-contract.md`,
+`artifact-layout-contract.md`,
+`workspace-boundary-contract.md`,
 `qa-session-rules.md`와 프로젝트의 `PROJECT.md`, `WORK_LOG.md`, `HANDOFF.md`를 읽는다.
 다음 항목은 참조가 줄어도 기본 보존한다.
 
@@ -24,6 +26,7 @@ PROJECT.md / WORK_LOG.md / HANDOFF.md
 50_test/ TEST_LOG.md·screenshots·logs·emucap 증거
 50_test/eden/SESSION.json·ARTIFACT_MANIFEST.tsv
 90_tools/ 재현 스크립트·환경 선언·cleanup-archive
+90_tools/PROJECT_ARTIFACT_MANIFEST.tsv 및 lifecycle=canonical/evidence 항목
 ```
 
 Handoff의 `open` evidence, manifest가 참조하는 파일, 현재 active session이 사용하는
@@ -36,8 +39,13 @@ Handoff의 `open` evidence, manifest가 참조하는 파일, 현재 active sessi
 2. `SESSION.json`과 remote 상태를 비교한다. active/pending/소유권 불명 세션의 파일은
    `BLOCKED`로 둔다. 이전 세션은 `last_session_id`와 `remote_close_session_id`가 exact
    일치하기 전까지 승인하지 않는다.
-3. `ARTIFACT_MANIFEST.tsv`, Handoff, PROJECT, WORK_LOG, QA·릴리스 문서와 파일 해시를
-   대조해 exact 파일 후보와 보존 anchor를 나눈다. 디렉터리·glob은 승인하지 않는다.
+3. MCP `50_test/eden/ARTIFACT_MANIFEST.tsv`와 프로젝트 전체
+   `90_tools/PROJECT_ARTIFACT_MANIFEST.tsv`, Handoff, PROJECT, WORK_LOG, QA·릴리스 문서와
+   파일 해시를 대조해 exact 파일 후보와 보존 anchor를 나눈다. project artifact manifest의
+   `canonical`·`evidence`는 보존하고, 실제 hash가 일치하는 `reproducible`·`disposable`만
+   후보로 삼는다. 미등록 managed-root 파일은 `BLOCKED`다. 디렉터리·glob은 승인하지 않는다.
+   `LOG`·`REPORT` 같은 이름이어도 비정상적으로 큰 binary/runtime 파일을 제어 문서로
+   통째로 읽지 않는다. 크기와 경로를 별도 경고로 기록하고 artifact lifecycle을 먼저 확정한다.
 4. 다음 명령으로 canonical 계획과 지시서를 생성한다.
 
    ```text
@@ -108,6 +116,7 @@ npm run project:cleanup -- --project-root "<프로젝트 루트>" --review-archi
 ## 완료 기준
 
 - [ ] 기본 실행은 파일 이동·삭제 없이 계획만 생성함
+- [ ] PROJECT_ARTIFACT_MANIFEST.tsv의 경로·lifecycle·producer·재생성 명령·SHA-256을 전수 검증함
 - [ ] `--apply`는 exact 승인 파일을 아카이브하고 영구 삭제 0건을 보고함
 - [ ] 아카이브 전체와 프로젝트 전체를 다시 검사한 상세 보고서가 생성됨
 - [ ] 상세 보고를 사용자에게 전달한 뒤 같은 turn에서 멈춤

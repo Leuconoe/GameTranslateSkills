@@ -11,12 +11,17 @@
 1. `$GT_HOME/common/SAFETY.md`
 2. `$GT_HOME/common/project-structure.md`
 3. `$GT_HOME/platforms/<platform>/PLATFORM.md`와 현재 단계의 플랫폼 문서
-4. 프로젝트의 `PROJECT.md`, `WORK_LOG.md`, 존재하면 `HANDOFF.md`
-5. 현재 입력 manifest·검수 시트·출력 폴더의 수정 시각, 크기, SHA-256, `git status`
-6. 현재 문서가 참조하는 상대 경로의 존재 여부와 대소문자·폴더 위치
-7. NSW QA이면 `$GT_HOME/common/qa-session-rules.md`와 `50_test/eden/SESSION.json`,
+4. `$GT_HOME/common/workspace-boundary-contract.md`와 현재 단계의 모든 output/temp/cache에
+   대한 `project:boundary --stage ... --assert-output ...` 결과
+5. 프로젝트의 `PROJECT.md`, `WORK_LOG.md`, 존재하면 `HANDOFF.md`
+6. 현재 입력 manifest·검수 시트·출력 폴더의 수정 시각, 크기, SHA-256, `git status`
+7. export·번역 중간물·테스트 산출물/스크립트가 있으면
+   `$GT_HOME/common/artifact-layout-contract.md`, `90_tools/PROJECT_ARTIFACT_MANIFEST.tsv`,
+   `npm run project:artifacts -- --project-root "<프로젝트>" --validate` 결과
+8. 현재 문서가 참조하는 상대 경로의 존재 여부와 대소문자·폴더 위치
+9. NSW QA이면 `$GT_HOME/common/qa-session-rules.md`와 `50_test/eden/SESSION.json`,
    `ARTIFACT_MANIFEST.tsv`
-8. NSW 최종 QA/릴리스이면 `$GT_HOME/common/release-runtime-contract.md`,
+10. NSW 최종 QA/릴리스이면 `$GT_HOME/common/release-runtime-contract.md`,
    `platforms/nsw/runtime-emulators.json`, `50_test/RELEASE_RUNTIME_QA.json`
 
 규칙의 우선순위는 다음과 같다.
@@ -68,6 +73,7 @@ release_status: pending                # pipeline-contract.json의 release_statu
 release_contract: platform-adapter    # 플랫폼 문서의 정확한 경로·파일명 사용
 qa_session_state: 50_test/eden/SESSION.json
 artifact_manifest: 50_test/eden/ARTIFACT_MANIFEST.tsv
+project_artifact_manifest: 90_tools/PROJECT_ARTIFACT_MANIFEST.tsv
 ```
 
 - 공통 번역 배치는 편집 대상 80행이다. 타이틀이 40행을 사용해야 하면 `PROJECT.md`에
@@ -114,6 +120,8 @@ artifact_manifest: 50_test/eden/ARTIFACT_MANIFEST.tsv
   확인하지 않고 새 세션·timestamp 세션 폴더를 만들려 함
 - 동일 `artifact_key`가 여러 경로에 있거나 `SESSION-2.json`, `session-*`, `run-*`, `(1)`·`copy`
   산출물이 발견됨
+- managed artifact root에 미등록 파일·link가 있거나 project artifact manifest의 class 경로·
+  lifecycle·producer·재생성 명령·SHA-256이 실제 파일과 일치하지 않음
 
 경고는 다음처럼 분류한다.
 

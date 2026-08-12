@@ -21,16 +21,27 @@ description: "Orchestrate a fail-closed Korean game-localization workflow across
 
 1. `$GT_HOME/common/SAFETY.md`
 2. `$GT_HOME/common/project-structure.md`
-3. `$GT_HOME/common/preflight-checks.md`
-4. `$GT_HOME/common/pipeline-contract.md`와 `pipeline-contract.json`
-5. 플랫폼 어댑터 `platforms/<platform>/PLATFORM.md`와 현재 단계 문서
-6. 엔진을 식별한 뒤 `engines/<engine>/ENGINE.md`
+3. `$GT_HOME/common/workspace-boundary-contract.md`
+4. `$GT_HOME/common/preflight-checks.md`
+5. `$GT_HOME/common/pipeline-contract.md`와 `pipeline-contract.json`
+6. 플랫폼 어댑터 `platforms/<platform>/PLATFORM.md`와 현재 단계 문서
+7. 엔진을 식별한 뒤 `engines/<engine>/ENGINE.md`
 
 타이틀 루트는 원본 `.nsp`/`.xci`가 직접 있는 실제 폴더다. 작업물·임시 파일·staging·
 런타임 증거는 그 폴더의 `_work/<프로젝트 ID>/` 아래에만 둔다. `GT_HOME`, 저장소 루트,
 OS 임시 폴더, 공용 MCP 디렉터리, 임의 `title`/`output`/`temp` 폴더를 출력 경로로 쓰지
 않는다. 프로젝트·플랫폼·엔진·Title ID·정책을 확정하지 못하면 변경·삭제·런타임을 하지
 않고 `WARN`/`BLOCKED`와 Handoff만 기록한다.
+
+도구가 만드는 export·번역 중간물·테스트 산출물/스크립트는
+`$GT_HOME/common/artifact-layout-contract.md`의 class별 managed root에 두고
+`90_tools/PROJECT_ARTIFACT_MANIFEST.tsv`에 artifact key, producer, reproduce command,
+lifecycle, status, SHA-256을 기록한다. 기존 프로젝트는 작업 전
+`npm run project:artifacts -- --project-root "<프로젝트 루트>" --init`으로 하네스를 만든다.
+managed root의 미등록 파일이나 hash drift가 있으면 해당 단계는 `BLOCKED`다.
+모든 쓰기 명령 전에는 `npm run project:boundary -- --project-root "<프로젝트 루트>"
+--stage <기능> --assert-output "<output/temp/cache>"`로 각 경로를 검사한다. 하나라도 프로젝트
+밖이거나 기능별 canonical root 밖이면 명령을 실행하지 않는다.
 
 ## 1. 실제 단계 흐름
 
@@ -157,7 +168,8 @@ local `--action close --remote-closed`를 실행한다. 소유권을 증명할 �
 사용한다.
 
 - `gt-project-cleanup`: 하나의 타이틀 `_work/<ID>`에 대해 Handoff·manifest·세션·참조를
-  추론해 `CLEANUP_PLAN.json`과 `CLEANUP_INSTRUCTIONS.md` 생성
+  추론하고 `PROJECT_ARTIFACT_MANIFEST.tsv`의 lifecycle을 대조해 `CLEANUP_PLAN.json`과
+  `CLEANUP_INSTRUCTIONS.md` 생성
 - `gt-workspace-cleanup`: 작업장 루트의 타이틀 중복·미등록 폴더·세션 잔재를 Handoff와
   프로젝트 상태로 대조해 외부 보고서/계획 생성
 
@@ -172,6 +184,8 @@ local `--action close --remote-closed`를 실행한다. 소유권을 증명할 �
 지원되지 않거나 실패하면 영구 삭제로 폴백하지 않고 `BLOCKED`로 중단한다. 보고 이후
 상태가 바뀌면 `--review-archive`로 재검토하고 모든 승인을 초기화한다. active 세션·보존
 anchor·link/reparse point·계획 밖 경로는 항상 거부한다.
+`canonical`·`evidence` 아티팩트는 보존하고, hash가 일치하는 `reproducible`·`disposable`
+exact 파일만 승인 후보로 삼는다. 미등록 managed-root 파일은 자동 삭제하지 않는다.
 
 ## 9. 신규 프로젝트·완료
 

@@ -5,6 +5,8 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { flag, option, parseArgs } from './lib/args.mjs';
+import { artifactIndexRelative, artifactLayoutDirectories, validateArtifactLayout } from './lib/project-artifacts.mjs';
+import { validateProjectBoundary } from './lib/project-boundary.mjs';
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const execFileAsync = promisify(execFile);
@@ -39,6 +41,7 @@ const requiredDirectories = [
   ['90_tools', 'scripts'],
   ['90_tools', 'environment'],
   ['90_tools', 'cleanup'],
+  ...artifactLayoutDirectories,
 ];
 const requiredFiles = [
   ['PROJECT.md'],
@@ -54,6 +57,7 @@ const requiredFiles = [
   ['50_test', 'TEST_LOG.md'],
   ['50_test', 'eden', 'SESSION.json'],
   ['50_test', 'eden', 'ARTIFACT_MANIFEST.tsv'],
+  artifactIndexRelative.split(path.sep),
 ];
 
 const policyRules = {
@@ -505,6 +509,14 @@ async function main() {
       }
     }
     await validateMcpSessionState(project, id, issues);
+    const boundary = await validateProjectBoundary(project);
+    for (const issue of boundary.issues) {
+      issues.push({ severity: 'ERROR', titleId: id, item: issue.path, problem: `Project boundary validation failed: ${issue.problem}` });
+    }
+    const artifactLayout = await validateArtifactLayout(project);
+    for (const issue of artifactLayout.issues) {
+      issues.push({ severity: 'ERROR', titleId: id, item: issue.path, problem: `Artifact layout validation failed: ${issue.problem}` });
+    }
 
     const layeredFsRoot = path.join(project, '40_build', 'layeredfs');
     if (!(await isType(path.join(layeredFsRoot, id, 'romfs'), 'directory'))) {

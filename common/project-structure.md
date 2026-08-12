@@ -6,6 +6,11 @@
 
 ## 1. 프로젝트 격리 원칙
 
+정확한 경계와 기능별 write root는
+[`workspace-boundary-contract.md`](workspace-boundary-contract.md)를 적용하고, 파일 생성 전
+`project:boundary --stage <stage> --assert-output <path>`로 모든 output/temp/cache 경로를
+검증한다.
+
 - 프로젝트의 식별자는 플랫폼별 고유 ID(예: NSW의 베이스 Title ID)다. 생성물은 반드시 `<릴리스 폴더>/_work/<프로젝트 ID>/` 아래에만 둔다.
 - 실제 타이틀 루트는 원본 `.nsp` 또는 `.xci`가 직접 존재하는 폴더로 확정한다. `_title`/`_titles`는
   타이틀 컨테이너일 뿐이며, 그 안에 패키지가 없는 `title`·`game`·`output` 폴더를 새로 만들어
@@ -34,20 +39,32 @@ _work/<프로젝트 ID>/
   WORK_LOG.md              명령·오류·검증의 단일 작업 로그
   00_source/               원본 인벤토리 (SOURCE_INVENTORY.tsv: 크기·SHA-256)
   10_extract/              추출물 (romfs_original 등, 읽기 전용 취급) / decompiled
+    exports/               추출기·엔진 export (`source-export`)
   20_reference/            읽기 전용 참고 자료 (외부 패치, 폰트, 문서)
   30_translation/          ANALYSIS.md (공통 분석: 엔진·언어 슬롯·번역 대상 분류·재현 명령)
                            text(manifest, glossary, STYLE, batches, reports, reviews, font QA)
                            image_translation(IMAGE_GENERATION_MANIFEST.tsv, reference,
                              for_translation, prompts, receipts, probes, reports)
                            text(glossary, manifest, batches, reports) / image_translation
+    exports/source/        번역 입력용 export (`translation-source`)
+    exports/translated/    번역 완료 export (`translation-output`)
   40_build/                staging / 패치 트리 / releases / BUILD_MANIFEST.tsv
   50_test/                 TEST_LOG.md / screenshots / logs / emucap(선택적 원장·증거)
                            eden/SESSION.json / ARTIFACT_MANIFEST.tsv (양쪽 MCP 공유, 각각 1개)
                            RELEASE_RUNTIME_QA.json / release-runtime/ACTIVE_MOD_MANIFEST.tsv
+    artifacts/             덤프·probe·비교 결과 (`test-artifact`)
   90_tools/                게임별 scripts / environment / cleanup-archive(정리 복구 영역)
+    PROJECT_ARTIFACT_MANIFEST.tsv  export·중간물·테스트 도구의 소유권·수명·hash 원장
+    scripts/test/          타이틀별 테스트 스크립트 (`test-script`)
+    work/<stage>/          extract/translation/build/test 중간물·cache
 ```
 
 - `20_reference`는 읽기 전용 원본과 재조립 정보만. 직접 수정하는 이미지는 `30_translation/.../for_translation`에만.
+- export·번역 중간물·테스트 산출물/스크립트는
+  [`artifact-layout-contract.md`](artifact-layout-contract.md)의 class별 managed root와
+  `90_tools/PROJECT_ARTIFACT_MANIFEST.tsv`에 함께 등록한다. `canonical`·`evidence`는 보존하고,
+  검증된 `reproducible`·`disposable`만 cleanup 후보가 된다. managed root의 미등록 파일은
+  이름과 무관하게 `BLOCKED`다.
 - 실패한 빌드·조사용 출력물을 최종 패치 트리에 섞지 않는다.
 - `PROJECT.md`에는 이미지 범위 정책 `image_scope`를 처음에는 `pending`으로 두고, 전체
   inventory 후 `required` 또는 `N/A`로 확정한다. `N/A`인 프로젝트는 `ANALYSIS.md`에 0건

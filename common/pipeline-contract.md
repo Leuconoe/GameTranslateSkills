@@ -4,6 +4,14 @@
 스킬 본문에 예전 단계 번호나 사용자 승인 규칙을 따로 정의하지 말고 이 계약을 따른다.
 기계 검증기는 같은 내용을 [`pipeline-contract.json`](pipeline-contract.json)에서 읽는다.
 
+번역 중 생성되는 export·번역 중간물·테스트 산출물/스크립트의 위치와 수명은
+[`artifact-layout-contract.md`](artifact-layout-contract.md) 및
+`90_tools/PROJECT_ARTIFACT_MANIFEST.tsv`가 고정한다. managed root의 파일은 경로·producer·lifecycle·
+SHA-256을 등록하며, 미등록 파일을 자동 정리하지 않는다.
+모든 생성 경로의 상위 경계와 기능별 write root는
+[`workspace-boundary-contract.md`](workspace-boundary-contract.md)가 고정하며, 실행 전
+`project:boundary --stage ... --assert-output ...` 검증 실패 시 쓰기 명령을 실행하지 않는다.
+
 ## 기본 흐름
 
 ```text

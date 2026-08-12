@@ -13,6 +13,7 @@ description: "Archive exact cleanup candidates from a game-translation workspace
 
 - 작업장 루트의 literal 절대 경로
 - 각 프로젝트의 `PROJECT.md`, `WORK_LOG.md`, `HANDOFF.md`, canonical manifest
+- 각 프로젝트의 `90_tools/PROJECT_ARTIFACT_MANIFEST.tsv`와 `artifact-layout-contract.md`
 - `50_test/eden/SESSION.json`과 `ARTIFACT_MANIFEST.tsv`, remote 세션 상태
 - active 프로세스와 `git status`
 - `$GT_HOME/common/SAFETY.md`, `project-structure.md`, `cleanup-contract.md`
@@ -25,7 +26,8 @@ description: "Archive exact cleanup candidates from a game-translation workspace
 1. 루트 직계 항목과 모든 `_work` 프로젝트를 inventory한다. 비정규 루트 폴더·복사본·
    세션 잔재는 이름만으로 판정하지 않는다.
 2. 모든 Handoff의 `open` evidence와 PROJECT/WORK_LOG/manifest/QA/릴리스 참조를 보존
-   anchor로 수집한다.
+   anchor로 수집한다. project artifact manifest의 `canonical`·`evidence`를 보존하고,
+   `reproducible`·`disposable`과 미등록 managed-root 파일을 프로젝트 cleanup으로 인계한다.
 3. active/pending/소유권 불명 세션과 link/reparse point는 `BLOCKED`로 둔다. 파일만 exact
    후보로 만들며 디렉터리는 child-level 계획 없이는 승인하지 않는다.
 4. 다음 명령으로 작업장 밖에 계획과 지시서를 만든다.
@@ -93,6 +95,7 @@ backend·원래 아카이브 경로·복구 지침과 root/project 재inventory 
 ## 완료 기준
 
 - [ ] 기본 실행은 파일 이동·삭제 없이 계획만 생성함
+- [ ] 각 PROJECT_ARTIFACT_MANIFEST.tsv와 managed-root 미등록 파일 상태가 재inventory됨
 - [ ] `--apply`는 exact 승인 파일을 작업장 밖 아카이브로 이동하고 영구 삭제 0건을 보고함
 - [ ] 아카이브 전체와 작업장 전체의 재검토 상세 보고서가 생성됨
 - [ ] 상세 보고를 사용자에게 전달한 뒤 같은 turn에서 멈춤

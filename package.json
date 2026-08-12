@@ -11,6 +11,8 @@
     "tools:install": "node setup/install-tools.mjs",
     "project:new": "node scripts/new-translation-project.mjs",
     "project:validate": "node scripts/validate-translation-projects.mjs",
+    "project:artifacts": "node scripts/artifact-harness.mjs",
+    "project:boundary": "node scripts/validate-project-boundary.mjs",
     "project:cleanup": "node scripts/clean-translation-project.mjs",
     "project:clean": "node scripts/clean-translation-project.mjs",
     "project:qa-session": "node scripts/qa-session.mjs",

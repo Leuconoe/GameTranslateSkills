@@ -2,6 +2,11 @@
 
 정리는 파일명이 `tmp`인지 여부만으로 결정하지 않는다. 프로젝트의 `HANDOFF.md`,
 `PROJECT.md`, `WORK_LOG.md`, canonical manifest, 활성 세션 상태와 파일 해시를 함께 읽는다.
+export·번역 중간물·테스트 산출물/스크립트는
+[`artifact-layout-contract.md`](artifact-layout-contract.md)와
+`90_tools/PROJECT_ARTIFACT_MANIFEST.tsv`의 lifecycle을 추가로 읽는다. `canonical`·`evidence`는
+보존 anchor이며, `reproducible`·`disposable` 중 현재 hash가 일치하는 exact 파일만 후보가
+될 수 있다. managed root의 미등록 파일은 자동 삭제하지 않고 `BLOCKED`로 보고한다.
 모든 정리는 다음 상태 전이만 허용한다.
 
 ```text

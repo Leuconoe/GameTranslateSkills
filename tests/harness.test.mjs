@@ -377,6 +377,25 @@ test('skill bundle contract validates', () => {
   assert.match(runNode('validate-skill-bundle.mjs'), /Issues: 0/);
 });
 
+test('NSW build and patch requests route to the dedicated canonical build skill', async () => {
+  const contract = JSON.parse(await fs.readFile(path.join(repositoryRoot, 'common', 'pipeline-contract.json'), 'utf8'));
+  const orchestrator = await fs.readFile(path.join(repositoryRoot, 'skills', 'game-translate', 'SKILL.md'), 'utf8');
+  const releaseSkill = await fs.readFile(path.join(repositoryRoot, 'skills', 'gt-release', 'SKILL.md'), 'utf8');
+  const buildSkill = await fs.readFile(path.join(repositoryRoot, 'skills', 'gt-nsw-build', 'SKILL.md'), 'utf8');
+
+  assert.equal(contract.nsw_release_package_contract.skill, 'gt-nsw-build');
+  for (const trigger of ['빌드 생성', '패치 생성']) {
+    assert.match(buildSkill, new RegExp(trigger));
+    assert.match(orchestrator, new RegExp(trigger));
+  }
+  assert.match(orchestrator, /전담 `gt-nsw-build`/);
+  assert.match(releaseSkill, /`gt-nsw-build`에 위임/);
+  assert.match(buildSkill, /40_build\/releases\/<BASE_TITLE_ID>\.zip/);
+  assert.match(buildSkill, /<BASE_TITLE_ID>\/romfs\/<패치파일>/);
+  assert.match(buildSkill, /release:validate:nsw/);
+  assert.match(buildSkill, /release_status=released/);
+});
+
 test('NSW build and patch packaging creates only the canonical Title-ID/romfs ZIP', async () => {
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'game-translate-nsw-release-'));
   const titleId = '0123456789ABCDEF';

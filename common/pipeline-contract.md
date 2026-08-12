@@ -67,11 +67,12 @@ qa_ready ≠ review_ready ≠ user-approved ≠ PASS (runtime) ≠ released
 | `gt-qa` | build/test manifest, 단일 MCP smoke 원장, 공식 배포 릴리즈 runtime receipt | 릴리스 |
 | `gt-release` | adapter 계약의 canonical package와 notes | 완료 |
 
-NSW에서 사용자의 `빌드 생성` 또는 `패치 생성` 요청은 `gt-release`의 canonical package
-생성을 뜻한다. 입력은 `40_build/layeredfs/<BASE_TITLE_ID>/romfs/`, 출력은
+NSW에서 사용자의 `빌드 생성` 또는 `패치 생성` 요청은 전담 `gt-nsw-build`의 canonical
+package 생성을 뜻한다. 입력은 `40_build/layeredfs/<BASE_TITLE_ID>/romfs/`, 출력은
 `40_build/releases/<BASE_TITLE_ID>.zip`, ZIP root는
 `<BASE_TITLE_ID>/romfs/<패치파일>`로 고정한다. 자체 delta/적용기 패키지는 이 단계의
-산출물이 아니다.
+산출물이 아니다. `gt-release`는 검증된 canonical ZIP을 인계받아 정식 릴리스의 runtime,
+문서, 상태 게이트를 수행한다.
 
 각 스킬은 시작 전에 프로젝트 정책·입력 해시·canonical 경로를 확인하고, 계약을
 증명할 수 없으면 `WARN` 또는 `BLOCKED`를 기록한다. 파일 존재나 종료 코드 0만으로

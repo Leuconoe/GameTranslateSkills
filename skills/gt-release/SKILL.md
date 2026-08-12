@@ -1,6 +1,6 @@
 ---
 name: gt-release
-description: "Release/build/patch packaging stage: package a verified Korean game patch using the platform adapter's exact release contract, including when the user says 빌드 생성 or 패치 생성; exclude original data and keys and enforce canonical filenames, archive roots, deterministic hashes, and cleanup evidence."
+description: "Release a QA-verified Korean game patch using the platform adapter's exact contract, deterministic hashes, runtime evidence, notes, and cleanup evidence; for NSW build or patch packaging, consume the canonical ZIP produced by gt-nsw-build."
 ---
 
 # gt-release — 통합 QA 이후: 배포용 파일 생성
@@ -34,7 +34,8 @@ description: "Release/build/patch packaging stage: package a verified Korean gam
   ZIP 루트는 플랫폼 어댑터와 `PROJECT.md`의 계약을 그대로 사용한다.
 - 플랫폼 계약이 없거나 문서끼리 다른 이름·폴더·루트를 가리키면 패키징하지 말고 `BLOCKED`와
   `HANDOFF.md` 기록을 남긴다.
-- 사용자가 `빌드 생성` 또는 `패치 생성`이라고 하면 이 스킬의 canonical 패키징을 뜻한다.
+- 사용자가 NSW에서 `빌드 생성` 또는 `패치 생성`이라고 하면 전담 `gt-nsw-build`로
+  라우팅한다. 이 스킬은 그 결과를 받아 정식 릴리스 게이트를 계속 수행한다.
   진단 폴더·버전/candidate 하위 폴더·delta 적용기 패키지를 대신 만들지 않는다.
 - NSW의 exact 결과는 `40_build/releases/<BASE_TITLE_ID>.zip` 하나이며 내부 root는
   `<BASE_TITLE_ID>/romfs/<패치파일>`이다. 입력은
@@ -47,7 +48,8 @@ description: "Release/build/patch packaging stage: package a verified Korean gam
    - 결정적 빌드: 같은 입력 → 바이트 동일 ZIP (타임스탬프 고정)
    - 파일명·출력 폴더·ZIP 루트: 플랫폼 어댑터의 canonical 규칙을 그대로 사용하고 수동 rename하지 않는다.
    - 패키지의 SHA-256 해시 기록
-   - NSW는 다음 공용 명령으로 생성·재검증한다. 프로젝트별 임의 ZIP 코드로 우회하지 않는다.
+   - NSW는 `gt-nsw-build`에 위임해 다음 공용 명령으로 생성·재검증한다. 프로젝트별 임의
+     ZIP 코드로 우회하지 않는다.
 
      ```text
      npm run release:package:nsw -- --project-root "<타이틀 루트>/_work/<BASE_TITLE_ID>" --replace

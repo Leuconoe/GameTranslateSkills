@@ -1,6 +1,6 @@
 interface:
   display_name: "Game Patch Release"
   short_description: "Package a verified patch by adapter contract"
-  default_prompt: "Use $gt-release for release, 빌드 생성, or 패치 생성 requests. On NSW, package only 40_build/layeredfs/<BASE_TITLE_ID>/romfs into the single canonical 40_build/releases/<BASE_TITLE_ID>.zip with <BASE_TITLE_ID>/romfs/<patch-file> entries; reject delta appliers, candidate/version subfolders, keys, NSP/XCI, and wrong Title IDs, and keep released status gated by the direct non-MCP official distribution runtime receipt."
+  default_prompt: "Use $gt-release to publish a QA-verified patch. For NSW 빌드 생성 or 패치 생성, delegate canonical Title-ID/romfs ZIP creation and validation to $gt-nsw-build, then keep released status gated by the direct non-MCP official distribution runtime receipt."
 policy:
   allow_implicit_invocation: true

@@ -73,6 +73,7 @@
     "final_result": "pass"
   },
   "nsw_release_package_contract": {
+    "skill": "gt-nsw-build",
     "trigger_phrases": ["빌드 생성", "패치 생성"],
     "input": "40_build/layeredfs/<BASE_TITLE_ID>/romfs",
     "output": "40_build/releases/<BASE_TITLE_ID>.zip",

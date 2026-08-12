@@ -1,6 +1,6 @@
 {
   "name": "game-translate",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "description": "Branch-based Korean game-localization workflow with no-API built-in imagegen candidate selection, original-feel Korean image QA, one title-scoped MCP smoke session, official-distribution direct runtime QA, recoverable cleanup, and release guidance.",
   "author": {
     "name": "Leuconoe"

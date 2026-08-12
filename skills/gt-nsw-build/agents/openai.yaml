@@ -1,0 +1,4 @@
+interface:
+  display_name: "NSW Canonical Patch Build"
+  short_description: "Build and validate canonical NSW LayeredFS ZIPs"
+  default_prompt: "Use $gt-nsw-build to create and validate a canonical NSW LayeredFS patch ZIP."

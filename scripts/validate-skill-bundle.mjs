@@ -56,7 +56,13 @@ async function main() {
   const skillDirs = entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
   const expectedStageSkills = new Set(contract?.stages?.map((stage) => stage.skill) ?? []);
   const stageById = new Map((contract?.stages ?? []).map((stage) => [stage.id, stage]));
-  const expectedSkills = new Set([...expectedStageSkills, 'game-translate', 'gt-workspace-cleanup', 'gt-project-cleanup']);
+  const expectedSkills = new Set([
+    ...expectedStageSkills,
+    contract?.nsw_release_package_contract?.skill,
+    'game-translate',
+    'gt-workspace-cleanup',
+    'gt-project-cleanup',
+  ].filter(Boolean));
   for (const expected of expectedSkills) if (!skillDirs.includes(expected)) add(issues, `missing expected skill directory: ${expected}`);
   for (const actual of skillDirs) if (!expectedSkills.has(actual)) add(issues, `unexpected skill directory not present in contract: ${actual}`);
 
@@ -224,6 +230,7 @@ async function main() {
   }
   const nswRelease = contract?.nsw_release_package_contract;
   for (const [field, expected] of Object.entries({
+    skill: 'gt-nsw-build',
     input: '40_build/layeredfs/<BASE_TITLE_ID>/romfs',
     output: '40_build/releases/<BASE_TITLE_ID>.zip',
     archive_root: '<BASE_TITLE_ID>/romfs/',
@@ -232,6 +239,25 @@ async function main() {
   })) if (nswRelease?.[field] !== expected) add(issues, `contract: nsw_release_package_contract.${field} must equal ${expected}`);
   for (const trigger of ['빌드 생성', '패치 생성']) {
     if (!nswRelease?.trigger_phrases?.includes(trigger)) add(issues, `contract: missing NSW release trigger ${trigger}`);
+  }
+  const nswBuildSkill = contents.get('gt-nsw-build') ?? '';
+  for (const phrase of [
+    '빌드 생성',
+    '패치 생성',
+    '40_build/layeredfs/<BASE_TITLE_ID>/romfs/',
+    '40_build/releases/<BASE_TITLE_ID>.zip',
+    '<BASE_TITLE_ID>/romfs/<패치파일>',
+    'release:package:nsw',
+    'release:validate:nsw',
+    '--replace',
+    'apply_patch.py',
+    '*.gldelta',
+    'release_status=released',
+    'BLOCKED',
+    'HANDOFF.md',
+  ]) if (!nswBuildSkill.includes(phrase)) add(issues, `gt-nsw-build: missing canonical package gate ${phrase}`);
+  for (const phrase of ['gt-nsw-build', '빌드 생성', '패치 생성']) {
+    if (!orchestrator.includes(phrase)) add(issues, `game-translate: missing NSW build route ${phrase}`);
   }
   try {
     const scaffold = await read(path.join(repositoryRoot, 'scripts', 'new-translation-project.mjs'));

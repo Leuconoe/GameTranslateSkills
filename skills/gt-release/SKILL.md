@@ -1,6 +1,6 @@
 ---
 name: gt-release
-description: "Release stage after integrated QA: package a verified Korean game patch using the platform adapter's exact release contract, excluding original data and keys, enforcing canonical filenames, deterministic hashes, and cleanup evidence. Use when creating or packaging a translation release."
+description: "Release/build/patch packaging stage: package a verified Korean game patch using the platform adapter's exact release contract, including when the user says 빌드 생성 or 패치 생성; exclude original data and keys and enforce canonical filenames, archive roots, deterministic hashes, and cleanup evidence."
 ---
 
 # gt-release — 통합 QA 이후: 배포용 파일 생성
@@ -34,6 +34,12 @@ description: "Release stage after integrated QA: package a verified Korean game 
   ZIP 루트는 플랫폼 어댑터와 `PROJECT.md`의 계약을 그대로 사용한다.
 - 플랫폼 계약이 없거나 문서끼리 다른 이름·폴더·루트를 가리키면 패키징하지 말고 `BLOCKED`와
   `HANDOFF.md` 기록을 남긴다.
+- 사용자가 `빌드 생성` 또는 `패치 생성`이라고 하면 이 스킬의 canonical 패키징을 뜻한다.
+  진단 폴더·버전/candidate 하위 폴더·delta 적용기 패키지를 대신 만들지 않는다.
+- NSW의 exact 결과는 `40_build/releases/<BASE_TITLE_ID>.zip` 하나이며 내부 root는
+  `<BASE_TITLE_ID>/romfs/<패치파일>`이다. 입력은
+  `40_build/layeredfs/<BASE_TITLE_ID>/romfs/` 하나뿐이다. `romfs/` 단독 root,
+  `<UPDATE_TITLE_ID>.zip`, `*.gldelta`, `apply_patch.py`, NSP/XCI/키가 있으면 실패한다.
 
 ## 절차
 
@@ -41,6 +47,12 @@ description: "Release stage after integrated QA: package a verified Korean game 
    - 결정적 빌드: 같은 입력 → 바이트 동일 ZIP (타임스탬프 고정)
    - 파일명·출력 폴더·ZIP 루트: 플랫폼 어댑터의 canonical 규칙을 그대로 사용하고 수동 rename하지 않는다.
    - 패키지의 SHA-256 해시 기록
+   - NSW는 다음 공용 명령으로 생성·재검증한다. 프로젝트별 임의 ZIP 코드로 우회하지 않는다.
+
+     ```text
+     npm run release:package:nsw -- --project-root "<타이틀 루트>/_work/<BASE_TITLE_ID>" --replace
+     npm run release:validate:nsw -- --project-root "<타이틀 루트>/_work/<BASE_TITLE_ID>"
+     ```
 2. **설치 가이드 작성**: `INSTALL.md` — 대상 게임 버전/리전, 설치 경로, 적용 방법,
    제거 방법, 알려진 제한사항. 플랫폼별 설치법(에뮬레이터 모드 폴더/실기 적용)을
    사용자 눈높이로.
@@ -70,7 +82,7 @@ description: "Release stage after integrated QA: package a verified Korean game 
 
 | 파일 | 내용 |
 |-----|------|
-| `<adapter release path>/<canonical>.zip` | 배포 패키지 (+ SHA-256) |
+| `<adapter release path>/<canonical>.zip` | 배포 패키지 (+ SHA-256). NSW: `<BASE_TITLE_ID>.zip` 안에 `<BASE_TITLE_ID>/romfs/<패치파일>` |
 | `<adapter release path>/INSTALL.md` | 설치 가이드 |
 | `<adapter release path>/RELEASE_NOTES.md` | 릴리스 노트 |
 
@@ -85,4 +97,5 @@ description: "Release stage after integrated QA: package a verified Korean game 
 - [ ] 승인된 정리를 적용했다면 plan SHA-256·아카이브 경로·전수 재검토·사용자 상세 보고가 기록됨
 - [ ] 이후 별도 승인으로 휴지통 이동했다면 trash-plan SHA-256·backend·원래 아카이브 경로·`TRASH_RECEIPT.json`·`project:validate -- --strict` 결과가 기록됨
 - [ ] canonical 파일명·경로·ZIP root·파일 allowlist가 어댑터 계약과 exact 일치
+- [ ] NSW이면 `release:validate:nsw`가 entry 경로·CRC-32·SHA-256과 canonical RomFS를 전수 대조해 통과
 - [ ] 공식 배포 릴리즈 런타임·하드웨어 상태와 `released` 판정이 서로 혼동되지 않음

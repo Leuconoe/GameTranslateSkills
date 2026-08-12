@@ -219,6 +219,20 @@ async function main() {
   for (const phrase of ['RELEASE_RUNTIME_QA.json', 'runtime:validate', 'MCP 없이 직접', 'PENDING_RUNTIME']) {
     if (!releaseSkill.includes(phrase)) add(issues, `gt-release: missing final runtime gate ${phrase}`);
   }
+  for (const phrase of ['빌드 생성', '패치 생성', 'release:package:nsw', '<BASE_TITLE_ID>/romfs/<패치파일>', '*.gldelta']) {
+    if (!releaseSkill.includes(phrase)) add(issues, `gt-release: missing canonical NSW package phrase ${phrase}`);
+  }
+  const nswRelease = contract?.nsw_release_package_contract;
+  for (const [field, expected] of Object.entries({
+    input: '40_build/layeredfs/<BASE_TITLE_ID>/romfs',
+    output: '40_build/releases/<BASE_TITLE_ID>.zip',
+    archive_root: '<BASE_TITLE_ID>/romfs/',
+    packager: 'scripts/create-nsw-release.mjs',
+    validator: 'scripts/validate-nsw-release.mjs',
+  })) if (nswRelease?.[field] !== expected) add(issues, `contract: nsw_release_package_contract.${field} must equal ${expected}`);
+  for (const trigger of ['빌드 생성', '패치 생성']) {
+    if (!nswRelease?.trigger_phrases?.includes(trigger)) add(issues, `contract: missing NSW release trigger ${trigger}`);
+  }
   try {
     const scaffold = await read(path.join(repositoryRoot, 'scripts', 'new-translation-project.mjs'));
     for (const phrase of ['imageGenerationManifestHeader', "'tool'", "'model'", "'quality'", "'original_feel_status'", "'attempts'", "'prompts'", "'receipts'", "'probes'", 'IMAGE_GENERATION_MANIFEST.tsv']) {
@@ -241,6 +255,14 @@ async function main() {
     const runtimeValidator = await read(path.join(repositoryRoot, 'scripts', 'validate-release-runtime.mjs'));
     for (const phrase of ['official-distribution-release', 'mcp_used', 'official_download_url', 'emulator_binary_sha256', 'active mod has an undeclared file']) {
       if (!runtimeValidator.includes(phrase)) add(issues, `runtime validator: missing final QA phrase ${phrase}`);
+    }
+    const releasePackager = await read(path.join(repositoryRoot, 'scripts', 'create-nsw-release.mjs'));
+    for (const phrase of ['40_build', 'layeredfs', 'releases', '--replace', 'validateNswRelease']) {
+      if (!releasePackager.includes(phrase)) add(issues, `NSW release packager: missing canonical phrase ${phrase}`);
+    }
+    const releaseValidator = await read(path.join(repositoryRoot, 'scripts', 'validate-nsw-release.mjs'));
+    for (const phrase of ['validateNswRelease', 'project-root', 'romfs-root']) {
+      if (!releaseValidator.includes(phrase)) add(issues, `NSW release validator: missing canonical phrase ${phrase}`);
     }
     const runtimeAdapters = JSON.parse(await read(path.join(repositoryRoot, 'platforms', 'nsw', 'runtime-emulators.json')));
     if (runtimeAdapters?.basic_qa?.backend !== 'eden-mcp') add(issues, 'NSW runtime adapter: basic backend must be eden-mcp');
@@ -274,7 +296,11 @@ async function main() {
       const raw = await read(path.join(repositoryRoot, pluginFile));
       const plugin = JSON.parse(raw);
       if (/seven-stage|7-stage|7단계/i.test(raw)) add(issues, `${pluginFile}: stale seven-stage description`);
-      if (pluginFile !== '.claude-plugin/marketplace.json' && plugin.version !== bundleVersion) add(issues, `${pluginFile}: version must match package ${bundleVersion}`);
+      const expectedPluginVersion = pluginFile === '.codex-plugin/plugin.json'
+        ? new RegExp(`^${bundleVersion.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:\\+codex\\.[A-Za-z0-9._-]+)?$`)
+        : null;
+      if (pluginFile === '.codex-plugin/plugin.json' && !expectedPluginVersion.test(plugin.version)) add(issues, `${pluginFile}: version must match package ${bundleVersion} with at most one Codex cachebuster suffix`);
+      if (pluginFile === '.claude-plugin/plugin.json' && plugin.version !== bundleVersion) add(issues, `${pluginFile}: version must match package ${bundleVersion}`);
       if (pluginFile === '.claude-plugin/marketplace.json' && plugin.metadata?.version !== bundleVersion) add(issues, `${pluginFile}: metadata.version must match package ${bundleVersion}`);
     } catch (error) {
       add(issues, `${pluginFile}: cannot read/parse (${error.message})`);

@@ -277,10 +277,11 @@ async function main() {
 - final_qa_mcp_allowed: false
 - release_runtime_receipt: 50_test/RELEASE_RUNTIME_QA.json
 - target_language_slot: pending
-- release_contract: platform-adapter
+- release_contract: NSW-LayeredFS — \`40_build/releases/${id}.zip\`, ZIP root \`${id}/romfs/\`
 - Temporary artifacts: project-local only under this \`_work\` root; use \`tmp-<stage>-<purpose>\` or \`*.tmp\` for disposable files
 - Canonical MCP QA state: \`50_test/eden/SESSION.json\` and \`50_test/eden/ARTIFACT_MANIFEST.tsv\`; despite the historical folder name this is the one shared title ledger for Eden-MCP/Ryubing-MCP, and routine QA reuses it instead of creating session/copy files
 - Final QA: separately run an allowlisted official-site distribution release directly without MCP and validate \`50_test/RELEASE_RUNTIME_QA.json\`; MCP smoke evidence never qualifies as final PASS
+- Canonical NSW package: a user request for \`빌드 생성\` or \`패치 생성\` runs \`npm run release:package:nsw -- --project-root "<this project>" --replace\`; it packages only \`40_build/layeredfs/${id}/romfs/\` into \`40_build/releases/${id}.zip\` with ZIP entries rooted at \`${id}/romfs/\`
 - Status: registered; extraction not started
 
 ## Stage status

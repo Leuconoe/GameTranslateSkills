@@ -1,5 +1,5 @@
 {
-  "schema_version": 5,
+  "schema_version": 6,
   "entry_skill": "gt-analyze",
   "convergence_skill": "gt-qa",
   "release_skill": "gt-release",
@@ -71,6 +71,15 @@
     "final_launch_mode": "direct",
     "final_mcp_allowed": false,
     "final_result": "pass"
+  },
+  "nsw_release_package_contract": {
+    "trigger_phrases": ["빌드 생성", "패치 생성"],
+    "input": "40_build/layeredfs/<BASE_TITLE_ID>/romfs",
+    "output": "40_build/releases/<BASE_TITLE_ID>.zip",
+    "archive_root": "<BASE_TITLE_ID>/romfs/",
+    "packager": "scripts/create-nsw-release.mjs",
+    "validator": "scripts/validate-nsw-release.mjs",
+    "forbidden_payloads": ["apply_patch.py", "*.gldelta", "*.nsp", "*.xci", "*.keys"]
   },
   "stages": [
     {

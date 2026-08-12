@@ -377,6 +377,48 @@ test('skill bundle contract validates', () => {
   assert.match(runNode('validate-skill-bundle.mjs'), /Issues: 0/);
 });
 
+test('NSW build and patch packaging creates only the canonical Title-ID/romfs ZIP', async () => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'game-translate-nsw-release-'));
+  const titleId = '0123456789ABCDEF';
+  const projectRoot = path.join(tempRoot, titleId);
+  const romfsRoot = path.join(projectRoot, '40_build', 'layeredfs', titleId, 'romfs');
+  await fs.mkdir(path.join(romfsRoot, 'data', 'nx'), { recursive: true });
+  await fs.writeFile(path.join(romfsRoot, 'data', 'nx', 'script.dat'), 'translated-script');
+  await fs.writeFile(path.join(romfsRoot, 'font.bin'), Buffer.from([0, 1, 2, 3, 4]));
+
+  const output = runNode('create-nsw-release.mjs', ['--project-root', projectRoot]);
+  const zipPath = path.join(projectRoot, '40_build', 'releases', `${titleId}.zip`);
+  assert.match(output, new RegExp(`PASS\\t.*${titleId}\\.zip`));
+  assert.equal((await fs.stat(zipPath)).isFile(), true);
+  assert.match(runNode('validate-nsw-release.mjs', ['--project-root', projectRoot]), /PASS/);
+  const receipt = JSON.parse(await fs.readFile(path.join(projectRoot, '40_build', 'releases', 'RELEASE_PACKAGE.json'), 'utf8'));
+  assert.equal(receipt.archive_root, `${titleId}/romfs/`);
+  assert.deepEqual(receipt.entries.map((entry) => entry.path), [
+    `${titleId}/romfs/data/nx/script.dat`,
+    `${titleId}/romfs/font.bin`,
+  ]);
+  assert.equal((await fs.readdir(path.join(projectRoot, '40_build', 'releases'))).filter((name) => name.endsWith('.zip')).length, 1);
+
+  assert.match(runNode('create-nsw-release.mjs', ['--project-root', projectRoot]), /reused=true/);
+  await fs.writeFile(path.join(romfsRoot, 'font.bin'), Buffer.from([9, 8, 7]));
+  assert.match(runNodeFailureOutput('create-nsw-release.mjs', ['--project-root', projectRoot]), /already exists with different bytes/);
+  assert.match(runNode('create-nsw-release.mjs', ['--project-root', projectRoot, '--replace']), /reused=false/);
+  assert.match(runNode('validate-nsw-release.mjs', ['--project-root', projectRoot]), /PASS/);
+
+  const wrongPath = path.join(projectRoot, '40_build', 'releases', 'v0.1.0-first-candidate', `${titleId}.zip`);
+  await fs.mkdir(path.dirname(wrongPath), { recursive: true });
+  await fs.copyFile(zipPath, wrongPath);
+  assert.match(runNodeFailureOutput('validate-nsw-release.mjs', [
+    '--title-id', titleId,
+    '--zip', wrongPath,
+    '--romfs-root', romfsRoot,
+  ]), /directly under 40_build\/releases/);
+
+  await fs.writeFile(path.join(romfsRoot, 'patch.gldelta'), 'forbidden');
+  assert.match(runNodeFailureOutput('create-nsw-release.mjs', ['--project-root', projectRoot, '--replace']), /Forbidden non-LayeredFS release payload/);
+  await fs.rm(tempRoot, { recursive: true, force: true });
+});
+
 test('cleanup finalization exposes only recoverable Trash backends', async () => {
   const source = await fs.readFile(path.join(scriptsRoot, 'lib', 'cleanup-archive.mjs'), 'utf8');
   assert.match(source, /RecycleOption\]::SendToRecycleBin/);
@@ -976,6 +1018,8 @@ test('project scaffold emits branch policies and validates', async () => {
   assert.match(projectText, /mcp_session_scope: one-per-title/);
   assert.match(projectText, /final_qa_runtime: official-distribution-release/);
   assert.match(projectText, /final_qa_mcp_allowed: false/);
+  assert.match(projectText, /release_contract: NSW-LayeredFS/);
+  assert.match(projectText, /Canonical NSW package:.*빌드 생성.*패치 생성/);
   assert.equal((await fs.stat(path.join(projectPath, 'HANDOFF.md'))).isFile(), true);
   for (const directory of ['prompts', 'receipts', 'probes']) {
     assert.equal((await fs.stat(path.join(projectPath, '30_translation', 'image_translation', directory))).isDirectory(), true);

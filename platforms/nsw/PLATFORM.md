@@ -88,6 +88,7 @@ Eden 또는 Ryubing을 포터블/격리 프로파일로 실행할 때는 에뮬�
     staging/               깨끗한 원본 기반 빌드 작업장
     layeredfs/<TITLE_ID>/romfs/
     releases/              단일 정식 <BASE_TITLE_ID>.zip 및 릴리스 기록
+                           ZIP root = <BASE_TITLE_ID>/romfs/<패치파일>
   50_test/
     TEST_LOG.md
     screenshots/

@@ -182,3 +182,15 @@ anchor·link/reparse point·계획 밖 경로는 항상 거부한다.
 `gt-release`의 exact package 계약이 모두 충족될 때만 선언한다. 릴리스 후에도
 `gt-project-cleanup`으로 정리 계획을
 생성하고, Handoff·manifest·QA·release anchor를 보존한다.
+
+## 10. 빌드·패치 생성 요청의 의미
+
+사용자가 **“빌드 생성”** 또는 **“패치 생성”**이라고 요청하면 이를 중간 staging이나
+진단 후보 생성으로 해석하지 않는다. 플랫폼 어댑터의 canonical 배포 패키지를 생성하는
+요청으로 라우팅한다. NSW에서는 `gt-release`와 `platforms/nsw/release.md`를 적용하여
+`40_build/layeredfs/<BASE_TITLE_ID>/romfs/`의 검증된 패치 파일만 입력하고,
+`40_build/releases/<BASE_TITLE_ID>.zip` 안에
+`<BASE_TITLE_ID>/romfs/<패치파일>` 구조를 만든다. 별도 Python 적용기, `*.gldelta`,
+버전/candidate 하위 폴더, 게임명 ZIP은 허용하지 않는다. 릴리스 완료 게이트가 아직
+충족되지 않았다면 같은 canonical 형식의 `review_candidate`로 만들 수 있지만 경로·이름·
+ZIP root 계약은 완화하지 않고 `release_status`도 `released`로 올리지 않는다.

@@ -1,6 +1,6 @@
 interface:
   display_name: "Game Patch Release"
   short_description: "Package a verified patch by adapter contract"
-  default_prompt: "Use $gt-release to package a verified Korean game patch only after the allowlisted official distribution emulator release was run directly without MCP and its current runtime receipt, files, hashes, installation, and cleanup contracts pass."
+  default_prompt: "Use $gt-release for release, 빌드 생성, or 패치 생성 requests. On NSW, package only 40_build/layeredfs/<BASE_TITLE_ID>/romfs into the single canonical 40_build/releases/<BASE_TITLE_ID>.zip with <BASE_TITLE_ID>/romfs/<patch-file> entries; reject delta appliers, candidate/version subfolders, keys, NSP/XCI, and wrong Title IDs, and keep released status gated by the direct non-MCP official distribution runtime receipt."
 policy:
   allow_implicit_invocation: true

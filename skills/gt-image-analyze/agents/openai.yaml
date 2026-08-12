@@ -1,6 +1,6 @@
 interface:
   display_name: "Game Image Analysis"
   short_description: "Inventory text images, atlases, and scope"
-  default_prompt: "Use $gt-image-analyze to inventory text-bearing images and lock their original atmosphere, edit regions, anchors, alpha, atlas, style, and hashes before generation."
+  default_prompt: "Use $gt-image-analyze to inventory text-bearing images, lock visual and alpha invariants, and plan independent built-in imagegen candidates before translation."
 policy:
   allow_implicit_invocation: true

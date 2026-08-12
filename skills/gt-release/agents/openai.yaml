@@ -1,6 +1,6 @@
 interface:
   display_name: "Game Patch Release"
   short_description: "Package a verified patch by adapter contract"
-  default_prompt: "Use $gt-release to package a verified Korean game patch with the platform adapter's exact file, hash, installation, release, and cleanup contracts."
+  default_prompt: "Use $gt-release to package a verified Korean game patch only after the allowlisted official distribution emulator release was run directly without MCP and its current runtime receipt, files, hashes, installation, and cleanup contracts pass."
 policy:
   allow_implicit_invocation: true

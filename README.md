@@ -36,19 +36,27 @@ QA와 릴리즈로 진행할 수 있습니다. 이때도 QA에서 기존 이미�
 따릅니다.
 
 Raster 이미지 번역은 [image-translation-contract.md](common/image-translation-contract.md)에
-따라 `$imagegen`의 내장 `image_gen.imagegen` edit만 사용합니다. Python/Pillow/OpenCV나
-임의 스크립트로 후보를 만들거나 원본을 덮어쓰지 않으며, 원어 분위기·스타일·좌표·canvas와
-기본 전 픽셀 alpha exact(글자 alpha 자산은 선언한 edit region 안만 변경), 편집 영역 밖
-decoded RGBA diff 0을 `IMAGE_GENERATION_MANIFEST.tsv`로 검증합니다.
+따라 API 키 없이 `$imagegen`의 내장 `image_gen.imagegen` edit만 사용합니다. 내장 도구가
+노출하지 않는 모델이나 quality를 거짓으로 고정하지 않고, 같은 byte-exact reference와 exact
+prompt로 최소 3개 독립 후보를 만든 뒤 기술·시각 QA를 모두 통과한 하나만 선택합니다. 첫 결과나
+가장 그럴듯한 실패 후보를 채택하지 않으며 전부 실패하면 `hold-for-imagegen-review`로 멈춥니다.
+Python/Pillow/OpenCV나 임의 스크립트로 글자를 그리거나 합성·resize·덮어쓰지 않습니다. 원문
+완전 제거와 no-overlay, 원어의 서체 인상·색·외곽선·질감·재질·광원·자간/baseline·분위기·
+좌표·canvas, 기본 전 픽셀 alpha exact(글자 alpha 자산은 선언한 edit region 안만 변경), 편집
+영역 밖 decoded RGBA diff 0과 다중 후보 선택 receipt를 `IMAGE_GENERATION_MANIFEST.tsv`로
+검증합니다.
 
-NSW 에뮬레이터 시험은 사용 가능한 경우 `eden-mcp` 경로를 권장합니다. Eden/Ryubing
-격리 프로파일은 시스템 지역 `한국`/`대한민국`, 시스템 언어 `한국어`를 필수로 사용하고
-실제 유효 설정과 실행 증거를 기록합니다.
+NSW 기본 반복 시험은 Eden-MCP를 사용합니다. Eden-MCP/Ryubing-MCP 양쪽 inventory를
+조회하고 타이틀당 공유 세션 하나만 재사용하며, Ryubing이나 교체 세션에는 구체적인 예외
+사유가 필요합니다. 최종 QA는 MCP 결과로 대체하지 않습니다. 공식 사이트의 allowlist된
+배포용 릴리즈를 별도로 받아 MCP 없이 직접 실행하고 URL·버전·바이너리·최종 build·활성 mod·
+로그·스크린샷 해시를 `RELEASE_RUNTIME_QA.json`으로 검증해야 릴리스할 수 있습니다.
+모든 격리 프로파일은 시스템 지역 `한국`/`대한민국`, 시스템 언어 `한국어`를 사용합니다.
 
 작업 루트는 원본 `.nsp`/`.xci`가 직접 있는 실제 타이틀 폴더의
 `_work/<베이스 Title ID>/`로 고정합니다. `_title`/`_titles` 아래에 임의의 `title` 폴더를
-새로 만들지 않습니다. Eden QA는 프로젝트당 `50_test/eden/SESSION.json` 하나를 재사용하고,
-remote 세션을 정확한 ID로 종료하기 전에는 새 세션을 추가하지 않습니다.
+새로 만들지 않습니다. 양쪽 MCP는 프로젝트당 `50_test/eden/SESSION.json` 하나를 공유하고,
+remote 세션을 정확한 ID로 종료하기 전에는 예외 교체 세션을 추가하지 않습니다.
 `pending` 세션은 remote 상태를 재조회하기 전 재생성하지 않으며, 이전 `last_session_id`가
 있는 새 세션은 `--previous-session-id` 증명 없이는 생성하지 않습니다.
 
@@ -105,8 +113,9 @@ game-translate 스킬로 <게임명> 한글화를 시작해줘. 플랫폼은 nsw
 - 세션 재개: 프로젝트의 `PROJECT.md`를 읽고 마지막 단계부터 재개
 - 안전 규칙: 모든 작업 전 `common/SAFETY.md` 필독 (프로젝트 경계 보호, allowlist 커밋 등)
 - 완료 정리: `gt-project-cleanup` 또는 `npm run project:cleanup -- --project-root "<타이틀 루트>/_work/<프로젝트 ID>"`로 계획을 만들고, 승인된 exact allowlist와 plan SHA-256의 `--apply`는 파일을 아카이브로 이동함. 이어서 전체 재검토 보고서를 사용자에게 상세히 보고하고 멈추며, 이후 별도 승인에만 `--trash --trash-plan "<TRASH_PLAN.json>" --trash-plan-sha256 "<SHA-256>" --user-confirmed-trash` 사용. 파일은 복구 가능한 운영체제 휴지통으로만 이동하며 실패 시 영구 삭제하지 않음
-- Eden 세션 guard: `npm run project:qa-session -- --project-root "<타이틀 루트>/_work/<프로젝트 ID>" --action prepare ...`로 기존 세션을 먼저 조회·재사용
-- 이미지 보존 guard: `npm run image:validate -- --project-root "<타이틀 루트>/_work/<프로젝트 ID>" --manifest "<프로젝트 루트>/30_translation/image_translation/IMAGE_GENERATION_MANIFEST.tsv"`로 imagegen provenance·원본 비덮어쓰기·좌표·alpha·보존 픽셀을 검증
+- MCP 세션 guard: `npm run project:qa-session -- --project-root "<타이틀 루트>/_work/<프로젝트 ID>" --action prepare ... --remote-inventory-checked --inventory-backend eden-mcp --inventory-backend ryubing-mcp`로 양쪽 목록을 확인하고 기존 타이틀 세션을 재사용
+- 최종 runtime guard: `npm run runtime:validate -- --project-root "<타이틀 루트>/_work/<프로젝트 ID>" --receipt "<프로젝트 루트>/50_test/RELEASE_RUNTIME_QA.json"`로 공식 배포 릴리즈의 non-MCP 직접 실행 증거를 검증
+- 이미지 보존 guard: `npm run image:validate -- --project-root "<타이틀 루트>/_work/<프로젝트 ID>" --manifest "<프로젝트 루트>/30_translation/image_translation/IMAGE_GENERATION_MANIFEST.tsv"`로 내장 imagegen best-of-3 provenance·원문 제거/no-overlay·원본 느낌·비덮어쓰기·좌표·alpha·보존 픽셀을 검증
 - 작업장 루트 정리: `gt-workspace-cleanup` 또는 `npm run workspace:cleanup -- --workspace-root "<루트>" --report "<외부 보고서 경로>"`; 기본은 이동·삭제하지 않고, 적용 시에도 외부 아카이브·전체 재검토·사용자 상세 보고를 거친 뒤 별도 승인에만 운영체제 휴지통 이동
 - 사전 경고: 모든 단계에서 `common/preflight-checks.md`를 읽고 배치·경로·언어 슬롯·review policy·폰트·세션·릴리스 계약의 불일치를 `WARN`/`BLOCKED`로 기록
 
@@ -120,10 +129,11 @@ skills/       Codex/Claude Code 공용 스킬 (파이프라인·정리·청결�
 platforms/    플랫폼 어댑터: nsw(완전) / sfc·ps1·ps2·steam(골격) / _template(양식)
 engines/      엔진 모듈: unity / vn-common / lucasystem (플랫폼과 직교)
 common/       SAFETY.md(안전 규칙) · preflight-checks.md(사전 경고 게이트) ·
-              qa-session-rules.md(Eden 세션·중복 산출물 규칙) · emucap-integration.md(선택적 런타임 QA) · glossary-rules.md ·
-              project-structure.md · pipeline-contract.* · font-atlas-contract.md · image-translation-contract.md · cleanup-contract.md · handoff-rules.md
+              qa-session-rules.md(MCP 단일 세션 규칙) · release-runtime-contract.md(공식 배포 릴리즈 최종 QA) ·
+              emucap-integration.md(선택적 smoke QA) · glossary-rules.md · project-structure.md · pipeline-contract.* ·
+              font-atlas-contract.md · image-translation-contract.md · cleanup-contract.md · handoff-rules.md
 setup/        도구 자동 설치 (tools.manifest.json + install-tools.mjs)
-scripts/      프로젝트 생성·검증·스킬/폰트·imagegen 이미지 보존 검증·Handoff 기반 정리 계획·아카이브·재검토·승인된 휴지통 이동·QA 세션 guard Node CLI
+scripts/      프로젝트 생성·검증·스킬/폰트·imagegen 이미지 보존·공식 릴리즈 runtime 검증·Handoff 기반 정리 계획·아카이브·재검토·승인된 휴지통 이동·QA 세션 guard Node CLI
 docs/         PDCA 문서 (plan / design / analysis / report)
 ```
 

@@ -13,10 +13,10 @@ const imageGenerationManifestHeader = [
   'candidate_width', 'candidate_height', 'source_format', 'candidate_format',
   'source_color_mode', 'candidate_color_mode', 'alpha_policy', 'edit_regions', 'source_anchors',
   'candidate_anchors', 'atlas_page', 'source_atlas_rect', 'candidate_atlas_rect',
-  'origin', 'generator', 'generation_mode', 'prompt_path', 'prompt_sha256',
+  'origin', 'generator', 'tool', 'model', 'quality', 'generation_mode', 'prompt_path', 'prompt_sha256',
   'receipt_path', 'receipt_sha256', 'style_contract', 'atmosphere_contract',
-  'style_status', 'atmosphere_status', 'alpha_status', 'layout_status', 'korean_text_status',
-  'roundtrip_status', 'status', 'notes',
+  'style_status', 'atmosphere_status', 'original_feel_status', 'source_text_removal_status',
+  'alpha_status', 'layout_status', 'korean_text_status', 'roundtrip_status', 'status', 'notes',
 ].join('\t');
 
 function isWithin(root, target) {
@@ -223,6 +223,7 @@ async function main() {
     ['30_translation', 'text', 'reports'],
     ['30_translation', 'text', 'reviews'],
     ['30_translation', 'image_translation', 'for_translation'],
+    ['30_translation', 'image_translation', 'for_translation', 'attempts'],
     ['30_translation', 'image_translation', 'reference'],
     ['30_translation', 'image_translation', 'prompts'],
     ['30_translation', 'image_translation', 'receipts'],
@@ -234,6 +235,7 @@ async function main() {
     ['50_test', 'screenshots'],
     ['50_test', 'logs'],
     ['50_test', 'eden'],
+    ['50_test', 'release-runtime'],
     ['90_tools', 'scripts'],
     ['90_tools', 'environment'],
     ['90_tools', 'cleanup'],
@@ -249,10 +251,13 @@ async function main() {
 - Engine: unknown
 - Default Korean font: undecided — inspect the actual files under \`$GT_TOOLS/_fonts/\`, choose one, and record its exact filename and SHA-256 here
 - Pipeline contract: \`$GT_HOME/common/pipeline-contract.json\`
-- Image generation contract: \`$GT_HOME/common/image-translation-contract.md\` — agent raster edits require \`image_gen.imagegen\`, never Python/Pillow/OpenCV
+- Image generation contract: \`$GT_HOME/common/image-translation-contract.md\` — use the no-API built-in \`image_gen.imagegen\` edit path, generate at least three independent candidates, and select only a fully verified result; never local Python/Pillow/OpenCV drawing or compositing
 - project_status: registered
 - text_status: pending
 - image_status: pending
+- image_model: provider-selected — the built-in tool does not expose model selection
+- image_quality: provider-managed — enforce output acceptance, not an unverifiable request setting
+- image_input_fidelity: provider-managed — preserve inputs through prompt invariants and decoded-pixel QA
 - qa_status: pending
 - release_status: pending
 - font_status: pending — do not mark text review-ready until FONT_ATLAS_MANIFEST.tsv and render probes pass
@@ -266,10 +271,16 @@ async function main() {
 - glossary_path: 30_translation/text/glossary.tsv
 - runtime_policy: static-first
 - runtime_authorization: pending
+- basic_test_backend: eden-mcp
+- mcp_session_scope: one-per-title
+- final_qa_runtime: official-distribution-release
+- final_qa_mcp_allowed: false
+- release_runtime_receipt: 50_test/RELEASE_RUNTIME_QA.json
 - target_language_slot: pending
 - release_contract: platform-adapter
 - Temporary artifacts: project-local only under this \`_work\` root; use \`tmp-<stage>-<purpose>\` or \`*.tmp\` for disposable files
-- Canonical QA state: \`50_test/eden/SESSION.json\` and \`50_test/eden/ARTIFACT_MANIFEST.tsv\`; reuse them instead of creating session/copy files
+- Canonical MCP QA state: \`50_test/eden/SESSION.json\` and \`50_test/eden/ARTIFACT_MANIFEST.tsv\`; despite the historical folder name this is the one shared title ledger for Eden-MCP/Ryubing-MCP, and routine QA reuses it instead of creating session/copy files
+- Final QA: separately run an allowlisted official-site distribution release directly without MCP and validate \`50_test/RELEASE_RUNTIME_QA.json\`; MCP smoke evidence never qualifies as final PASS
 - Status: registered; extraction not started
 
 ## Stage status
@@ -314,13 +325,13 @@ Append-only evidence for document drift, blocked steps, workarounds, and cleanup
 
   await writeIfMissing(path.join(project, '50_test', 'TEST_LOG.md'), `# Device test log
 
-| Date | Build | Game version | System region | System language | UI language | Subtitle | Secondary subtitle | Emulator/MCP | Session key | Session ID | Test area | Result | Notes |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Date | Build | Game version | System region | System language | UI language | Subtitle | Secondary subtitle | Execution surface | Emulator/version | Session key | Session ID | Test area | Result | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 `);
   await writeIfMissing(path.join(project, '50_test', 'eden', 'SESSION.json'), `{
-  "schema_version": 1,
+  "schema_version": 2,
   "project_id": "${id}",
-  "backend": "eden-mcp",
+  "backend": null,
   "session_key": null,
   "session_id": null,
   "last_session_id": null,
@@ -331,8 +342,14 @@ Append-only evidence for document drift, blocked steps, workarounds, and cleanup
   "profile_sha256": null,
   "emulator_version": null,
   "current_build_id": null,
+  "session_generation": 0,
+  "exception_count": 0,
+  "last_exception_reason": null,
+  "observed_title_sessions": [],
+  "remote_inventory_checked_at": null,
   "updated_at": null,
-  "closed_at": null
+  "closed_at": null,
+  "closed_reason": null
 }
 `);
   await writeIfMissing(path.join(project, '50_test', 'eden', 'ARTIFACT_MANIFEST.tsv'), 'artifact_key\tpath\tbuild_id\tsession_id\tsha256\tstatus\tnotes\n');
@@ -351,11 +368,13 @@ The mandatory common procedure is \`$GT_HOME/common/glossary-rules.md\` (batch c
 - Image scope: pending; set \`required\` or \`N/A\` after analysis. If \`N/A\`, record the 0-item inventory and reason before skipping image stages.
 - Text review policy: prepare-only (default); set \`user-gate\` only with an explicit project decision.
 - Image review policy: prepare-only (default); set \`user-gate\` only with an explicit project decision.
-- Image generation: built-in \`image_gen.imagegen\` edit only; preserve atmosphere, layout, alpha, atlas, and source bytes through \`IMAGE_GENERATION_MANIFEST.tsv\`.
+- Image generation: no-API built-in \`image_gen.imagegen\` edits only; use the same byte-exact reference and prompt for at least three independent candidates, then select only a technical-and-visual pass. Preserve the original typography, atmosphere, material, lighting, color, spacing, layout, alpha, atlas, and source bytes through \`IMAGE_GENERATION_MANIFEST.tsv\`.
+- Korean raster style: remove the full source glyph/outline/shadow before rendering; never overlay Korean; preserve the original type impression, stroke weight, color/gradient, outline/shadow/glow, material/lighting, spacing, baseline, alignment, and atmosphere.
 - Font status: pending; \`gt-text-qa\` must produce \`30_translation/text/FONT_ATLAS_MANIFEST.tsv\`, \`FONT_COVERAGE.tsv\`, and \`FONT_ATLAS_QA_REPORT.md\` before review-ready.
 - Pipeline order: \`gt-analyze\` → \`gt-text-analyze\` → \`gt-text-translate\` → \`gt-text-qa\` → \`gt-text-review\` → conditional image branch → \`gt-qa\` → \`gt-release\`
 - Temporary artifacts: keep all disposable outputs under the project \`_work\` root and name them \`tmp-<stage>-<purpose>\` or \`*.tmp\`; clean them with the project cleanup CLI after release.
-- Eden QA: reuse the single \`50_test/eden/SESSION.json\` state and \`ARTIFACT_MANIFEST.tsv\`; do not create timestamped session/copy files.
+- MCP smoke QA: use Eden-MCP by default and reuse the shared, single-title \`50_test/eden/SESSION.json\` ledger across Eden-MCP/Ryubing-MCP; query both inventories before creation and do not create timestamped session/copy files.
+- Final QA: MCP is forbidden. Download an allowlisted official-site distribution release, execute its binary directly, and pass \`$GT_HOME/common/release-runtime-contract.md\` with current build/mod/binary/log/screenshot hashes before release.
 - Batch size: fixed 80 editable rows (canonical rule: \`$GT_HOME/common/glossary-rules.md\` section 3); combined source/reference/draft text at most 48,000 characters
 - Codex reasoning effort: high
 - First-pass status: not started

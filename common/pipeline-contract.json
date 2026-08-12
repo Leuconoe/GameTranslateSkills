@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 5,
   "entry_skill": "gt-analyze",
   "convergence_skill": "gt-qa",
   "release_skill": "gt-release",
@@ -15,6 +15,22 @@
     "runtime_policy": {
       "default": "static-first",
       "allowed": ["static-first", "slot-probe", "final-only"]
+    },
+    "basic_test_backend": {
+      "default": "eden-mcp",
+      "allowed": ["eden-mcp"]
+    },
+    "mcp_session_scope": {
+      "default": "one-per-title",
+      "allowed": ["one-per-title"]
+    },
+    "final_qa_runtime": {
+      "default": "official-distribution-release",
+      "allowed": ["official-distribution-release"]
+    },
+    "final_qa_mcp_allowed": {
+      "default": false,
+      "allowed": [false]
     }
   },
   "review_approval_fields": {
@@ -33,9 +49,28 @@
     "validator": "scripts/validate-image-translation.mjs",
     "agent_generator": "imagegen",
     "tool": "image_gen.imagegen",
+    "execution_surface": "chatgpt-built-in",
+    "model": "provider-selected",
+    "quality": "provider-managed",
+    "input_fidelity": "provider-managed",
+    "api_endpoint": "N/A",
+    "candidate_policy": "best-of-3-fail-closed",
+    "minimum_candidates": 3,
     "operation": "edit",
     "forbidden_generators": ["python", "pillow", "opencv", "imagemagick", "svg", "html-canvas"],
     "exact_invariants": ["source-reference-bytes", "canvas", "format", "color-mode", "anchor", "atlas-rect", "declared-alpha-policy", "preserved-rgba"]
+  },
+  "runtime_qa_contract": {
+    "document": "common/release-runtime-contract.md",
+    "platform_adapter": "platforms/<platform>/runtime-emulators.json",
+    "receipt": "50_test/RELEASE_RUNTIME_QA.json",
+    "validator": "scripts/validate-release-runtime.mjs",
+    "basic_test_backend": "eden-mcp",
+    "mcp_session_scope": "one-per-title",
+    "final_execution_surface": "official-distribution-release",
+    "final_launch_mode": "direct",
+    "final_mcp_allowed": false,
+    "final_result": "pass"
   },
   "stages": [
     {

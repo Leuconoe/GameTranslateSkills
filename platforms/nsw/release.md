@@ -26,14 +26,18 @@
    - 수정된 컨테이너의 파싱·리로드 실패
    - 대상 변경 누락 또는 비대상 무결성 훼손
    - 필수 정적 QA 미통과
-6. 생성 직후 단 하나의 정식 ZIP 파일명·크기·mtime·SHA-256을 다시 계산하고 `40_build/BUILD_MANIFEST.tsv`, `40_build/releases/SHA256SUMS.txt`, 배포 README, `50_test/TEST_LOG.md`에 **같은 값**을 기록한다. 현재 파일에서 다시 계산한 값만 유효하며 이전 해시는 폐기한다. 실기 실행이 불가능한 환경에서는 bench gate를 모두 통과시킨 뒤 실기 항목만 `PENDING (hardware)`로 남긴다.
+6. 생성 직후 단 하나의 정식 ZIP 파일명·크기·mtime·SHA-256을 다시 계산하고 `40_build/BUILD_MANIFEST.tsv`, `40_build/releases/SHA256SUMS.txt`, 배포 README, `50_test/TEST_LOG.md`에 **같은 값**을 기록한다. 현재 파일에서 다시 계산한 값만 유효하며 이전 해시는 폐기한다. 하드웨어 실행이 불가능하면 해당 항목만 `PENDING (hardware)`로 둘 수 있지만, 공식 사이트 배포용 릴리즈 에뮬레이터의 MCP 없는 직접 실행과 `RELEASE_RUNTIME_QA.json` 검증은 생략할 수 없다.
 
 ## 2. 패키징 강제 규칙 (재발 방지)
 
 - **최종 패키징은 문서가 아니라 빌드 스크립트의 출력명부터 canonical 규칙과 맞춘다.** 스크립트가 임시 통합명을 만들고 사람이 나중에 이름만 바꾸는 흐름은 매니페스트·README·해시 불일치를 만든다. 스크립트가 처음부터 `<BASE_TITLE_ID>.zip`을 원자적으로 생성하게 하고, 설정된 릴리스 파일명이 `^[0-9A-F]{16}\.zip$`과 다르면 즉시 실패시킨다. 정확한 파일 allowlist·ZIP root·리로드를 검사한 뒤 현재 SHA-256을 모든 릴리스 기록에 동기화한다.
 - **canonical 파일명 규칙은 빌드 불변조건이다.** 빌드·릴리스 검증기는 실제 경로·basename·확장자·대소문자가 규칙과 다르면 실패하고, 임의 접두사/접미사, 중복 확장자, 빌드 뒤 수동 이름 변경, 진단·후보 ZIP의 릴리스 전달을 거부해야 한다.
 - **여러 하위 시스템을 합친 최종 트리는 exact allowlist로 다시 검증한다.** 폰트·문자열·이미지 verifier가 혼합 디렉터리를 검사할 때 "추가 파일 허용"을 임의 파일 허용으로 구현하지 말고, 다른 하위 시스템의 이미 검증된 파일명 집합만 허용한다. 대상 집합 간 중복 경로 0, 누락·미등록 파일 0을 확인하고, 깨끗한 입력에서 **두 번 조립해 파일별·ZIP SHA-256 결정성**을 증명한 뒤 ZIP을 다시 열어 정렬된 entry와 payload를 전수 대조한다.
-- **런타임 증거가 생긴 뒤에만 릴리스 상태를 동기화한다.** 컴파일 성공이나 ZIP 재로드 성공은 런타임 PASS가 아니다. 에뮬레이터 로그로 입력 파일, Title ID, 활성 mod, 교체 파일 수, 애플리케이션 로드를 증명하고 수정 경로별 스크린샷을 보존한 뒤 릴리스 보고서와 checksum을 갱신해, 오래된 `PENDING`·이전 해시·이전 구성요소 상태가 패키징 후 남지 않게 한다.
+- **공식 배포 릴리즈 런타임 증거가 생긴 뒤에만 릴리스 상태를 동기화한다.** 컴파일 성공,
+  ZIP 재로드, Eden/Ryubing MCP smoke는 런타임 PASS가 아니다. `runtime-emulators.json`에 등록된
+  공식 release의 바이너리를 직접 실행해 URL·버전·binary hash, 입력 build, Title ID, 활성
+  mod 전수 hash, 애플리케이션 로드, 수정 경로별 스크린샷·로그를 보존하고
+  `npm run runtime:validate`를 통과한 뒤 릴리스 보고서와 checksum을 갱신한다.
 
 ## 3. 릴리스 버전 관리
 
@@ -51,5 +55,7 @@
 - 일반·소형·선택·비활성·루비 글자에서 한글 정상 표시
 - 존재하는 타이틀 화면, 설정, 저장·불러오기, 백로그, 시나리오, 매뉴얼·튜토리얼, 엔딩 경로를 **실제 항목 선택부터 번역 콘텐츠 표시와 완료·복귀까지** 시험 완료
 - 최종 LayeredFS 트리에 대상 Title ID 파일만 존재
+- 공식 사이트 배포용 릴리즈 에뮬레이터를 MCP 없이 직접 실행한 canonical receipt가 현재
+  binary/build/mod/evidence hash로 검증되고 `qa_status=passed`
 - 릴리스 ZIP을 제거했을 때 다른 게임과 원본 실행에 영향이 없음 (패치는 원본을 변경하지 않는 overlay여야 함)
 - 완료 후 프로젝트 `_work` 아래 `tmp-*`, `tmp_*`, `*.tmp` 후보를 dry-run으로 확인하고, 불필요한 항목만 명시적 allowlist로 정리한 뒤 후보 0건과 `project:validate -- --strict` 결과를 `WORK_LOG.md`에 기록

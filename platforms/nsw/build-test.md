@@ -27,61 +27,82 @@
 
 ## 2. 실기 시험 순서
 
-실기 전에 `$GT_TOOLS/Eden/<version>/eden.exe`를 표준 에뮬레이터 테스트 환경으로 사용한다.
+실행 시험은 두 계층으로 분리한다. 기본 반복 smoke는 Eden-MCP의 canonical 세션을
+재사용한다. 릴리스 승인용 최종 QA는 `runtime-emulators.json`에 allowlist된 공식 사이트
+배포용 릴리즈를 별도로 받아 MCP 없이 직접 실행한다. 두 결과는 서로 대체하지 않는다.
 emucap은 NSW 어댑터를 제공하지 않으므로 이 절차에서는 사용하지 않는다.
 
 ### 에뮬레이터 선택·격리 preflight
 
-- 시작 전에 `$GT_HOME/common/qa-session-rules.md`를 읽는다. 프로젝트당 단일 Eden 세션과
-  canonical 아티팩트 manifest를 사용하며, 세션 ID·프로파일 해시·파일 해시는 `50_test/eden/`
-  아래에 기록한다.
-- `eden-mcp`가 연결 가능하고 대상 게임·작업을 지원하면 Eden 실행, 상태 확인, 캡처·로그
-  수집에 `eden-mcp`를 우선 사용한다. MCP를 사용할 수 없거나 지원 범위를 벗어날 때만
-  직접 `eden.exe`를 실행하고, fallback 사유를 `50_test/TEST_LOG.md`에 기록한다.
+- 시작 전에 `$GT_HOME/common/qa-session-rules.md`와 `release-runtime-contract.md`를 읽는다.
+  Eden-MCP/Ryubing-MCP는 `50_test/eden/`의 단일 공유 원장을 사용하고, 최종 direct 실행은
+  `50_test/RELEASE_RUNTIME_QA.json`에 별도로 기록한다.
+- 기본 smoke는 Eden-MCP다. Eden-MCP와 Ryubing-MCP 양쪽의 같은 Title ID inventory를 먼저
+  확인하고 합산 live 세션을 하나만 허용한다. Ryubing-MCP는 구체적인 예외 진단 사유가 있을
+  때만 같은 원장을 사용한다.
 - Eden 또는 Ryubing을 포터블/격리 프로파일로 사용할 때 프로파일의 시스템 지역은
   `한국`/`대한민국`, 시스템 언어는 `한국어`로 고정한다. 호스트 Windows의 지역·언어
   표시나 환경변수만 확인하고 통과시키지 말고, 에뮬레이터가 실제로 읽는 유효 설정 또는
   시작 로그에서 두 값을 확인한다.
 - baseline과 번역 후보의 프로파일·시스템 지역·시스템 언어가 다르면 비교하지 않는다.
-  프로파일 경로, 실행 파일·버전, 두 설정값, `eden-mcp` 사용 여부와 확인 근거를
+  프로파일 경로, 실행 파일·버전, 두 설정값, 실행 surface와 MCP 사용 여부 및 확인 근거를
   `50_test/TEST_LOG.md` 및 `WORK_LOG.md`에 남긴다. 확인 불가 시 결과는
   `PENDING_RUNTIME`이다.
 
 - 실행 전 에뮬레이터 mod 트리(`load/<BASE_TITLE_ID>/<mod name>/romfs`)와 현재 canonical staging 트리를 상대 경로·SHA-256으로 비교해 **누락·추가·이전 후보 잔존 파일이 0건**인지 확인한다.
-- 실행 파일 경로·버전, 게임/업데이트 버전, 시스템 지역, 시스템 언어, 활성 mod 경로와 inventory hash, `eden-mcp` 사용 여부, 화면 캡처, 에뮬레이터 로그를 `50_test`에 기록한다.
+- 실행 파일 경로·버전, 게임/업데이트 버전, 시스템 지역, 시스템 언어, 활성 mod 경로와 inventory hash, MCP 사용 여부, 화면 캡처, 에뮬레이터 로그를 `50_test`에 기록한다.
+- MCP 결과는 `PASS (mcp-smoke)`로만 기록한다. `PASS (runtime)`은 공식 배포 릴리즈를
+  직접 실행하고 runtime receipt 검증까지 통과한 경우에만 사용한다.
 - 에뮬레이터 PASS는 런타임 증거이지만 `PASS (hardware)`와 구분하며 실기 PASS를 대체하지 않는다.
 
-### Eden 실행 빈도 정책
+### 시험 실행 빈도 정책
 
 - 번역 배치·추출·병합·정적 QA를 진행할 때마다 에뮬레이터를 반복 실행하지 않는다. 중간 후보나 동일 빌드의 자동 반복 실행도 기본적으로 하지 않는다.
 - 에뮬레이터 실행은 **전체 번역·독립 검수·주입·정적/라운드트립 검증과 최종 staging이 완료된 최종 후보에서 1회**, 또는 사용자가 명시적으로 요청한 경우에만 수행한다.
 - 기존 로그·캡처는 실행 파일, 입력 패키지, 게임/업데이트 버전, 활성 mod와 파일별 SHA-256이 현재 대상과 exact로 일치할 때만 재사용한다. 하나라도 다르면 과거 증거로 보존하되 현재 빌드의 PASS로 승격하지 않는다.
 - 다른 세션에서 에뮬레이터가 실행 중이어도 패치 주입·정적/라운드트립 검증은 중단하지 않는다. 주입 전에 현재 타이틀의 활성 mod 트리와 실행 중 세션의 대상 타이틀·mod 경로가 충돌하지 않는지 확인한다. 동일 타이틀이거나 mod 트리를 공유하면 파일 잠금·불완전 reload 위험을 기록하고 분리한 뒤 진행하며, **다른 세션의 프로세스는 종료하거나 수정하지 않는다.**
 
-### Eden 세션·파일 중복 방지
+### Eden/Ryubing MCP 세션·파일 중복 방지
 
 1. `50_test/eden/SESSION.json`을 읽고 `backend + project_id + Title ID + 격리 프로파일 절대경로·SHA-256 + 에뮬레이터 버전`으로 session key를 계산한다. `build_id`·시각은 키에 넣지 않는다.
-2. `eden-mcp` capability와 세션 목록/status를 확인한다. 같은 소유 키의 active 세션이 있으면
+2. `eden-mcp`와 `ryubing-mcp` capability 및 같은 Title ID의 세션 목록/status를 모두 확인한다.
+   양쪽을 합쳐 같은 소유 키의 active 세션이 하나 있으면
    **재사용**하고 `launch/create`를 다시 호출하지 않는다. 같은 타이틀이라도 프로파일·Title ID·
    실행 파일 버전이 다르면 다른 세션으로 간주한다.
-3. 이전 세션이 현재 프로젝트 소유이고 stale인 경우에만 backend가 반환한 정확한 `session_id`로
+3. 타이틀당 active/pending 세션이 둘 이상이면 `BLOCKED`다. 이전 세션이 현재 프로젝트
+   소유이고 교체가 불가피한 경우에만 backend가 반환한 정확한 `session_id`로
    close/stop한다. 성공 응답을 `SESSION.json`·`WORK_LOG.md`에 남기기 전에는 새 세션을 만들지
    않는다. 소유권을 증명할 수 없는 세션이나 remote/local 상태 불일치는 `BLOCKED`로 둔다.
-4. 새 세션이 정말 필요한 `CREATE_REQUIRED` 상태에서만 한 번 launch/create한다. 오류가 나도
+4. 기본 세션은 Eden-MCP다. Ryubing-MCP 선택이나 두 번째 generation에는 구체적인 예외 사유와
+   이전 exact close 증거가 필요하다. `CREATE_REQUIRED` 상태에서만 한 번 launch/create한다. 오류가 나도
    목록/status를 다시 확인하기 전에는 재호출하지 않는다. local guard는 다음처럼 갱신한다.
 
    ```text
    npm run project:qa-session -- --project-root "<타이틀 루트>/_work/<BASE_TITLE_ID>" --action prepare \
      --title-id "<실행 Title ID>" --profile-path "<격리 프로파일 절대경로>" \
-     --profile-sha256 "<64자리 SHA-256>" --emulator-version "<버전>" --build-id "<현재 build ID>"
+     --profile-sha256 "<64자리 SHA-256>" --emulator-version "<버전>" --build-id "<현재 build ID>" \
+     --remote-inventory-checked --inventory-backend eden-mcp --inventory-backend ryubing-mcp
    ```
 
-5. 실행 종료 뒤에는 현재 세션 ID만 close/stop하고, remote 성공을 확인한 뒤 `--action close
-   --remote-closed --session-id "<현재 세션 ID>"`로 local 상태를 `closed`로 갱신한다. 프로세스
+5. 반복 시험은 title run만 stop하고 세션은 재사용한다. 타이틀 작업 완료나 예외 교체 때만
+   현재 세션 ID를 close/stop하고, remote 성공 뒤 `--action close --remote-closed
+   --session-id "<현재 세션 ID>" --close-reason "<구체적 사유>"`로 local 상태를 갱신한다. 프로세스
    이름 기반 종료, 전역 세션 삭제, 다른 타이틀 세션 조작은 하지 않는다.
 6. 로그·캡처·덤프는 session ID·시각이 붙은 새 파일로 복제하지 않는다. `50_test/eden/`
    `ARTIFACT_MANIFEST.tsv`의 유일한 `artifact_key`와 프로젝트 canonical 경로를 갱신하며,
    같은 키의 기존 해시가 같으면 재사용한다. 변경 시에만 `tmp-*` sibling 파일을 원자 교체한다.
+
+### 공식 배포용 릴리즈 최종 QA
+
+1. `platforms/nsw/runtime-emulators.json`에서 공식 release page prefix와 download host를 읽는다.
+2. 공식 사이트의 배포용 release artifact를 별도로 받아 정확한 version·release page·download
+   URL·실행 바이너리 SHA-256을 기록한다. nightly/dev/CI/MCP 번들·전용 빌드는 거부한다.
+3. 현재 final build를 새 격리 mod root에 게시하고 `relative_path, sha256, size_bytes` 전수
+   manifest를 만든다. 누락·추가·stale 파일은 0이어야 한다.
+4. 해당 release binary를 MCP 없이 직접 실행한다. 한국 지역/언어, 실제 Title ID, 활성 mod,
+   타이틀 화면, 인게임 진입, 한글/폰트, 저장·불러오기, 조건부 이미지와 로그를 확인한다.
+5. `50_test/RELEASE_RUNTIME_QA.json`을 작성하고 `npm run runtime:validate`를 실행한다.
+   하나라도 불일치하면 `PENDING_RUNTIME`/`BLOCKED`이며 릴리스로 진행하지 않는다.
 
 ### 단계별 추가 순서 (한 번에 한 종류만)
 
@@ -93,7 +114,9 @@ emucap은 NSW 어댑터를 제공하지 않으므로 이 절차에서는 사용�
 6. UI 이미지
 7. 통합 후보
 
-`50_test/TEST_LOG.md`에 날짜, 빌드 ID, 게임 버전, UI/자막/보조 자막 언어, 시험 장면, 결과를 남기고 화면 증거는 canonical `screenshots`에 둔다. Eden 세션 상태는 `50_test/eden/SESSION.json` 하나에만 둔다.
+`50_test/TEST_LOG.md`에 날짜, 빌드 ID, 게임 버전, UI/자막/보조 자막 언어, 실행 surface,
+시험 장면, 결과를 남기고 화면 증거는 canonical `screenshots`에 둔다. 양쪽 MCP 세션 상태는
+`50_test/eden/SESSION.json` 하나에만 두고 최종 direct 결과는 `RELEASE_RUNTIME_QA.json`에 둔다.
 
 ## 3. 실패 복구
 

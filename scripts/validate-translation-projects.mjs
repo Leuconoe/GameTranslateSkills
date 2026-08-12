@@ -9,6 +9,7 @@ import { flag, option, parseArgs } from './lib/args.mjs';
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const execFileAsync = promisify(execFile);
 const imageValidatorPath = path.join(repositoryRoot, 'scripts', 'validate-image-translation.mjs');
+const releaseRuntimeValidatorPath = path.join(repositoryRoot, 'scripts', 'validate-release-runtime.mjs');
 const sourcePackageExtensions = new Set(['.nsp', '.xci']);
 const requiredDirectories = [
   ['00_source'],
@@ -22,7 +23,11 @@ const requiredDirectories = [
   ['30_translation', 'text', 'reports'],
   ['30_translation', 'text', 'reviews'],
   ['30_translation', 'image_translation', 'for_translation'],
+  ['30_translation', 'image_translation', 'for_translation', 'attempts'],
   ['30_translation', 'image_translation', 'reference'],
+  ['30_translation', 'image_translation', 'prompts'],
+  ['30_translation', 'image_translation', 'receipts'],
+  ['30_translation', 'image_translation', 'probes'],
   ['30_translation', 'image_translation', 'reports'],
   ['40_build', 'layeredfs'],
   ['40_build', 'staging'],
@@ -30,6 +35,7 @@ const requiredDirectories = [
   ['50_test', 'screenshots'],
   ['50_test', 'logs'],
   ['50_test', 'eden'],
+  ['50_test', 'release-runtime'],
   ['90_tools', 'scripts'],
   ['90_tools', 'environment'],
   ['90_tools', 'cleanup'],
@@ -58,12 +64,20 @@ const policyRules = {
   release_status: new Set(['pending', 'blocked', 'released']),
   font_status: new Set(['pending', 'verified', 'blocked']),
   image_scope: new Set(['pending', 'required', 'N/A']),
+  image_model: new Set(['provider-selected']),
+  image_quality: new Set(['provider-managed']),
+  image_input_fidelity: new Set(['provider-managed']),
   text_review_policy: new Set(['prepare-only', 'user-gate']),
   image_review_policy: new Set(['prepare-only', 'user-gate']),
   text_review_approval: new Set(['not_required', 'pending', 'approved']),
   image_review_approval: new Set(['not_required', 'pending', 'approved']),
   runtime_policy: new Set(['static-first', 'slot-probe', 'final-only']),
   runtime_authorization: new Set(['pending', 'approved', 'not_required']),
+  basic_test_backend: new Set(['eden-mcp']),
+  mcp_session_scope: new Set(['one-per-title']),
+  final_qa_runtime: new Set(['official-distribution-release']),
+  final_qa_mcp_allowed: new Set(['false']),
+  release_runtime_receipt: null,
   batch_size: null,
   batch_size_override_reason: null,
   glossary_path: null,
@@ -116,6 +130,12 @@ function validateProjectPolicies(policies, id, project, issues) {
   }
   if (policies.image_scope === 'required' && policies.image_status === 'skipped') {
     issues.push({ severity: 'ERROR', titleId: id, item: path.join(project, 'PROJECT.md'), problem: 'image_scope=required cannot have image_status=skipped' });
+  }
+  if (policies.release_runtime_receipt && policies.release_runtime_receipt !== '50_test/RELEASE_RUNTIME_QA.json') {
+    issues.push({ severity: 'ERROR', titleId: id, item: path.join(project, 'PROJECT.md'), problem: 'release_runtime_receipt must use the canonical 50_test/RELEASE_RUNTIME_QA.json path' });
+  }
+  if (policies.release_status === 'released' && policies.qa_status !== 'passed') {
+    issues.push({ severity: 'ERROR', titleId: id, item: path.join(project, 'PROJECT.md'), problem: 'release_status=released requires qa_status=passed from official distribution runtime QA' });
   }
   for (const branch of ['text', 'image']) {
     const policy = policies[`${branch}_review_policy`];
@@ -195,6 +215,43 @@ async function validateStageArtifacts(policies, id, project, issues) {
     path.join('30_translation', 'image_translation', 'reports', 'REVIEW_IMAGE.tsv'),
     path.join('30_translation', 'image_translation', 'reports', 'IMAGE_REVIEW_HANDOFF.md'),
   ], 'image_status=review_ready');
+
+  const finalRuntimeRequired = policies.qa_status === 'passed' || policies.release_status === 'released';
+  const runtimeReceiptPath = path.join('50_test', 'RELEASE_RUNTIME_QA.json');
+  await requiredWhen(
+    finalRuntimeRequired,
+    [runtimeReceiptPath],
+    policies.release_status === 'released' ? 'release_status=released' : 'qa_status=passed',
+  );
+  if (finalRuntimeRequired && !['approved', 'not_required'].includes(policies.runtime_authorization)) {
+    issues.push({
+      severity: 'ERROR',
+      titleId: id,
+      item: path.join(project, 'PROJECT.md'),
+      problem: 'Final runtime QA requires runtime_authorization=approved or not_required',
+    });
+  }
+  if (finalRuntimeRequired && await isType(path.join(project, runtimeReceiptPath), 'file')) {
+    try {
+      await execFileAsync(process.execPath, [
+        releaseRuntimeValidatorPath,
+        '--project-root', project,
+        '--receipt', path.join(project, runtimeReceiptPath),
+      ], { cwd: repositoryRoot, encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 });
+    } catch (error) {
+      const evidence = `${error.stdout ?? ''}${error.stderr ?? ''}`
+        .split(/\r?\n/)
+        .filter((line) => line.startsWith('ERROR\t') || line.startsWith('오류:'))
+        .slice(0, 3)
+        .join(' | ');
+      issues.push({
+        severity: 'ERROR',
+        titleId: id,
+        item: runtimeReceiptPath,
+        problem: `Official distribution runtime validation failed${evidence ? `: ${evidence}` : ''}`,
+      });
+    }
+  }
 }
 
 async function directSourcePackages(root) {
@@ -270,35 +327,82 @@ async function nestedEntries(root, current = root, results = []) {
   return results;
 }
 
-async function validateEdenState(project, id, issues) {
+async function validateMcpSessionState(project, id, issues) {
   const edenRoot = path.join(project, '50_test', 'eden');
   const entries = await nestedEntries(edenRoot);
   if (entries.length === 0) return;
 
   for (const { target, entry } of entries) {
     if (/^session(?:[-_.].+)?\.json$/i.test(entry.name) && entry.name !== 'SESSION.json') {
-      issues.push({ severity: 'ERROR', titleId: id, item: target, problem: 'Duplicate Eden session state; keep only 50_test/eden/SESSION.json' });
+      issues.push({ severity: 'ERROR', titleId: id, item: target, problem: 'Duplicate MCP session state; keep only the shared 50_test/eden/SESSION.json ledger' });
     }
     if (entry.isDirectory() && /^(sessions?|runs?)$/i.test(entry.name)) {
-      issues.push({ severity: 'ERROR', titleId: id, item: target, problem: 'Per-run Eden session directory is forbidden; reuse the canonical session state' });
+      issues.push({ severity: 'ERROR', titleId: id, item: target, problem: 'Per-run MCP session directory is forbidden; reuse the canonical title session state' });
     }
     if (entry.isDirectory() && /^(session|run)[-_.]/i.test(entry.name)) {
-      issues.push({ severity: 'ERROR', titleId: id, item: target, problem: 'Timestamped/session-specific Eden directory is forbidden; reuse canonical paths' });
+      issues.push({ severity: 'ERROR', titleId: id, item: target, problem: 'Timestamped/session-specific MCP directory is forbidden; reuse canonical paths' });
     }
     if (entry.isFile() && /(?:\(\d+\)|[-_.](?:copy|backup))\./i.test(entry.name)) {
-      issues.push({ severity: 'ERROR', titleId: id, item: target, problem: 'Duplicate-like Eden artifact filename is forbidden' });
+      issues.push({ severity: 'ERROR', titleId: id, item: target, problem: 'Duplicate-like MCP artifact filename is forbidden' });
     }
   }
 
   const sessionPath = path.join(edenRoot, 'SESSION.json');
   try {
     const session = JSON.parse(await fs.readFile(sessionPath, 'utf8'));
-    if (!['active', 'pending', 'closed', 'blocked'].includes(session.status)) issues.push({ severity: 'ERROR', titleId: id, item: sessionPath, problem: `Unsupported Eden session status: ${session.status}` });
-    if (session.status === 'active' && !session.session_id) issues.push({ severity: 'ERROR', titleId: id, item: sessionPath, problem: 'Active Eden session must have a session_id' });
-    if (session.status === 'active' && !session.session_key) issues.push({ severity: 'ERROR', titleId: id, item: sessionPath, problem: 'Active Eden session must have a session_key' });
-    if (session.status === 'pending' && session.session_id) issues.push({ severity: 'ERROR', titleId: id, item: sessionPath, problem: 'Pending Eden session cannot have a session_id' });
+    const backends = new Set(['eden-mcp', 'ryubing-mcp']);
+    const remoteStatuses = new Set(['active', 'pending', 'closed']);
+    if (session.schema_version !== 2) issues.push({ severity: 'ERROR', titleId: id, item: sessionPath, problem: 'MCP SESSION.json must use schema_version 2' });
+    if (session.project_id !== id) issues.push({ severity: 'ERROR', titleId: id, item: sessionPath, problem: `MCP SESSION.json belongs to ${session.project_id}, not ${id}` });
+    if (!['active', 'pending', 'closed', 'blocked'].includes(session.status)) issues.push({ severity: 'ERROR', titleId: id, item: sessionPath, problem: `Unsupported MCP session status: ${session.status}` });
+    if (session.backend !== null && !backends.has(session.backend)) issues.push({ severity: 'ERROR', titleId: id, item: sessionPath, problem: `Unsupported MCP backend: ${session.backend}` });
+    if (session.status === 'active' && !session.session_id) issues.push({ severity: 'ERROR', titleId: id, item: sessionPath, problem: 'Active MCP session must have a session_id' });
+    if (session.status === 'active' && !session.session_key) issues.push({ severity: 'ERROR', titleId: id, item: sessionPath, problem: 'Active MCP session must have a session_key' });
+    if (session.status === 'pending' && session.session_id) issues.push({ severity: 'ERROR', titleId: id, item: sessionPath, problem: 'Pending MCP session cannot have a session_id' });
+    if (['active', 'pending'].includes(session.status) && !backends.has(session.backend)) issues.push({ severity: 'ERROR', titleId: id, item: sessionPath, problem: 'Active/pending MCP state requires an exact backend' });
+    if (['active', 'pending'].includes(session.status) && !Number.isFinite(Date.parse(session.remote_inventory_checked_at ?? ''))) {
+      issues.push({ severity: 'ERROR', titleId: id, item: sessionPath, problem: 'Active/pending MCP state requires a current remote inventory timestamp' });
+    }
     if (session.status === 'closed' && session.last_session_id && session.remote_close_session_id !== session.last_session_id) {
-      issues.push({ severity: 'ERROR', titleId: id, item: sessionPath, problem: 'Closed Eden session with last_session_id lacks matching remote_close_session_id proof' });
+      issues.push({ severity: 'ERROR', titleId: id, item: sessionPath, problem: 'Closed MCP session with last_session_id lacks matching remote_close_session_id proof' });
+    }
+    if (!Number.isInteger(session.session_generation) || session.session_generation < 0) {
+      issues.push({ severity: 'ERROR', titleId: id, item: sessionPath, problem: 'session_generation must be a non-negative integer' });
+    }
+    if (!Number.isInteger(session.exception_count) || session.exception_count < 0) {
+      issues.push({ severity: 'ERROR', titleId: id, item: sessionPath, problem: 'exception_count must be a non-negative integer' });
+    }
+    if (!Array.isArray(session.observed_title_sessions)) {
+      issues.push({ severity: 'ERROR', titleId: id, item: sessionPath, problem: 'observed_title_sessions must be an array' });
+    } else {
+      const observedKeys = new Set();
+      for (const [index, entry] of session.observed_title_sessions.entries()) {
+        const key = `${entry?.backend ?? ''}\u0000${entry?.session_id ?? ''}`;
+        if (!backends.has(entry?.backend) || !remoteStatuses.has(entry?.status)
+            || typeof entry?.session_id !== 'string' || entry.session_id.trim() === '') {
+          issues.push({ severity: 'ERROR', titleId: id, item: sessionPath, problem: `Invalid observed_title_sessions entry ${index + 1}` });
+        } else if (observedKeys.has(key)) {
+          issues.push({ severity: 'ERROR', titleId: id, item: sessionPath, problem: `Duplicate observed MCP session ${entry.backend}/${entry.session_id}` });
+        }
+        observedKeys.add(key);
+      }
+      const live = session.observed_title_sessions.filter((entry) => ['active', 'pending'].includes(entry?.status));
+      if (live.length > 1) issues.push({ severity: 'ERROR', titleId: id, item: sessionPath, problem: 'More than one live Eden/Ryubing MCP session is recorded for this Title ID' });
+      if (session.status === 'active' && (live.length !== 1 || live[0].backend !== session.backend || live[0].session_id !== session.session_id)) {
+        issues.push({ severity: 'ERROR', titleId: id, item: sessionPath, problem: 'Active canonical MCP session must match the single observed live Title session' });
+      }
+      if (session.observed_title_sessions.length > 1
+          && (typeof session.last_exception_reason !== 'string' || session.last_exception_reason.trim().length < 10)) {
+        issues.push({ severity: 'ERROR', titleId: id, item: sessionPath, problem: 'Multiple observed Title sessions require a concrete recorded exception reason' });
+      }
+    }
+    if (session.backend === 'ryubing-mcp'
+        && (session.exception_count < 1 || typeof session.last_exception_reason !== 'string' || session.last_exception_reason.trim().length < 10)) {
+      issues.push({ severity: 'ERROR', titleId: id, item: sessionPath, problem: 'Ryubing-MCP requires a concrete recorded exception reason' });
+    }
+    if (session.session_generation > 1 && (session.exception_count < session.session_generation - 1
+      || typeof session.last_exception_reason !== 'string' || session.last_exception_reason.trim().length < 10)) {
+      issues.push({ severity: 'ERROR', titleId: id, item: sessionPath, problem: 'Every exceptional replacement session requires a concrete recorded reason' });
     }
   } catch (error) {
     issues.push({ severity: 'ERROR', titleId: id, item: sessionPath, problem: `Cannot parse SESSION.json: ${error.message}` });
@@ -400,7 +504,7 @@ async function main() {
         issues.push({ severity: 'ERROR', titleId: id, item: path.join(project, 'PROJECT.md'), problem: `Cannot read project policies: ${error.message}` });
       }
     }
-    await validateEdenState(project, id, issues);
+    await validateMcpSessionState(project, id, issues);
 
     const layeredFsRoot = path.join(project, '40_build', 'layeredfs');
     if (!(await isType(path.join(layeredFsRoot, id, 'romfs'), 'directory'))) {

@@ -16,6 +16,8 @@
 6. 현재 문서가 참조하는 상대 경로의 존재 여부와 대소문자·폴더 위치
 7. NSW QA이면 `$GT_HOME/common/qa-session-rules.md`와 `50_test/eden/SESSION.json`,
    `ARTIFACT_MANIFEST.tsv`
+8. NSW 최종 QA/릴리스이면 `$GT_HOME/common/release-runtime-contract.md`,
+   `platforms/nsw/runtime-emulators.json`, `50_test/RELEASE_RUNTIME_QA.json`
 
 규칙의 우선순위는 다음과 같다.
 
@@ -43,8 +45,16 @@ batch_size_override_reason: <근거>     # 80이 아닌 경우 필수
 glossary_path: 30_translation/text/glossary.tsv
 runtime_policy: static-first           # static-first | slot-probe | final-only
 runtime_authorization: pending         # pending | approved | not_required
+basic_test_backend: eden-mcp
+mcp_session_scope: one-per-title       # Eden/Ryubing 합산
+final_qa_runtime: official-distribution-release
+final_qa_mcp_allowed: false
+release_runtime_receipt: 50_test/RELEASE_RUNTIME_QA.json
 target_language_slot: pending          # 증명 전에는 pending
 image_scope: pending                   # pending | required | N/A; 분석 후에는 required/N/A
+image_model: provider-selected         # 내장 imagegen이 모델을 선택하며 임의 모델명 주장 금지
+image_quality: provider-managed        # 호출 옵션 대신 best-of-3 합격 게이트 적용
+image_input_fidelity: provider-managed # prompt 불변 조건과 decoded-pixel QA로 검증
 text_review_policy: prepare-only       # prepare-only | user-gate
 image_review_policy: prepare-only      # prepare-only | user-gate
 text_review_approval: not_required     # prepare-only: not_required; user-gate: pending | approved
@@ -56,7 +66,6 @@ image_status: pending                  # pipeline-contract.json의 image_status
 qa_status: pending                     # pipeline-contract.json의 qa_status
 release_status: pending                # pipeline-contract.json의 release_status
 release_contract: platform-adapter    # 플랫폼 문서의 정확한 경로·파일명 사용
-qa_session_backend: eden-mcp           # NSW QA 권장 backend
 qa_session_state: 50_test/eden/SESSION.json
 artifact_manifest: 50_test/eden/ARTIFACT_MANIFEST.tsv
 ```
@@ -66,7 +75,8 @@ artifact_manifest: 50_test/eden/ARTIFACT_MANIFEST.tsv
 - 용어집의 canonical 경로는 `30_translation/text/glossary.tsv`다. 대소문자만 다른
   경로를 새로 만들거나 `GLOSSARY.tsv`를 참조하지 않는다.
 - `runtime_policy` 기본값은 `static-first`다. `slot-probe`는 원본/안전 문자열 확인이
-  꼭 필요할 때만 사용자 승인과 증거 경로를 함께 기록한다.
+  꼭 필요할 때만 사용자 승인과 증거 경로를 함께 기록한다. 이 정책은 중간 실행 빈도만
+  조절하며 최종 공식 배포 릴리즈 직접 실행을 생략하지 않는다.
 - 릴리스 파일명·폴더·ZIP 루트는 공통 스킬이 추측하지 않고 플랫폼 어댑터가 결정한다.
 
 ## 3. 즉시 경고·중단 조건
@@ -85,15 +95,22 @@ artifact_manifest: 50_test/eden/ARTIFACT_MANIFEST.tsv
 - 전체 가시 코드포인트·폰트 glyph 매핑·아틀라스 rect·metrics·왕복·render probe가 없거나
   `font_status=verified`가 아닌데 text/image review-ready를 선언함
 - `image_scope: N/A`인데 이미지 대상이 남아 있거나, 반대로 이미지 대상이 없는데 가짜 후보·검수 행을 만든 경우
-- `static-first` 정책인데 런타임 실행을 요청받지 않았거나, 실행 결과를 현재 build에 귀속할
-  입력 경로·Title ID·active mod·파일 해시·캡처가 없음
+- 이미지 후보가 내장 `image_gen.imagegen` schema 3 receipt, 같은 reference/prompt의 최소 3개
+  독립 호출, 정확히 하나의 전 QA 합격 선택 후보를 증명하지 못하거나 API/CLI·로컬 raster
+  생성기로 폴백한 경우
+- 기본 smoke 전에 Eden-MCP와 Ryubing-MCP 양쪽 Title inventory를 확인하지 않았거나,
+  합쳐서 active/pending 세션이 둘 이상이거나, 구체적 예외 없이 Ryubing/새 세션을 만들려 함
+- 최종 QA를 MCP 결과로 대체하거나 공식 릴리즈 페이지·download host·정확한 버전·외부
+  바이너리 해시·현재 build/mod/log/캡처를 증명하지 못함
+- `qa_status=passed`/`release_status=released`인데 `mcp_used=false`인 canonical
+  `RELEASE_RUNTIME_QA.json`과 `runtime:validate` 통과 증거가 없음
 - 플랫폼 릴리스 계약과 다른 ZIP 이름·폴더·루트·파일 집합이 발견됨
 - 입력 대상 수가 0이거나 예상 수와 다르고, 유효한 `N/A` 범위 근거 없이 빈 반복문·빈 report를 PASS로 만들 가능성이 있음
 - 문서·스크립트가 참조한 상대 경로가 없거나 같은 파일을 대소문자만 다르게 가리킴
 - 이전 candidate·다른 타이틀·다른 세션의 파일이 섞였거나 source/staging의 해시가 바뀜
 - 타이틀 루트에 직접 `.nsp`/`.xci`가 없거나, 패키지가 없는 상위 폴더 아래에 임의의 `title`
   작업 폴더를 만들려 함
-- `SESSION.json`의 active 세션과 remote Eden status가 다르거나, 같은 소유 키의 세션을
+- `SESSION.json`의 active 세션과 remote Eden/Ryubing inventory가 다르거나, 같은 소유 키의 세션을
   확인하지 않고 새 세션·timestamp 세션 폴더를 만들려 함
 - 동일 `artifact_key`가 여러 경로에 있거나 `SESSION-2.json`, `session-*`, `run-*`, `(1)`·`copy`
   산출물이 발견됨
@@ -105,7 +122,8 @@ WARN                 전제 누락·문서 drift. 증거를 보강하기 전에�
 BLOCKED              안전성·구조·입력 계약을 증명할 수 없음
 PENDING_RUNTIME      정적/bench 검증은 가능하지만 런타임 증거가 아직 없음
 PASS (bench)         정적·왕복·패키지 검증만 통과. 런타임 PASS가 아님
-PASS (runtime)       현재 입력·Title ID·active mod·실제 화면 전이가 귀속된 런타임 통과
+PASS (mcp-smoke)     단일 Eden-MCP 세션의 기본 진단 통과. 최종 QA/릴리스 통과가 아님
+PASS (runtime)       공식 사이트 배포 릴리즈를 MCP 없이 직접 실행하고 현재 build/mod/증거가 검증됨
 ```
 
 `WARN`, `BLOCKED`, `PENDING_RUNTIME`을 번역 완료·사용자 승인·릴리스 완료로 자동
@@ -136,6 +154,7 @@ date | type | observed | impact | decision | evidence | status(open/applied/reje
 - [ ] 대상 수가 0이 아니거나 명시적 `N/A` 근거가 있으며, 실패·미확인 항목은 `blocked` 또는 `PENDING`으로 기록됨
 - [ ] 불일치는 `HANDOFF.md`에 기록했고, 추측으로 진행하지 않음
 - [ ] 타이틀 루트가 NSP/XCI 직접 보유 폴더이고 `_work/<프로젝트 ID>`가 그 아래에 있음
-- [ ] Eden 세션 키·소유권·remote status가 local `SESSION.json`과 일치하거나, 불일치가
-  `BLOCKED`로 기록됨
+- [ ] Eden/Ryubing 양쪽 inventory와 공유 세션 키·소유권이 local `SESSION.json`과 일치하고,
+  live 세션이 타이틀당 최대 하나이거나 불일치가 `BLOCKED`로 기록됨
+- [ ] 최종 QA/릴리스라면 공식 사이트 배포 릴리즈 직접 실행 receipt가 현재 바이트로 재검증됨
 - [ ] 생성할 산출물의 canonical 경로·논리 키가 기존 manifest와 중복되지 않음

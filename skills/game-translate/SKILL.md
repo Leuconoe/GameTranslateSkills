@@ -65,7 +65,8 @@ canonical staging, handoff를 만들어 다음 단계가 실행 가능하게 준
 - 사용자가 나중에 수정안을 제공하면 해당 행/이미지만 branch QA부터 다시 실행한다.
 
 `runtime_policy`는 review policy와 별개다. `static-first`에서는 사용자의 명시적 실행
-요청 전까지 bench와 `PENDING_RUNTIME`만 기록한다.
+요청 전까지 bench와 `PENDING_RUNTIME`만 기록한다. 이 정책은 중간 실행 빈도만 조절하며,
+릴리스 전 공식 배포용 릴리즈 에뮬레이터의 non-MCP 직접 실행을 생략하지 않는다.
 
 ## 3. 이미지 범위
 
@@ -81,7 +82,11 @@ canonical staging, handoff를 만들어 다음 단계가 실행 가능하게 준
 각 단계를 직접 호출할 때도 `PROJECT.md`, `WORK_LOG.md`, `HANDOFF.md`, 입력 manifest·
 출력 경로의 수정 시각/크기/SHA-256/`git status`를 읽는다. 정책 필수값은
 `batch_size`, `glossary_path`, `runtime_policy`, `runtime_authorization`,
-`target_language_slot`, `image_scope`, `text_review_policy`, `image_review_policy`,
+`basic_test_backend=eden-mcp`, `mcp_session_scope=one-per-title`,
+`final_qa_runtime=official-distribution-release`, `final_qa_mcp_allowed=false`,
+`target_language_slot`, `image_scope`, `image_model=provider-selected`,
+`image_quality=provider-managed`, `image_input_fidelity=provider-managed`,
+`text_review_policy`, `image_review_policy`,
 `text_review_approval`, `image_review_approval`, `font_status`, `release_contract`다.
 
 행 상태, 브랜치 상태, QA 상태, 사용자 승인, 런타임 상태, 릴리스 상태를 한 값으로 합치지
@@ -97,23 +102,32 @@ canonical staging, handoff를 만들어 다음 단계가 실행 가능하게 준
 baseline·line metrics, 기존 glyph 보존, 왕복 추출, render probe를 증명한다. 이 증거가
 없거나 `font_status=verified`가 아니면 text review-ready나 통합 QA로 진행하지 않는다.
 
-`gt-qa`는 깨끗한 원본에서 한 번만 통합하고, 실제 실행 시에만 입력 경로·Title ID·active
-mod·교체 파일 수·session key·화면 전이·캡처를 현재 build에 귀속한다. 로더 생존·종료
-코드·패치 적용 로그만으로 PASS하지 않는다.
+`gt-qa`는 깨끗한 원본에서 한 번만 통합한다. 기본 smoke는 Eden-MCP의 단일 title 세션을
+재사용하지만 그 결과를 최종 PASS로 쓰지 않는다. 최종 QA는 플랫폼 allowlist의 공식 사이트
+배포 릴리즈를 별도로 받아 MCP 없이 직접 실행하고 입력 경로·Title ID·active mod 전수 hash·
+binary/build hash·화면 전이·로그/캡처를 `RELEASE_RUNTIME_QA.json`에 귀속한다. 로더 생존·
+종료 코드·패치 적용 로그만으로 PASS하지 않는다.
 
 이미지 branch는 `$GT_HOME/common/image-translation-contract.md`를 적용한다. 에이전트가
-만든 raster 후보는 `$imagegen`/`image_gen.imagegen` edit receipt가 있어야 하고,
+만든 raster 후보는 API 키 없는 `$imagegen` 내장 `image_gen.imagegen`을 같은 byte-exact
+reference·prompt로 최소 3회 독립 호출한 schema 3 receipt와 정확히 하나의 합격 선택 후보가
+있어야 하고,
 `IMAGE_GENERATION_MANIFEST.tsv`에 대해 `validate-image-translation.mjs`가 source/reference
-비덮어쓰기, 원어 분위기·style·anchor/atlas rect·canvas/format, 선언된 alpha policy,
-edit region 밖 decoded RGBA diff 0을 증명해야 한다. Python/Pillow/OpenCV/임의 스크립트 생성물이나
-검증기 `Issues: 0`이 없는 후보는 이미지 번역·QA 완료로 승격하지 않는다.
+비덮어쓰기, 원문 완전 제거와 no-overlay, 원어의 서체 인상·색·외곽선·질감·재질·광원·
+자간/baseline·분위기, anchor/atlas rect·canvas/format, 선언된 alpha policy, edit region 밖
+decoded RGBA diff 0을 증명해야 한다. 내장 surface가 노출하지 않는 모델/quality를 주장하거나
+API/CLI, Python/Pillow/OpenCV/임의 스크립트 raster 생성물, 검증기 `Issues: 0`이 없는 후보는
+이미지 번역·QA 완료로 승격하지 않는다. 합격 후보가 없으면 `hold-for-imagegen-review`로 멈춘다.
 
 ## 6. 세션·중복 파일 방지
 
-NSW Eden은 프로젝트당 `50_test/eden/SESSION.json`과 `ARTIFACT_MANIFEST.tsv` 하나만
-사용한다. 실행 전에 capability와 remote session 목록/status를 조회한다.
+NSW 기본 smoke는 Eden-MCP다. Eden-MCP와 Ryubing-MCP는 프로젝트당
+`50_test/eden/SESSION.json`과 `ARTIFACT_MANIFEST.tsv` 하나를 공유한다. 실행 전에 양쪽
+capability와 같은 Title ID의 remote session 목록/status를 조회한다.
 
 - 같은 session key면 새 세션을 만들지 않고 재사용한다.
+- 양쪽을 합쳐 active/pending 세션이 둘 이상이면 `BLOCKED`다. Ryubing이나 두 번째 generation은
+  구체적 예외 사유와 이전 exact close 증거가 있을 때만 허용한다.
 - `pending` 상태에서 create를 재호출하지 않는다. remote를 재조회하고 `BLOCKED`로 조정한다.
 - 이전 `last_session_id`가 있으면 exact remote close와 local `close` 기록을 먼저 증명하고,
   새 prepare에는 `--previous-session-id <동일 ID>`를 전달한다.
@@ -122,7 +136,7 @@ NSW Eden은 프로젝트당 `50_test/eden/SESSION.json`과 `ARTIFACT_MANIFEST.ts
 - 동일 `artifact_key`·canonical path가 있으면 hash를 비교해 재사용/원자 교체하고 복사본을
   만들지 않는다.
 
-`qa-session` guard는 원격 Eden을 직접 삭제하지 않는다. remote close 성공을 확인한 뒤에만
+`qa-session` guard는 원격 MCP 세션을 직접 삭제하지 않는다. remote close 성공을 확인한 뒤에만
 local `--action close --remote-closed`를 실행한다. 소유권을 증명할 수 없는 세션은 삭제하지
 않고 `BLOCKED`다.
 
@@ -164,6 +178,7 @@ anchor·link/reparse point·계획 밖 경로는 항상 거부한다.
 신규 프로젝트는 플랫폼 어댑터가 지정한 `project:new`를 사용해 실제 NSP/XCI 보유 폴더
 아래에 생성한다. 수동 generic `title` 폴더를 만들지 않는다.
 
-완료는 `gt-qa`의 정책에 맞는 bench/runtime/hardware 증거와 `gt-release`의 exact package
-계약이 모두 충족될 때만 선언한다. 릴리스 후에도 `gt-project-cleanup`으로 정리 계획을
+완료는 `gt-qa`의 bench와 공식 배포 릴리즈 non-MCP runtime receipt, 별도 hardware 상태,
+`gt-release`의 exact package 계약이 모두 충족될 때만 선언한다. 릴리스 후에도
+`gt-project-cleanup`으로 정리 계획을
 생성하고, Handoff·manifest·QA·release anchor를 보존한다.

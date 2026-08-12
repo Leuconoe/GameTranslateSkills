@@ -13,9 +13,10 @@ description: "Release stage after integrated QA: package a verified Korean game 
 
 ## 입력 조건
 
-- `gt-qa` 완료 기준 전 항목 통과. `runtime_policy`가 static-first이고 실행을 하지 않았다면
-  `PENDING_RUNTIME`/하드웨어 제한을 릴리스 정책에서 명시적으로 허용하고 그 사실을 notes에
-  기록한다. `PASS (runtime)`으로 추론하지 않는다.
+- `gt-qa` 완료 기준 전 항목 통과. `runtime_policy`는 중간 실행 빈도만 조절하며 릴리스의
+  최종 런타임 게이트를 생략하지 않는다. `50_test/RELEASE_RUNTIME_QA.json`이 현재 최종
+  build에 대해 공식 사이트 배포용 릴리즈의 MCP 없는 직접 실행을 증명하고
+  `npm run runtime:validate`를 통과해야 한다. `PENDING_RUNTIME`이면 릴리스는 `BLOCKED`다.
 - `text_status=review_ready`, `font_status=verified`, `image_scope=required`이면
   `image_status=review_ready`; `image_scope=N/A`이면 이미지 단계 생략 사유와 0건 근거가
   `PROJECT.md`/QA 보고서에 기록됨
@@ -45,8 +46,10 @@ description: "Release stage after integrated QA: package a verified Korean game 
    사용자 눈높이로.
 3. **릴리스 노트**: `RELEASE_NOTES.md` — 버전, 번역 범위(텍스트 %/이미지 % 또는
    `image_scope=N/A`와 근거), 시험 환경(에뮬레이터·펌웨어 버전), 미번역/보류 항목, 크레딧.
-4. **최종 검증**: 패키지를 깨끗한 환경(새 모드 폴더)에 풀어 적용 → 실행 스모크 테스트
-   1회 (타이틀 화면 + 인게임 진입). 통과 증거 캡처.
+4. **최종 검증**: 패키지를 깨끗한 mod 환경에 풀어 적용한 뒤, 플랫폼 allowlist의 공식
+   사이트 배포용 릴리즈 에뮬레이터를 MCP 없이 직접 실행해 타이틀 화면과 인게임·한글·폰트·
+   저장/불러오기·조건부 이미지를 시험한다. 현재 package/build/mod/binary/log/캡처 hash로
+   `RELEASE_RUNTIME_QA.json`을 갱신하고 `npm run runtime:validate`를 다시 통과시킨다.
 5. **아카이브**: 릴리스 패키지·해시·증거를 플랫폼 어댑터가 지정한 canonical 경로에 보관.
    `PROJECT.md`의 상태는 모든 필수 QA·런타임/하드웨어 정책·체크섬 동기화가 끝난 뒤에만
    `released`로 갱신한다. 버전은 canonical ZIP 파일명과 분리된 원장에서 관리한다.
@@ -75,9 +78,11 @@ description: "Release stage after integrated QA: package a verified Korean game 
 
 - [ ] 패키지에 원본 게임 데이터·키 미포함 확인 (내용물 전수 목록 검사)
 - [ ] 깨끗한 환경 적용 스모크 테스트 통과 (증거 보존)
+- [ ] 공식 사이트 배포용 릴리즈를 직접 실행했고 `mcp_used=false`, URL·버전·바이너리 SHA-256·현재 build/mod/evidence가 검증됨
+- [ ] `npm run runtime:validate` 및 `project:validate -- --strict` 통과; MCP-only 결과나 `PENDING_RUNTIME`으로 릴리스하지 않음
 - [ ] INSTALL.md / RELEASE_NOTES.md 완비, 해시 기록
 - [ ] Handoff 기반 cleanup plan·지시서가 생성되고 보존 anchor와 승인 allowlist가 검증됨
 - [ ] 승인된 정리를 적용했다면 plan SHA-256·아카이브 경로·전수 재검토·사용자 상세 보고가 기록됨
 - [ ] 이후 별도 승인으로 휴지통 이동했다면 trash-plan SHA-256·backend·원래 아카이브 경로·`TRASH_RECEIPT.json`·`project:validate -- --strict` 결과가 기록됨
 - [ ] canonical 파일명·경로·ZIP root·파일 allowlist가 어댑터 계약과 exact 일치
-- [ ] 런타임·하드웨어 상태와 `released` 판정이 서로 혼동되지 않음
+- [ ] 공식 배포 릴리즈 런타임·하드웨어 상태와 `released` 판정이 서로 혼동되지 않음

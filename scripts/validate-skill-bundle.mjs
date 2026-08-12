@@ -7,6 +7,8 @@ const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url))
 const skillsRoot = path.join(repositoryRoot, 'skills');
 const contractPath = path.join(repositoryRoot, 'common', 'pipeline-contract.json');
 const imageContractPath = path.join(repositoryRoot, 'common', 'image-translation-contract.md');
+const runtimeContractPath = path.join(repositoryRoot, 'common', 'release-runtime-contract.md');
+const packagePath = path.join(repositoryRoot, 'package.json');
 const forbiddenSkillText = [
   '7단계',
   '7-stage',
@@ -36,6 +38,14 @@ function add(issues, message) {
 
 async function main() {
   const issues = [];
+  let bundleVersion;
+  try {
+    const packageManifest = JSON.parse(await read(packagePath));
+    bundleVersion = packageManifest.version;
+    if (!/^\d+\.\d+\.\d+$/.test(bundleVersion ?? '')) add(issues, 'package.json: version must use strict semver');
+  } catch (error) {
+    add(issues, `package.json: cannot read/parse (${error.message})`);
+  }
   let contract;
   try {
     contract = JSON.parse(await read(contractPath));
@@ -111,38 +121,53 @@ async function main() {
   for (const phrase of [
     'IMAGE_GENERATION_MANIFEST.tsv',
     'image_gen.imagegen',
+    'chatgpt-built-in',
+    'provider-selected',
+    'provider-managed',
+    'best-of-3-fail-closed',
+    'minimum_candidates',
+    'no_overlay',
     'Python/Pillow/OpenCV',
     'source/reference/candidate',
     'alpha byte',
     'decoded RGBA diff',
-    'validate-image-translation.mjs',
+    'npm run image:validate',
   ]) if (!imageContract.includes(phrase)) add(issues, `image contract: missing fail-closed phrase ${phrase}`);
   const imageAnalyze = contents.get('gt-image-analyze') ?? '';
-  for (const phrase of ['image-translation-contract', '분위기', 'edit_regions', 'byte-exact reference']) if (!imageAnalyze.includes(phrase)) add(issues, `gt-image-analyze: missing image preservation phrase ${phrase}`);
+  for (const phrase of [
+    'image-translation-contract', '분위기', 'preserve_typography', 'preserve_color',
+    'preserve_outline_shadow', 'preserve_material_lighting', 'preserve_spacing_baseline',
+    'edit_regions', 'byte-exact reference',
+  ]) if (!imageAnalyze.includes(phrase)) add(issues, `gt-image-analyze: missing image preservation phrase ${phrase}`);
   const imageTranslate = contents.get('gt-image-translate') ?? '';
   for (const phrase of [
     'image-translation-contract',
     '$imagegen',
     'image_gen.imagegen',
+    'best-of-3-fail-closed',
+    'provider-managed',
     'view_image',
     'Python/Pillow/OpenCV',
     'IMAGE_GENERATION_MANIFEST.tsv',
     'validate-image-translation.mjs',
-    '원본, reference, 기존 candidate',
-    'hold-for-imagegen',
+    'source/reference/기존 candidate',
+    'hold-for-imagegen-review',
   ]) if (!imageTranslate.includes(phrase)) add(issues, `gt-image-translate: missing imagegen-only gate ${phrase}`);
   const imageQa = contents.get('gt-image-qa') ?? '';
   for (const phrase of [
     'image-translation-contract',
     'IMAGE_GENERATION_MANIFEST.tsv',
     'image_gen.imagegen',
+    'best-of-3-fail-closed',
+    'minimum_candidates=3',
+    'original_feel_status',
     'Python/Pillow/OpenCV',
     'validate-image-translation.mjs',
-    '기본은 전 픽셀 exact',
+    '기본 alpha는 전 픽셀 exact',
     '영역 밖 decoded RGBA는 diff 0',
   ]) if (!imageQa.includes(phrase)) add(issues, `gt-image-qa: missing image harness gate ${phrase}`);
   const imageReview = contents.get('gt-image-review') ?? '';
-  for (const phrase of ['IMAGE_GENERATION_MANIFEST.tsv', 'image_gen.imagegen', 'alpha policy', 'RGBA diff 0']) if (!imageReview.includes(phrase)) add(issues, `gt-image-review: missing image evidence phrase ${phrase}`);
+  for (const phrase of ['IMAGE_GENERATION_MANIFEST.tsv', 'image_gen.imagegen', 'best-of-3-fail-closed', 'schema 3', 'original-feel', 'alpha', 'RGBA diff 0']) if (!imageReview.includes(phrase)) add(issues, `gt-image-review: missing image evidence phrase ${phrase}`);
   const imagePipeline = contract?.image_generation_contract;
   for (const [field, expected] of Object.entries({
     document: 'common/image-translation-contract.md',
@@ -150,19 +175,80 @@ async function main() {
     validator: 'scripts/validate-image-translation.mjs',
     agent_generator: 'imagegen',
     tool: 'image_gen.imagegen',
+    execution_surface: 'chatgpt-built-in',
+    model: 'provider-selected',
+    quality: 'provider-managed',
+    input_fidelity: 'provider-managed',
+    api_endpoint: 'N/A',
+    candidate_policy: 'best-of-3-fail-closed',
+    minimum_candidates: 3,
     operation: 'edit',
   })) if (imagePipeline?.[field] !== expected) add(issues, `contract: image_generation_contract.${field} must equal ${expected}`);
+  let runtimeContract = '';
+  try {
+    runtimeContract = await read(runtimeContractPath);
+  } catch (error) {
+    add(issues, `runtime contract: cannot read ${runtimeContractPath} (${error.message})`);
+  }
+  for (const phrase of [
+    'official-distribution-release',
+    'mcp_used=false',
+    '50_test/RELEASE_RUNTIME_QA.json',
+    'ACTIVE_MOD_MANIFEST.tsv',
+    'nightly',
+    'npm run runtime:validate',
+  ]) if (!runtimeContract.includes(phrase)) add(issues, `runtime contract: missing fail-closed phrase ${phrase}`);
+  const runtimePipeline = contract?.runtime_qa_contract;
+  for (const [field, expected] of Object.entries({
+    document: 'common/release-runtime-contract.md',
+    platform_adapter: 'platforms/<platform>/runtime-emulators.json',
+    receipt: '50_test/RELEASE_RUNTIME_QA.json',
+    validator: 'scripts/validate-release-runtime.mjs',
+    basic_test_backend: 'eden-mcp',
+    mcp_session_scope: 'one-per-title',
+    final_execution_surface: 'official-distribution-release',
+    final_launch_mode: 'direct',
+    final_mcp_allowed: false,
+    final_result: 'pass',
+  })) if (runtimePipeline?.[field] !== expected) add(issues, `contract: runtime_qa_contract.${field} must equal ${expected}`);
+  const qaSkill = contents.get('gt-qa') ?? '';
+  for (const phrase of ['Eden-MCP', 'Ryubing-MCP', 'RELEASE_RUNTIME_QA.json', 'mcp_used=false', 'runtime:validate']) {
+    if (!qaSkill.includes(phrase)) add(issues, `gt-qa: missing final runtime gate ${phrase}`);
+  }
+  const releaseSkill = contents.get('gt-release') ?? '';
+  for (const phrase of ['RELEASE_RUNTIME_QA.json', 'runtime:validate', 'MCP 없이 직접', 'PENDING_RUNTIME']) {
+    if (!releaseSkill.includes(phrase)) add(issues, `gt-release: missing final runtime gate ${phrase}`);
+  }
   try {
     const scaffold = await read(path.join(repositoryRoot, 'scripts', 'new-translation-project.mjs'));
-    for (const phrase of ['imageGenerationManifestHeader', "'prompts'", "'receipts'", "'probes'", 'IMAGE_GENERATION_MANIFEST.tsv']) {
+    for (const phrase of ['imageGenerationManifestHeader', "'tool'", "'model'", "'quality'", "'original_feel_status'", "'attempts'", "'prompts'", "'receipts'", "'probes'", 'IMAGE_GENERATION_MANIFEST.tsv']) {
       if (!scaffold.includes(phrase)) add(issues, `project scaffold: missing image harness phrase ${phrase}`);
+    }
+    for (const phrase of ['basic_test_backend', 'mcp_session_scope', 'final_qa_runtime', 'final_qa_mcp_allowed', 'RELEASE_RUNTIME_QA.json', "'release-runtime'"]) {
+      if (!scaffold.includes(phrase)) add(issues, `project scaffold: missing runtime harness phrase ${phrase}`);
     }
     const projectValidator = await read(path.join(repositoryRoot, 'scripts', 'validate-translation-projects.mjs'));
     for (const phrase of ['validate-image-translation.mjs', 'imageHarnessRequired', 'Image harness validation failed', 'await isType']) {
       if (!projectValidator.includes(phrase)) add(issues, `project validator: missing image harness phrase ${phrase}`);
     }
+    for (const phrase of ['validate-release-runtime.mjs', 'Official distribution runtime validation failed', 'final_qa_mcp_allowed', 'validateMcpSessionState']) {
+      if (!projectValidator.includes(phrase)) add(issues, `project validator: missing runtime harness phrase ${phrase}`);
+    }
+    const sessionGuard = await read(path.join(repositoryRoot, 'scripts', 'qa-session.mjs'));
+    for (const phrase of ['eden-mcp', 'ryubing-mcp', 'inventory-backend', 'session_generation', 'exception-reason']) {
+      if (!sessionGuard.includes(phrase)) add(issues, `QA session guard: missing single-title session phrase ${phrase}`);
+    }
+    const runtimeValidator = await read(path.join(repositoryRoot, 'scripts', 'validate-release-runtime.mjs'));
+    for (const phrase of ['official-distribution-release', 'mcp_used', 'official_download_url', 'emulator_binary_sha256', 'active mod has an undeclared file']) {
+      if (!runtimeValidator.includes(phrase)) add(issues, `runtime validator: missing final QA phrase ${phrase}`);
+    }
+    const runtimeAdapters = JSON.parse(await read(path.join(repositoryRoot, 'platforms', 'nsw', 'runtime-emulators.json')));
+    if (runtimeAdapters?.basic_qa?.backend !== 'eden-mcp') add(issues, 'NSW runtime adapter: basic backend must be eden-mcp');
+    if (runtimeAdapters?.basic_qa?.session_scope !== 'one-per-title') add(issues, 'NSW runtime adapter: session scope must be one-per-title');
+    if (runtimeAdapters?.final_qa?.mcp_allowed !== false) add(issues, 'NSW runtime adapter: final QA must forbid MCP');
+    if (!Array.isArray(runtimeAdapters?.final_qa?.sources) || runtimeAdapters.final_qa.sources.length === 0) add(issues, 'NSW runtime adapter: official sources must not be empty');
   } catch (error) {
-    add(issues, `project image harness: cannot inspect scaffold/validator (${error.message})`);
+    add(issues, `project harness: cannot inspect scaffold/validators (${error.message})`);
   }
   for (const cleanup of ['gt-workspace-cleanup', 'gt-project-cleanup']) {
     const text = contents.get(cleanup) ?? '';
@@ -188,8 +274,8 @@ async function main() {
       const raw = await read(path.join(repositoryRoot, pluginFile));
       const plugin = JSON.parse(raw);
       if (/seven-stage|7-stage|7단계/i.test(raw)) add(issues, `${pluginFile}: stale seven-stage description`);
-      if (pluginFile !== '.claude-plugin/marketplace.json' && plugin.version !== '1.4.0') add(issues, `${pluginFile}: version must match current 1.4.0 bundle`);
-      if (pluginFile === '.claude-plugin/marketplace.json' && plugin.metadata?.version !== '1.4.0') add(issues, `${pluginFile}: metadata.version must match current 1.4.0 bundle`);
+      if (pluginFile !== '.claude-plugin/marketplace.json' && plugin.version !== bundleVersion) add(issues, `${pluginFile}: version must match package ${bundleVersion}`);
+      if (pluginFile === '.claude-plugin/marketplace.json' && plugin.metadata?.version !== bundleVersion) add(issues, `${pluginFile}: metadata.version must match package ${bundleVersion}`);
     } catch (error) {
       add(issues, `${pluginFile}: cannot read/parse (${error.message})`);
     }

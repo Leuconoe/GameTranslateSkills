@@ -1,7 +1,9 @@
-# emucap 선택적 런타임 QA 연동
+# emucap 선택적 smoke QA 연동
 
 emucap은 번역·추출 도구가 아니라 실행 중 에뮬레이터를 관찰·제어하고 실험 증거를 기록하는
-**선택적 QA 백엔드**다. `gt-qa` 6단계에서만 사용한다. emucap이 없거나 해당 플랫폼 어댑터가
+**선택적 smoke/진단 백엔드**다. emucap/MCP 증거는 최종 QA 또는 릴리스 PASS를 만들지
+못한다. NSW 최종 QA는 `release-runtime-contract.md`의 공식 사이트 배포용 릴리즈를 MCP 없이
+직접 실행한 별도 receipt를 요구한다. emucap이 없거나 해당 플랫폼 어댑터가
 지원하지 않으면 기존 플랫폼의 에뮬레이터·실기 절차를 사용하며, emucap 설치를 번역 작업의
 전제 조건으로 만들지 않는다.
 

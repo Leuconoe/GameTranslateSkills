@@ -17,8 +17,9 @@
 | nstool | `$GT_TOOLS/nstool-<버전>/nstool.exe` | NSP/XCI/NCA 언팩·검증의 표준 CLI. 재현 가능한 추출은 반드시 이 도구로 수행 |
 | 시스템 키 | `$GT_TOOLS/system/prod.keys` | nstool 복호화 키. 모든 nstool 명령에 `-k`로 명시 (extract.md 키 파일 규약) |
 | NxFileViewer | `$GT_TOOLS/NxFileViewer/` | 패키지 검사 보조 유틸리티. GUI 추출을 재현 가능한 빌드 단계로 사용하지 않음 |
-| Eden | `$GT_TOOLS/Eden/<version>/eden.exe` | 실기 전 표준 에뮬레이터 테스트 환경. 사용 가능한 경우 `eden-mcp` 실행·상태·캡처 경로를 권장 (emucap 대상 아님) |
-| Ryujinx 호환 런타임 | `$GT_TOOLS/<배포 폴더>/` (예: `Ryubing/`) | 보조 에뮬레이터 스모크 테스트. 포터블 프로파일은 도구 폴더 안에 유지하고 프로젝트 트리로 복사 금지 |
+| Eden-MCP | MCP backend | 기본 반복 smoke. Ryubing-MCP와 공유하는 타이틀당 단일 세션 원장을 재사용 |
+| 공식 배포 릴리즈 에뮬레이터 | 공식 release artifact의 외부 경로 | 최종 QA 전용. `runtime-emulators.json` allowlist에서 받아 MCP 없이 직접 실행 |
+| Ryubing-MCP | MCP backend | Eden으로 재현할 수 없는 예외 진단 전용. 별도 세션을 자동 생성하지 않음 |
 | 공용 한글 폰트 | `$GT_TOOLS/_fonts/` | 기본 본문 폰트. **실제 폴더의 파일을 확인**해 선택한 파일명·SHA-256을 프로젝트 시작 시 기록 |
 | 프로젝트 스캐폴드 | `npm run project:new` | 격리된 프로젝트 폴더 생성 |
 | 구조 검증기 | `npm run project:validate` | 폴더 구조·Title ID 격리·루트 누수 검사 (`--strict`) |
@@ -37,9 +38,10 @@ Eden 또는 Ryubing을 포터블/격리 프로파일로 실행할 때는 에뮬�
   기록한다.
 - 두 값을 확인할 수 없으면 격리 실행을 PASS로 판정하지 말고 `PENDING_RUNTIME`으로 남긴다.
 
-Eden 실행은 `eden-mcp`가 연결 가능하고 대상 작업을 지원하면 이를 우선한다. 직접
-`eden.exe` 실행은 MCP 미설치·미지원 또는 장애 시의 fallback으로 사용하고 사유를 로그에
-남긴다. 어느 경로도 `PASS (hardware)`를 대신하지 않는다.
+기본 smoke는 Eden-MCP를 사용하며 양쪽 MCP inventory를 확인하고 기존 title 세션을
+재사용한다. 최종 QA는 MCP fallback이 아니라 공식 release artifact의 별도 direct 실행이다.
+`platforms/nsw/runtime-emulators.json`의 공식 URL allowlist와 binary/build/mod/evidence hash를
+검증하지 못하면 `PENDING_RUNTIME`이며, 어느 에뮬레이터 경로도 `PASS (hardware)`를 대신하지 않는다.
 
 **도구 경로 탐색 규칙**: 배포 압축본을 그대로 푼 도구 폴더에는 버전·플랫폼 접미가 붙는다(예: `nstool-v*-win_x64/`). 문서의 고정 경로를 그대로 가정하지 말고 디렉터리 목록에서 **이름 접두로 탐색**한다. 폰트 폴더 이름은 `fonts/`가 아니라 `_fonts/`다. 실제로 사용한 절대 경로와 버전은 `WORK_LOG.md`에 기록한다.
 
@@ -91,8 +93,11 @@ Eden 실행은 `eden-mcp`가 연결 가능하고 대상 작업을 지원하면 �
     screenshots/
     logs/
     eden/
-      SESSION.json          프로젝트당 하나의 Eden 세션 상태
-      ARTIFACT_MANIFEST.tsv 프로젝트당 하나의 런타임 아티팩트 manifest
+      SESSION.json          Eden/Ryubing MCP가 공유하는 프로젝트당 하나의 세션 상태
+      ARTIFACT_MANIFEST.tsv 프로젝트당 하나의 MCP smoke 아티팩트 manifest
+    RELEASE_RUNTIME_QA.json 공식 배포 릴리즈 direct 실행의 canonical receipt
+    release-runtime/
+      ACTIVE_MOD_MANIFEST.tsv 실제 활성 mod의 전수 파일·해시·크기
   90_tools/
     scripts/               게임별 조사·주입 스크립트
     environment/           프로젝트 전용 실행 환경

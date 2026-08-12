@@ -17,7 +17,7 @@ PLAN (이동·삭제 0건)
 ## 1. 계획
 
 1. 대상 루트와 프로젝트를 literal 절대 경로로 확정하고 `git status`, 활성 프로세스,
-   Eden remote/local 상태를 읽는다.
+   Eden-MCP/Ryubing-MCP 양쪽 remote inventory와 공유 local 상태를 읽는다.
 2. `HANDOFF.md`의 `open` evidence는 보존 anchor로 취급한다. `applied`·`rejected`도
    manifest·로그가 더 이상 참조하지 않는지 확인하기 전에는 후보로 승격하지 않는다.
 3. PROJECT/WORK_LOG/manifest/QA/릴리스 문서와 canonical 파일을 보존한다. 참조 불일치는

@@ -1,6 +1,6 @@
 {
   "name": "game-translate-skills",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "private": true,
   "description": "Cross-platform npm tooling for the GameTranslateSkills plugin.",
   "license": "MIT",
@@ -17,6 +17,7 @@
     "workspace:cleanup": "node scripts/workspace-cleanup.mjs",
     "font:validate": "node scripts/validate-font-atlas.mjs",
     "image:validate": "node scripts/validate-image-translation.mjs",
+    "runtime:validate": "node scripts/validate-release-runtime.mjs",
     "skills:validate": "node scripts/validate-skill-bundle.mjs",
     "test": "node --test tests/harness.test.mjs"
   }

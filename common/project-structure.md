@@ -42,7 +42,8 @@ _work/<프로젝트 ID>/
                            text(glossary, manifest, batches, reports) / image_translation
   40_build/                staging / 패치 트리 / releases / BUILD_MANIFEST.tsv
   50_test/                 TEST_LOG.md / screenshots / logs / emucap(선택적 원장·증거)
-                           eden/SESSION.json / ARTIFACT_MANIFEST.tsv (각각 프로젝트당 1개)
+                           eden/SESSION.json / ARTIFACT_MANIFEST.tsv (양쪽 MCP 공유, 각각 1개)
+                           RELEASE_RUNTIME_QA.json / release-runtime/ACTIVE_MOD_MANIFEST.tsv
   90_tools/                게임별 scripts / environment / cleanup-archive(정리 복구 영역)
 ```
 
@@ -59,8 +60,10 @@ _work/<프로젝트 ID>/
   서로 다른 staging에 있으면 후보를 만들지 않는다.
 - 이미지 번역의 canonical provenance는
   `30_translation/image_translation/IMAGE_GENERATION_MANIFEST.tsv` 하나다. `$imagegen`의
-  exact prompt는 `prompts/`, `image_gen.imagegen` receipt는 `receipts/`, 동일 decoder의
-  source/candidate RGBA8 probe는 `probes/`에 둔다. 원본/reference/candidate와 이 증거의
+  exact prompt는 `prompts/`, 내장 `image_gen.imagegen`의 best-of-3 edit receipt는
+  `receipts/`, 모든 독립 출력은 `for_translation/attempts/`, 동일 decoder의
+  source/candidate RGBA8 probe는 `probes/`에 둔다. 원문 제거와
+  no-overlay, 원본 서체·색·외곽선·질감·광원·간격 및 원본/reference/candidate와 이 증거의
   현재 hash를 `common/image-translation-contract.md`로 검증하지 않은 후보는 사용하지 않는다.
 - 행 번호가 아닌 **안정적인 키·리소스 ID·오프셋 조합**으로 원문과 번역을 연결한다.
 
@@ -71,28 +74,36 @@ _work/<프로젝트 ID>/
   `-1`·`(1)`·날짜·세션 ID 복사본을 만들지 않는다.
 - 기존 canonical 파일을 갱신할 때는 같은 디렉터리의 `tmp-*` 파일에 완성·검증 후 원자적
   rename/replace한다. 중간 파일은 프로젝트 `_work` 밖에 만들지 않는다.
-- NSW Eden QA는 `common/qa-session-rules.md`를 따르고 `50_test/eden/SESSION.json`과
-  `ARTIFACT_MANIFEST.tsv`를 단일 상태·manifest로 유지한다. active 세션 키가 exact로
-  일치하면 재사용하고, 새 세션을 만들기 전에 이전 소유 세션을 정확한 ID로 종료한다.
+- NSW 기본 smoke QA는 `common/qa-session-rules.md`를 따른다. 경로 이름과 관계없이
+  Eden-MCP/Ryubing-MCP가 `50_test/eden/SESSION.json`과 `ARTIFACT_MANIFEST.tsv`를 공유하며,
+  양쪽 inventory를 합쳐 타이틀당 live 세션을 최대 하나만 유지한다. 기본은 Eden을 재사용하고
+  Ryubing 또는 두 번째 세션에는 구체적 예외 사유와 이전 exact close 증거가 필요하다.
 - `project:qa-session`은 이 local guard만 갱신한다. remote close 성공을 확인하지 않은
   상태에서 local `closed`로 바꾸지 않으며, 소유권을 증명할 수 없는 세션은 `BLOCKED`로 둔다.
+- 최종 QA는 MCP 원장과 분리한다. 공식 사이트 배포 릴리즈 바이너리를 직접 실행하고
+  `50_test/RELEASE_RUNTIME_QA.json`을 `common/release-runtime-contract.md`로 검증한다.
 
 ### 단계 실행 정책과 경고 게이트
 
 - 각 프로젝트의 `PROJECT.md`에는 `batch_size`(공통 기본값 80), `runtime_policy`(`static-first` 기본),
   `target_language_slot`, `image_scope`(`pending` → `required` 또는 `N/A`),
-  `text_review_policy`, `image_review_policy`, 해당 approval 필드와 `release_contract`를 기록한다.
+  `image_model=provider-selected`, `image_quality=provider-managed`,
+  `image_input_fidelity=provider-managed`,
+  `text_review_policy`, `image_review_policy`, 해당 approval 필드, `basic_test_backend=eden-mcp`,
+  `mcp_session_scope=one-per-title`, `final_qa_runtime=official-distribution-release`,
+  `final_qa_mcp_allowed=false`, `release_contract`를 기록한다.
   80행이 아닌 배치는 근거가 있는 명시적 타이틀별 override로만 허용한다.
 - 단계별 스킬을 직접 호출하는 경우에도 [`preflight-checks.md`](preflight-checks.md)를 먼저 읽는다.
   문서 간 숫자·경로·상태·승인 조건이 충돌하면 추측하지 않고 `WARN`/`BLOCKED`를 기록하며,
   `HANDOFF.md`에 불일치를 append-only로 남긴다.
-- 정적/bench PASS, 런타임 PASS, 실기 PASS, 사용자 승인, 릴리스 완료는 서로 다른 상태다.
+- 정적/bench PASS, MCP smoke PASS, 공식 배포 릴리즈 런타임 PASS, 실기 PASS, 사용자 승인,
+  릴리스 완료는 서로 다른 상태다.
   `qa_ready`, `review_ready`, `user-approved`, `PASS (runtime)`도 서로 대체하지 않는다.
   한 상태를 다른 상태의 증거로 승격하지 않는다.
 
 ### Handoff 기반 정리·완료 후 청결화 게이트
 
-1. `PROJECT.md`가 `released` 또는 사용자가 지정한 완료 상태인지 확인하고, 실행 중인 도구·에뮬레이터가 정리 대상 파일을 사용하지 않는지 확인한다. Eden을 사용했다면 remote close, `SESSION.json=closed`, 마지막 ID 귀속을 확인한다.
+1. `PROJECT.md`가 `released` 또는 사용자가 지정한 완료 상태인지 확인하고, 실행 중인 도구·에뮬레이터가 정리 대상 파일을 사용하지 않는지 확인한다. MCP를 사용했다면 양쪽 inventory, exact remote close, `SESSION.json=closed`, 마지막 ID 귀속을 확인한다.
 2. `gt-project-cleanup` 또는 `npm run project:cleanup -- --project-root "<타이틀 루트>/_work/<프로젝트 ID>"`로 Handoff·PROJECT·WORK_LOG·manifest·QA·release 참조를 추론해 `CLEANUP_PLAN.json`과 `CLEANUP_INSTRUCTIONS.md`를 생성한다.
 3. `tmp` 이름은 후보 근거 중 하나일 뿐이다. open Handoff evidence, canonical manifest, 현재/소유권 불명 세션, 링크/reparse point, 활성 staging·릴리스·QA 증거는 보존하거나 `BLOCKED`로 둔다.
 4. 지시서의 exact 파일만 `approved=true`로 표시하고 계획 SHA-256을 확인한 뒤 `--apply --plan`으로 `90_tools/cleanup-archive/<transaction>/`에 이동한다. 계획 밖 경로·glob·워크스페이스 전체 재귀 삭제·프로세스 이름 기반 세션 종료는 금지한다.

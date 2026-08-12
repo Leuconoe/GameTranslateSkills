@@ -139,12 +139,12 @@ function pathProtected(projectRoot, target, protectedPaths) {
   return false;
 }
 
-function candidateReason(relativePath, isEdenEntry) {
+function candidateReason(relativePath, isMcpEntry) {
   const reasons = [];
   const base = path.basename(relativePath);
   if (isTemporaryName(base)) reasons.push('temporary-name');
   if (isDuplicateLikeName(base)) reasons.push('duplicate-like-name');
-  if (isEdenEntry) reasons.push('non-canonical-eden-entry');
+  if (isMcpEntry) reasons.push('non-canonical-mcp-entry');
   return reasons;
 }
 
@@ -190,12 +190,12 @@ async function buildPlan(projectRoot) {
   for (const entry of allEntries) {
     const relativePath = path.relative(projectRoot, entry.path);
     if (!relativePath || entry.kind === 'link') continue;
-    const isEdenEntry = relativePath.toLowerCase().startsWith(`${path.join('50_test', 'eden')}${path.sep}`)
+    const isMcpEntry = relativePath.toLowerCase().startsWith(`${path.join('50_test', 'eden')}${path.sep}`)
       && !['SESSION.json', 'ARTIFACT_MANIFEST.tsv'].includes(path.basename(relativePath));
-    const reasons = candidateReason(relativePath, isEdenEntry);
+    const reasons = candidateReason(relativePath, isMcpEntry);
     if (reasons.length === 0) continue;
     const protectedByReference = pathProtected(projectRoot, entry.path, [...protectedPaths]);
-    const blocked = protectedByReference || activeSession || (isEdenEntry && !remoteCloseVerified) || entry.kind === 'directory';
+    const blocked = protectedByReference || activeSession || (isMcpEntry && !remoteCloseVerified) || entry.kind === 'directory';
     const stats = entry.kind === 'file' ? await fs.lstat(entry.path) : null;
     candidates.push({
       path: relativePath,
@@ -207,12 +207,12 @@ async function buildPlan(projectRoot) {
         ? 'Referenced by Handoff, project documentation, or manifest; preserve until references are reconciled.'
         : activeSession
           ? `SESSION.json status=${session.status}; reconcile and close the owned remote session first.`
-          : isEdenEntry && !remoteCloseVerified
-            ? 'Eden entry has no exact remote-close proof in canonical SESSION.json; reconcile ownership and remote status first.'
+          : isMcpEntry && !remoteCloseVerified
+            ? 'MCP entry has no exact remote-close proof in the shared canonical SESSION.json; reconcile both inventories, ownership, and remote status first.'
           : entry.kind === 'directory'
             ? 'Directory requires a child-level allowlist before removal.'
             : 'Candidate requires explicit review against Handoff and manifest evidence.',
-      risk: isEdenEntry ? 'high' : 'medium',
+      risk: isMcpEntry ? 'high' : 'medium',
       blocked,
       approved: false,
     });

@@ -1,7 +1,7 @@
 {
   "name": "game-translate",
-  "version": "1.4.0",
-  "description": "Branch-based Korean game-localization workflow with imagegen-only raster preservation, text/font/asset QA, conditional review handoffs, session-safe runtime QA, recoverable cleanup, and patch release guidance.",
+  "version": "1.5.0",
+  "description": "Branch-based Korean game-localization workflow with no-API built-in imagegen candidate selection, original-feel Korean image QA, one title-scoped MCP smoke session, official-distribution direct runtime QA, recoverable cleanup, and release guidance.",
   "author": {
     "name": "Leuconoe"
   },
@@ -19,7 +19,7 @@
   "interface": {
     "displayName": "Game Korean Localization",
     "shortDescription": "Branch-based Korean game-localization workflow",
-    "longDescription": "A fail-closed workflow for analyzing, translating, imagegen-only atmosphere/layout/alpha preservation, font/asset QA, review handoffs, testing, recoverable cleanup, and packaging personal Korean game translation patches.",
+    "longDescription": "A fail-closed workflow for analyzing, translating, selecting verified built-in imagegen candidates while preserving atmosphere, typography, layout, and alpha, reusing one MCP smoke session per title, requiring direct QA on an official distribution emulator release, performing recoverable cleanup, and packaging personal Korean game translation patches.",
     "developerName": "Leuconoe",
     "category": "Productivity",
     "capabilities": [

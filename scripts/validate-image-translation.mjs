@@ -11,10 +11,10 @@ const requiredColumns = [
   'candidate_width', 'candidate_height', 'source_format', 'candidate_format',
   'source_color_mode', 'candidate_color_mode', 'alpha_policy', 'edit_regions', 'source_anchors',
   'candidate_anchors', 'atlas_page', 'source_atlas_rect', 'candidate_atlas_rect',
-  'origin', 'generator', 'generation_mode', 'prompt_path', 'prompt_sha256',
+  'origin', 'generator', 'tool', 'model', 'quality', 'generation_mode', 'prompt_path', 'prompt_sha256',
   'receipt_path', 'receipt_sha256', 'style_contract', 'atmosphere_contract',
-  'style_status', 'atmosphere_status', 'alpha_status', 'layout_status', 'korean_text_status',
-  'roundtrip_status', 'status', 'notes',
+  'style_status', 'atmosphere_status', 'original_feel_status', 'source_text_removal_status',
+  'alpha_status', 'layout_status', 'korean_text_status', 'roundtrip_status', 'status', 'notes',
 ];
 
 const imageRoot = '30_translation/image_translation/';
@@ -162,6 +162,157 @@ function exactReceiptField(receipt, field, expected, row, issues) {
   if (receipt?.[field] !== expected) issues.push(`line ${row.__line}: receipt ${field} does not match manifest`);
 }
 
+function parsePromptContract(text, row, issues) {
+  const fields = new Map();
+  for (const [index, rawLine] of text.split(/\r?\n/).entries()) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) continue;
+    const separator = line.indexOf(':');
+    if (separator < 1) continue;
+    const key = line.slice(0, separator).trim();
+    const value = line.slice(separator + 1).trim();
+    if (fields.has(key)) {
+      issues.push(`line ${row.__line}: imagegen prompt duplicates ${key} at prompt line ${index + 1}`);
+      continue;
+    }
+    fields.set(key, value);
+  }
+  return fields;
+}
+
+function requirePromptExact(fields, key, expected, row, issues) {
+  if (fields.get(key) !== expected) {
+    issues.push(`line ${row.__line}: imagegen prompt ${key} must equal ${expected}`);
+  }
+}
+
+function requirePromptDescription(fields, key, row, issues) {
+  const value = fields.get(key)?.trim() ?? '';
+  if (value.length < 4 || /^(?:n\/?a|none|unknown|미확인|same|original|원본(?:과\s*)?(?:동일|그대로))$/i.test(value)) {
+    issues.push(`line ${row.__line}: imagegen prompt ${key} must describe the original visual contract`);
+  }
+}
+
+function isSamePhysicalFile(left, right) {
+  if (!left || !right) return false;
+  if (canonicalPathKey(left.realPath) === canonicalPathKey(right.realPath)) return true;
+  return left.stat.dev !== 0 && left.stat.ino !== 0
+    && right.stat.dev !== 0 && right.stat.ino !== 0
+    && left.stat.dev === right.stat.dev && left.stat.ino === right.stat.ino;
+}
+
+async function validateAgentAttempts(receipt, row, projectRoot, projectRealRoot, protectedEntries, issues) {
+  exactReceiptField(receipt, 'execution_surface', 'chatgpt-built-in', row, issues);
+  exactReceiptField(receipt, 'candidate_policy', 'best-of-3-fail-closed', row, issues);
+  exactReceiptField(receipt, 'minimum_candidates', 3, row, issues);
+
+  if (!Array.isArray(receipt.attempts)) {
+    issues.push(`line ${row.__line}: receipt attempts must be an array`);
+    return;
+  }
+  if (receipt.attempts.length < 3 || receipt.attempts.length > 4) {
+    issues.push(`line ${row.__line}: receipt must contain 3 or 4 independent imagegen attempts`);
+  }
+
+  const seenAttempts = new Set();
+  const seenOutputPaths = new Set();
+  const seenOutputHashes = new Set();
+  const outputEntries = [];
+  let selectedCount = 0;
+  let selectedAttempt = null;
+  const qaFields = [
+    'technical_status', 'visual_status', 'source_text_removal_status',
+    'korean_text_status', 'original_feel_status',
+  ];
+
+  for (const [index, attempt] of receipt.attempts.entries()) {
+    const label = `receipt attempts[${index}]`;
+    if (!attempt || typeof attempt !== 'object' || Array.isArray(attempt)) {
+      issues.push(`line ${row.__line}: ${label} must be an object`);
+      continue;
+    }
+    if (!Number.isInteger(attempt.attempt) || attempt.attempt < 1) {
+      issues.push(`line ${row.__line}: ${label}.attempt must be a positive integer`);
+    } else if (seenAttempts.has(attempt.attempt)) {
+      issues.push(`line ${row.__line}: duplicate receipt attempt number ${attempt.attempt}`);
+    } else {
+      seenAttempts.add(attempt.attempt);
+    }
+    if (attempt.attempt !== index + 1) {
+      issues.push(`line ${row.__line}: ${label}.attempt must follow contiguous 1-based order`);
+    }
+    for (const [field, expected] of Object.entries({
+      tool: 'image_gen.imagegen',
+      operation: 'edit',
+      reference_path: row.reference_path,
+      reference_sha256: row.reference_sha256,
+      prompt_path: row.prompt_path,
+      prompt_sha256: row.prompt_sha256,
+      generation_status: 'completed',
+    })) {
+      if (attempt[field] !== expected) issues.push(`line ${row.__line}: ${label}.${field} must equal ${expected}`);
+    }
+
+    const outputPath = attempt.output_path;
+    if (typeof outputPath !== 'string' || !outputPath.startsWith(`${imageRoot}for_translation/`)) {
+      issues.push(`line ${row.__line}: ${label}.output_path must be under ${imageRoot}for_translation/`);
+    }
+    const outputPathKey = process.platform === 'win32' ? String(outputPath).toLowerCase() : String(outputPath);
+    if (seenOutputPaths.has(outputPathKey)) issues.push(`line ${row.__line}: receipt attempt output paths must be unique`);
+    seenOutputPaths.add(outputPathKey);
+    const output = await fileEvidence(projectRoot, projectRealRoot, outputPath, `${label}.output_path`, row, issues);
+    compareDeclaredHash(output, attempt.output_sha256, `${label}.output_sha256`, row, issues);
+    if (/^[0-9a-f]{64}$/i.test(attempt.output_sha256 ?? '')) {
+      const outputHash = attempt.output_sha256.toLowerCase();
+      if (seenOutputHashes.has(outputHash)) issues.push(`line ${row.__line}: independent imagegen attempts must have distinct output hashes`);
+      seenOutputHashes.add(outputHash);
+    }
+    if (output) {
+      if (protectedEntries.some((entry) => isSamePhysicalFile(output, entry))) {
+        issues.push(`line ${row.__line}: ${label}.output_path must not overwrite or hard-link source/reference/probe/receipt evidence`);
+      }
+      if (outputEntries.some((entry) => isSamePhysicalFile(output, entry))) {
+        issues.push(`line ${row.__line}: independent imagegen attempts must be physically distinct files`);
+      }
+      outputEntries.push(output);
+    }
+
+    const invalidQa = qaFields.filter((field) => !['pass', 'reject'].includes(attempt[field]));
+    for (const field of invalidQa) issues.push(`line ${row.__line}: ${label}.${field} must be pass or reject`);
+    const allPass = qaFields.every((field) => attempt[field] === 'pass');
+    const hasReject = qaFields.some((field) => attempt[field] === 'reject');
+    const reasons = attempt.rejection_reasons;
+    if (!Array.isArray(reasons) || reasons.some((reason) => typeof reason !== 'string' || reason.trim().length < 4)) {
+      issues.push(`line ${row.__line}: ${label}.rejection_reasons must be an array of concrete strings`);
+    }
+
+    if (attempt.selection_status === 'selected') {
+      selectedCount += 1;
+      selectedAttempt = attempt;
+      if (!allPass) issues.push(`line ${row.__line}: selected imagegen attempt must pass every QA status`);
+      if (!Array.isArray(reasons) || reasons.length !== 0) issues.push(`line ${row.__line}: selected imagegen attempt must have no rejection reasons`);
+    } else if (attempt.selection_status === 'qualified') {
+      if (!allPass) issues.push(`line ${row.__line}: qualified imagegen attempt must pass every QA status`);
+      if (!Array.isArray(reasons) || reasons.length !== 0) issues.push(`line ${row.__line}: qualified imagegen attempt must have no rejection reasons`);
+    } else if (attempt.selection_status === 'rejected') {
+      if (!hasReject) issues.push(`line ${row.__line}: rejected imagegen attempt must fail at least one QA status`);
+      if (!Array.isArray(reasons) || reasons.length === 0) issues.push(`line ${row.__line}: rejected imagegen attempt requires a concrete rejection reason`);
+    } else {
+      issues.push(`line ${row.__line}: ${label}.selection_status must be selected, qualified, or rejected`);
+    }
+  }
+
+  if (selectedCount !== 1) issues.push(`line ${row.__line}: receipt must select exactly one imagegen attempt`);
+  if (!Number.isInteger(receipt.selected_attempt) || !seenAttempts.has(receipt.selected_attempt)) {
+    issues.push(`line ${row.__line}: receipt selected_attempt must name an existing attempt`);
+  }
+  if (selectedAttempt) {
+    if (selectedAttempt.attempt !== receipt.selected_attempt) issues.push(`line ${row.__line}: receipt selected_attempt does not match selection_status=selected`);
+    if (selectedAttempt.output_path !== row.candidate_path) issues.push(`line ${row.__line}: selected imagegen output_path must equal manifest candidate_path`);
+    if (selectedAttempt.output_sha256 !== row.candidate_sha256) issues.push(`line ${row.__line}: selected imagegen output_sha256 must equal manifest candidate_sha256`);
+  }
+}
+
 async function validateRow(row, projectRoot, projectRealRoot, issues) {
   if (!row.stable_key || /[\t\r\n]/.test(row.stable_key)) issues.push(`line ${row.__line}: stable_key is empty or invalid`);
   for (const [field, prefix] of Object.entries(requiredPrefixes)) {
@@ -254,24 +405,51 @@ async function validateRow(row, projectRoot, projectRealRoot, issues) {
     if (row.generator !== 'imagegen' || row.generation_mode !== 'edit') {
       issues.push(`line ${row.__line}: agent-generated raster candidates require generator=imagegen and generation_mode=edit`);
     }
+    if (row.tool !== 'image_gen.imagegen') {
+      issues.push(`line ${row.__line}: agent-generated raster candidates require the built-in tool=image_gen.imagegen`);
+    }
+    if (row.model !== 'provider-selected') {
+      issues.push(`line ${row.__line}: built-in imagegen candidates require model=provider-selected; do not claim an unexposed model`);
+    }
+    if (row.quality !== 'provider-managed') {
+      issues.push(`line ${row.__line}: built-in imagegen candidates require quality=provider-managed; quality is controlled by candidate QA`);
+    }
     promptEvidence = await fileEvidence(projectRoot, projectRealRoot, row.prompt_path, 'prompt_path', row, issues);
     compareDeclaredHash(promptEvidence, row.prompt_sha256, 'prompt_sha256', row, issues);
     if (promptEvidence) {
       const prompt = promptEvidence.buffer.toString('utf8');
-      const requiredPromptText = [
-        `reference_sha256: ${row.reference_sha256}`,
-        'preserve_atmosphere:',
-        'preserve_style:',
-        'preserve_layout: exact',
-        `preserve_alpha: ${row.alpha_policy}`,
-        `edit_regions: ${row.edit_regions}`,
-        'korean_text:',
-      ];
-      for (const phrase of requiredPromptText) if (!prompt.includes(phrase)) issues.push(`line ${row.__line}: imagegen prompt is missing ${phrase}`);
+      const fields = parsePromptContract(prompt, row, issues);
+      requirePromptExact(fields, 'use_case', 'text-localization', row, issues);
+      requirePromptExact(fields, 'input_image_role', 'Image 1 = edit target', row, issues);
+      requirePromptExact(fields, 'tool', row.tool, row, issues);
+      requirePromptExact(fields, 'execution_surface', 'chatgpt-built-in', row, issues);
+      requirePromptExact(fields, 'model', row.model, row, issues);
+      requirePromptExact(fields, 'quality', row.quality, row, issues);
+      requirePromptExact(fields, 'candidate_policy', 'best-of-3-fail-closed', row, issues);
+      requirePromptExact(fields, 'minimum_candidates', '3', row, issues);
+      requirePromptExact(fields, 'reference_sha256', row.reference_sha256, row, issues);
+      requirePromptExact(fields, 'remove_source_text', 'complete', row, issues);
+      requirePromptExact(fields, 'no_overlay', 'true', row, issues);
+      requirePromptExact(fields, 'verbatim_korean', 'true', row, issues);
+      requirePromptExact(fields, 'change_only_declared_regions', 'true', row, issues);
+      requirePromptExact(fields, 'preserve_unchanged_pixels', 'exact-outside-edit-regions', row, issues);
+      requirePromptExact(fields, 'preserve_layout', 'exact', row, issues);
+      requirePromptExact(fields, 'preserve_alpha', row.alpha_policy, row, issues);
+      requirePromptExact(fields, 'edit_regions', row.edit_regions, row, issues);
+      for (const key of [
+        'preserve_atmosphere', 'preserve_style', 'preserve_typography', 'preserve_color',
+        'preserve_outline_shadow', 'preserve_material_lighting', 'preserve_spacing_baseline',
+      ]) requirePromptDescription(fields, key, row, issues);
+      for (const key of ['source_text', 'korean_text']) {
+        if (!(fields.get(key)?.trim())) issues.push(`line ${row.__line}: imagegen prompt ${key} must not be empty`);
+      }
     }
   } else if (row.origin === 'user-supplied') {
     if (row.generator !== 'user-supplied' || row.generation_mode !== 'external') {
       issues.push(`line ${row.__line}: user-supplied candidates require matching provenance`);
+    }
+    if (row.tool !== 'user' || row.model !== 'N/A' || row.quality !== 'N/A') {
+      issues.push(`line ${row.__line}: user-supplied candidates require tool=user and N/A model/quality`);
     }
     if (row.prompt_path !== 'N/A' || row.prompt_sha256 !== 'N/A') issues.push(`line ${row.__line}: user-supplied candidates must use N/A prompt fields`);
   } else {
@@ -287,11 +465,15 @@ async function validateRow(row, projectRoot, projectRealRoot, issues) {
     }
   }
   if (receipt) {
-    exactReceiptField(receipt, 'schema_version', 1, row, issues);
+    exactReceiptField(receipt, 'schema_version', row.origin === 'agent-generated' ? 3 : 2, row, issues);
     exactReceiptField(receipt, 'stable_key', row.stable_key, row, issues);
     exactReceiptField(receipt, 'origin', row.origin, row, issues);
     exactReceiptField(receipt, 'generator', row.generator, row, issues);
-    exactReceiptField(receipt, 'tool', row.origin === 'agent-generated' ? 'image_gen.imagegen' : 'user', row, issues);
+    exactReceiptField(receipt, 'tool', row.tool, row, issues);
+    exactReceiptField(receipt, 'model', row.model, row, issues);
+    exactReceiptField(receipt, 'quality', row.quality, row, issues);
+    exactReceiptField(receipt, 'api_endpoint', 'N/A', row, issues);
+    exactReceiptField(receipt, 'input_fidelity', row.origin === 'agent-generated' ? 'provider-managed' : 'N/A', row, issues);
     exactReceiptField(receipt, 'operation', row.generation_mode, row, issues);
     exactReceiptField(receipt, 'reference_path', row.reference_path, row, issues);
     exactReceiptField(receipt, 'reference_sha256', row.reference_sha256, row, issues);
@@ -304,6 +486,16 @@ async function validateRow(row, projectRoot, projectRealRoot, issues) {
     exactReceiptField(receipt, 'candidate_rgba_path', row.candidate_rgba_path, row, issues);
     exactReceiptField(receipt, 'candidate_rgba_sha256', row.candidate_rgba_sha256, row, issues);
     exactReceiptField(receipt, 'alpha_policy', row.alpha_policy, row, issues);
+    if (row.origin === 'agent-generated') {
+      await validateAgentAttempts(
+        receipt,
+        row,
+        projectRoot,
+        projectRealRoot,
+        [source, reference, sourceRgba, candidateRgba, receiptEvidence, promptEvidence].filter(Boolean),
+        issues,
+      );
+    }
   }
 
   for (const field of ['style_contract', 'atmosphere_contract']) {
@@ -314,7 +506,10 @@ async function validateRow(row, projectRoot, projectRealRoot, issues) {
   if (!['exact', 'edit-region-only'].includes(row.alpha_policy)) {
     issues.push(`line ${row.__line}: alpha_policy must be exact or edit-region-only`);
   }
-  for (const field of ['style_status', 'atmosphere_status', 'alpha_status', 'layout_status', 'korean_text_status', 'roundtrip_status']) {
+  for (const field of [
+    'style_status', 'atmosphere_status', 'original_feel_status', 'source_text_removal_status',
+    'alpha_status', 'layout_status', 'korean_text_status', 'roundtrip_status',
+  ]) {
     if (row[field] !== 'pass') issues.push(`line ${row.__line}: ${field} must be pass`);
   }
   if (row.status !== 'verified') issues.push(`line ${row.__line}: status must be verified`);

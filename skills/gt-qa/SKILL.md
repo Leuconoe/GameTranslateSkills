@@ -22,6 +22,7 @@ description: "Integrated game-translation QA after text and conditional image re
   이미지 build manifest. `image_scope=N/A`이면 0건 inventory와 `image_status=skipped`
 - 현재 text/image candidate·manifest·hash, target language slot, platform/engine 계약
 - `$GT_HOME/common/preflight-checks.md`, `qa-session-rules.md`,
+  `release-runtime-contract.md`, `platforms/<platform>/runtime-emulators.json`,
   `emucap-integration.md`(사용 시), 플랫폼 build-test, 엔진 문서
 - `text_review_policy=user-gate` 또는 `image_review_policy=user-gate`이면 각 시트 전 행과
   PROJECT 명시 승인 기록
@@ -32,8 +33,9 @@ description: "Integrated game-translation QA after text and conditional image re
 ## 절차
 
 0. **소유권·세션 preflight**: literal 프로젝트 루트·Title ID·입력 파일·canonical
-   staging을 inventory한다. `SESSION.json`과 remote Eden status를 비교하고, active 세션의
-   key가 다르거나 pending/소유권 불명 상태이면 새 세션을 만들지 않는다. `eden` 아래의
+   staging을 inventory한다. Eden-MCP와 Ryubing-MCP의 같은 Title ID inventory를 모두
+   `SESSION.json`과 비교하고 두 backend를 합쳐 live 세션이 하나인지 확인한다. active 세션의
+   key가 다르거나 pending/소유권 불명/복수 live 상태이면 새 세션을 만들지 않는다. `eden` 아래의
    `sessions/`, `runs/`, `session-*`, `run-*`, `SESSION-2.json`, `(1)`·`copy` 산출물을
    발견하면 먼저 정리 계획을 만들고 QA를 중단한다.
 1. **정책 게이트**: review policy가 `user-gate`이면 approval 필드가 `approved`이고 승인
@@ -53,43 +55,49 @@ description: "Integrated game-translation QA after text and conditional image re
 5. **빌드**: 플랫폼 어댑터의 deterministic build를 실행해 `40_build/`와
    `BUILD_MANIFEST.tsv`를 만든다. stale 파일·다른 Title ID·중복 output·source overwrite가
    있으면 실패시킨다.
-6. **런타임 선택**: `runtime_policy=static-first`이면 사용자의 명시적 실행 요청 전에는
-   bench 결과와 `PENDING_RUNTIME`만 기록한다. 실행이 승인되면 최종 candidate에서만
-   시험한다.
-   - Eden은 capability/session 목록을 먼저 확인한다. 같은 session key면 새 create 없이
-     재사용한다.
-   - 새 세션이 필요하면 이전 `last_session_id`의 exact remote close와
-     `project:qa-session --action close --remote-closed` 기록을 확인하고,
-     `--previous-session-id <동일 ID>`를 사용해 한 번만 생성한다.
-   - create/launch 실패 후 목록/status를 다시 읽기 전 재호출하지 않는다. 세션 ID·Title ID·
-     profile path/hash·emulator version·build hash를 `SESSION.json`과 TEST_LOG에 귀속한다.
-   - 테스트 종료 후 현재 session ID만 exact close하고 remote close 응답을 확인한 뒤 local
-     state를 closed로 갱신한다. 프로세스 이름 기반 전역 종료나 타 프로젝트 세션 조작은 금지한다.
-   - emucap을 사용하면 bootstrap/capability/launch/status/run_finish, intervention·artifact
-     log와 hash를 프로젝트 원장에 남긴다.
-7. **화면·경로 검수**: 실제 입력·화면 전이·메뉴·설정·저장/불러오기·백로그·튜토리얼·
+6. **기본 MCP smoke**: `runtime_policy=static-first`이면 사용자의 명시적 실행 요청 전에는
+   bench와 `PENDING_RUNTIME`만 기록한다. 실행이 승인되면 기본 backend는 Eden-MCP다.
+   - `project:qa-session`에 양쪽 inventory 조회를 명시하고 같은 Title 세션을 재사용한다.
+     Ryubing-MCP나 두 번째 세션은 구체적 예외 사유, 이전 exact close 증거가 있어야 한다.
+   - create/launch 오류 뒤 양쪽 목록/status를 다시 읽기 전 재호출하지 않는다. 빌드 변경은
+     새 세션이 아니라 같은 세션에서 title restart로 반영한다.
+   - MCP 결과는 `PASS (mcp-smoke)`로만 기록하며 최종 QA 또는 `PASS (runtime)`로 승격하지 않는다.
+7. **공식 배포 릴리즈 최종 QA**: `qa_status=passed` 또는 릴리스로 진행하려면
+   `release-runtime-contract.md`를 반드시 실행한다.
+   - 플랫폼 allowlist의 공식 릴리즈 페이지에서 배포 artifact를 받아 정확한 버전·URL·실행
+     바이너리 SHA-256을 기록한다. nightly/dev/CI/MCP 번들·전용 빌드는 거부한다.
+   - 별도 격리 프로파일과 현재 최종 mod를 사용해 바이너리를 **MCP 없이 직접** 실행한다.
+     Title ID, build manifest, 활성 mod 전수 inventory, 한국 지역/언어, 로그와 타이틀/인게임
+     화면을 현재 해시에 귀속한다.
+   - `50_test/RELEASE_RUNTIME_QA.json`을 만들고 `npm run runtime:validate`를 통과시킨다.
+     `mcp_used=true`, 출처/바이너리/빌드/mod/증거 drift는 모두 fail-closed다.
+8. **화면·경로 검수**: 실제 입력·화면 전이·메뉴·설정·저장/불러오기·백로그·튜토리얼·
    매뉴얼·엔딩 경로에서 한글 렌더링, tofu, glyph 위치, baseline, 폭/잘림, 이미지 표시를
    캡처로 확인한다. 로더 생존·패치 적용 로그·프로세스 생존은 화면 PASS가 아니다.
-8. **갭 수정**: 문제를 배치·폰트·이미지·런타임·환경으로 분리하고 해당 branch로 되돌린다.
+9. **갭 수정**: 문제를 배치·폰트·이미지·런타임·환경으로 분리하고 해당 branch로 되돌린다.
    런타임 실패는 깨끗한 원본에서 재빌드하며, 실패한 candidate/세션/로그를 새 복사본으로
    쌓지 않는다. 결과·제한·재시작 조건을 `HANDOFF.md`에 append-only로 남긴다.
-9. **상태 기록**: `QA_REPORT.md`, `50_test/TEST_LOG.md`, build/test manifest에
-   `PASS (bench)`, `PASS (runtime)`, `PENDING_RUNTIME`, `PENDING (hardware)`를 분리 기록한다.
+10. **상태 기록**: `QA_REPORT.md`, `50_test/TEST_LOG.md`, build/test manifest에
+   `PASS (bench)`, `PASS (mcp-smoke)`, `PASS (official-release-runtime)`,
+   `PENDING_RUNTIME`, `PENDING (hardware)`를 분리 기록한다. `PASS (runtime)`은 검증된
+   공식 배포 릴리즈 직접 실행만 뜻한다.
 
 ## 산출물
 
 - `40_build/`의 deterministic 통합 후보와 `BUILD_MANIFEST.tsv`
 - `50_test/logs/`, `50_test/screenshots/`, `TEST_LOG.md`
 - `50_test/eden/SESSION.json`, `ARTIFACT_MANIFEST.tsv`(프로젝트당 하나)
+- `50_test/RELEASE_RUNTIME_QA.json`, `50_test/release-runtime/ACTIVE_MOD_MANIFEST.tsv`
 - `30_translation/QA_REPORT.md` 또는 프로젝트가 지정한 canonical QA report
 - 폰트·텍스트·이미지 manifest hash와 runtime 증거
 
 ## 완료 기준
 
 - [ ] text/image 입력 정책과 현재 hash가 일치하며 폰트·구조·컨테이너 정적 QA 통과
-- [ ] 세션 소유권·Title ID·profile·build가 현재 증거에 exact 귀속됨
-- [ ] runtime을 실행했다면 실제 입력·화면 전이·한글/glyph 위치·캡처가 있음
-- [ ] 실행하지 않았다면 `PENDING_RUNTIME`/hardware 상태가 명시되고 PASS로 포장되지 않음
+- [ ] Eden/Ryubing MCP 전체에서 해당 Title의 live 세션이 최대 하나이며 기본 smoke는 Eden 세션을 재사용함
+- [ ] 공식 사이트 배포용 릴리즈의 URL·버전·외부 바이너리 해시와 직접 실행(`mcp_used=false`)이 증명됨
+- [ ] 현재 final build·활성 mod 전수 해시·실제 화면 전이·한글/glyph·로그/캡처가 receipt에 exact 귀속됨
+- [ ] `npm run runtime:validate`가 0 issues이고, 실행하지 못했다면 `PENDING_RUNTIME`으로 남아 릴리스가 차단됨
 - [ ] 중복 세션·artifact key·timestamp/copy 파일이 없음
 - [ ] 모든 갭이 해결되거나 제한·재현·다음 조건과 함께 Handoff에 기록됨
 

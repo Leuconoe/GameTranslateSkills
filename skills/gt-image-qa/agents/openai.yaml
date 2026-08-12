@@ -1,6 +1,6 @@
 interface:
   display_name: "Game Image QA"
   short_description: "QA image formats, atlases, pixels, and staging"
-  default_prompt: "Use $gt-image-qa to fail closed on non-imagegen provenance, source overwrite, atmosphere or layout drift, alpha changes, preserved-pixel changes, and unsafe staging."
+  default_prompt: "Use $gt-image-qa to verify built-in imagegen best-of-three provenance, reject overlays or visual drift, and validate alpha, preserved pixels, hashes, and staging."
 policy:
   allow_implicit_invocation: true

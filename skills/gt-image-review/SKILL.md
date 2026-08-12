@@ -1,6 +1,6 @@
 ---
 name: gt-image-review
-description: "Image branch review handoff after technical QA: prepare complete before/after comparisons with imagegen provenance and atmosphere, layout, alpha, atlas, and style evidence; mark review ready by default and honor an explicit user-gate when configured. Use after gt-image-qa."
+description: "Prepare an image-review handoff after technical QA with complete before/after and multi-candidate comparisons, built-in imagegen provenance, source-text removal, original Korean visual feel, layout, alpha, atlas, and style evidence. Use after gt-image-qa and honor an explicit user-gate when configured."
 ---
 
 # gt-image-review — 이미지 브랜치 I4: 이미지 검수 handoff
@@ -25,11 +25,13 @@ description: "Image branch review handoff after technical QA: prepare complete b
 1. 원본·후보·staging의 현재 hash와 계획 행을 exact 대조한다. 다른 세션·다른 candidate의
    comparison을 재사용하지 않는다.
 2. `IMAGE_GENERATION_MANIFEST.tsv`를 현재 파일로 다시 검증한다. agent-generated 행의
-   `image_gen.imagegen` edit provenance, 선언된 alpha policy, edit region 밖 RGBA diff 0이 아니면
-   review 자료를 만들지 않고 `BLOCKED`다.
+   `image_gen.imagegen`/`chatgpt-built-in`/`best-of-3-fail-closed` schema 3 provenance, 3–4개
+   attempt, 정확히 하나의 합격 선택 후보, 원문 완전 제거, `no_overlay=true`, 선언된 alpha
+   policy, edit region 밖 RGBA diff 0이 아니면 review 자료를 만들지 않고 `BLOCKED`다.
 3. `30_translation/image_translation/reports/REVIEW_IMAGE.tsv`에 모든 이미지와 atlas
    region을 행으로 만든다. 최소 컬럼은 `id`, before/after 경로, stable key, 원문, 번역,
-   canvas, alpha, anchor, atlas rect, atmosphere/style 상태, imagegen receipt hash,
+   canvas, alpha, anchor, atlas rect, atmosphere/style/original-feel/source-text-removal 상태,
+   provider-managed 모델·quality 표기, attempt별 판정·선택 근거와 imagegen receipt hash,
    `layout_risk`, `사용자의견`, `상태`다.
 4. `IMAGE_REVIEW_HANDOFF.md`에 전체 수량·변경/no-op·보존 영역 diff·분위기/스타일 위험·후보/
    QA/build manifest hash·다음 단계·제한을 기록한다.
@@ -53,6 +55,6 @@ description: "Image branch review handoff after technical QA: prepare complete b
 ## 완료 기준
 
 - [ ] 모든 이미지·atlas region의 before/after 비교 행이 있음
-- [ ] 기술 QA·imagegen provenance·분위기/스타일·좌표/alpha·보존 영역·hash 증거가 handoff에 연결됨
+- [ ] 기술 QA·내장 imagegen best-of-3 provenance·원문 제거·원본 느낌·좌표/alpha·보존 영역·hash 증거가 handoff에 연결됨
 - [ ] `prepare-only`면 중단 없이 `review_ready`와 `gt-qa` 전달이 완료됨
 - [ ] `user-gate`면 명시적 승인 전 통합 QA로 진행하지 않음

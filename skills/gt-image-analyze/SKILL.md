@@ -1,6 +1,6 @@
 ---
 name: gt-image-analyze
-description: "Image branch analysis after overall and text handoff: inventory every text-bearing texture and lock its atmosphere, edit regions, anchors, canvas, alpha policy, format, atlas, style, and image scope before translation. Use when starting or resuming image analysis for a game localization project."
+description: "Image branch analysis after overall and text handoff: inventory every text-bearing texture and lock its original typography, color, outline, material, lighting, spacing, atmosphere, edit regions, anchors, canvas, alpha, atlas, style, and image scope before translation. Use when starting or resuming image analysis for a game localization project."
 ---
 
 # gt-image-analyze — 이미지 브랜치 I1: 이미지 분석
@@ -31,9 +31,13 @@ text handoff 또는 `font_status=verified`가 없으면 이미지 안의 텍스�
    height·padding·UV 원점·sprite/region ID까지 기록한다.
 3. **문자 영역 확인**: 시각 검사와 엔진 metadata를 교차 확인해 실제 문자 영역·보존 영역·
    일반 이미지·미확인을 분리한다. OCR/파일명은 후보 근거일 뿐 완료 근거가 아니다.
-4. **분위기·스타일·보존 계약**: 원어 이미지의 시대감·장르·온도감·명도/채도·재질·광원·
-   감정과 폰트 계열·크기·색·외곽선·그라데이션·여백·레이어·clear bbox·clip·
-   active/inactive 관계를 행별로 서술한다. 각 문자 영역의 exact `edit_regions`, anchor,
+4. **분위기·스타일·보존 계약**: 원어 이미지의 시대감·장르·온도감·명도/채도·감정과
+   서체 계열/인상·획 굵기/끝 모양·크기, 색/그라데이션, 외곽선/그림자/발광,
+   표면 질감/재질/광원 반응, 자간/행간/baseline/정렬, 여백·레이어·clear bbox·clip·
+   active/inactive 관계를 stable key와 region별로 각각 서술한다. 이 값은 이후 imagegen
+   prompt의 `preserve_atmosphere`, `preserve_typography`, `preserve_color`,
+   `preserve_outline_shadow`, `preserve_material_lighting`, `preserve_spacing_baseline`에 그대로
+   연결한다. 각 문자 영역의 exact `edit_regions`, anchor,
    정렬, baseline을 실제 metadata/시각 검사로 고정한다. 빈 값·`N/A`·추측값은 허용하지 않는다.
    원본 해상도·캔버스·alpha·atlas 좌표를 임의로 바꾸지 않는 기준을 정한다. alpha는
    기본 `exact`이며, 글자 glyph 자체가 alpha에 들어 있음을 증명한 행만
@@ -41,7 +45,9 @@ text handoff 또는 `font_status=verified`가 없으면 이미지 안의 텍스�
 5. **계획표 작성**: `30_translation/image_translation/IMAGE_PLAN.tsv`에 required 대상
    전부를 `identified`로 기록한다. 같은 stable key를 text manifest에 중복 등록하지 않는다.
    `IMAGE_GENERATION_MANIFEST.tsv`의 stable key는 물리 raster 파일 단위로 두고, 한 atlas의
-   여러 region ID를 그 bitmap과 `edit_regions`에 연결한다.
+   여러 region ID를 그 bitmap과 `edit_regions`에 연결한다. 각 stable key는 이후 내장
+   `image_gen.imagegen`을 같은 reference·prompt로 최소 3회 독립 호출할 수 있도록
+   `for_translation/attempts/` 경로와 호출당 처리할 전체 선언 영역을 계획한다.
 6. **비파괴 reference 준비**: `10_extract` 원본을 수정하지 않고
    `image_translation/reference/`에 byte-exact reference를 만든다. reference hash가 원본과
    다르거나 symlink/reparse point면 `BLOCKED`다.
@@ -53,7 +59,8 @@ text handoff 또는 `font_status=verified`가 없으면 이미지 안의 텍스�
 - `30_translation/image_translation/IMAGE_ANALYSIS.md`
 - `30_translation/image_translation/IMAGE_SOURCE_INVENTORY.tsv`
 - `30_translation/image_translation/IMAGE_PLAN.tsv` (`required`일 때)
-- stable key별 atmosphere/style, edit region·anchor, canvas/alpha/atlas 계약과 byte-exact reference
+- stable key별 atmosphere와 typography/color/outline-shadow/material-lighting/spacing-baseline,
+  edit region·anchor, canvas/alpha/atlas 계약과 byte-exact reference
 - `image_scope=N/A`이면 0건 inventory·판정 근거·생략 상태 기록
 
 ## 완료 기준

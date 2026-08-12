@@ -41,7 +41,7 @@ image_review_approval: pending
 - 행 상태: `new → translated → reviewed → injected → device_verified` 또는 `blocked`
 - 텍스트 브랜치: `pending → analyzing → translated → qa_ready → review_ready`
 - 이미지 브랜치: `pending → analyzing → translated → qa_ready → review_ready` 또는 `skipped`
-- 통합 QA: `pending → bench_ready → runtime_pending/passed`
+- 통합 QA: `pending → bench_ready → runtime_pending → passed` (`passed`는 공식 배포 릴리즈 직접 실행 필수)
 - 릴리스: `pending → released`
 
 브랜치 상태를 한 줄의 `approved` 또는 `done`으로 뭉개지 않는다. 특히 다음은 서로
@@ -64,7 +64,7 @@ qa_ready ≠ review_ready ≠ user-approved ≠ PASS (runtime) ≠ released
 | `gt-image-translate` | `for_translation/`, `IMAGE_GENERATION_MANIFEST.tsv`, imagegen prompt/receipt/RGBA probe, 계획 상태 | 이미지 QA |
 | `gt-image-qa` | `30_translation/image_translation/reports/IMAGE_QA_REPORT.md`, `30_translation/image_translation/reports/IMAGE_BUILD_MANIFEST.tsv`, image staging | 이미지 review |
 | `gt-image-review` | `30_translation/image_translation/reports/REVIEW_IMAGE.tsv`, `30_translation/image_translation/reports/IMAGE_REVIEW_HANDOFF.md` | 통합 QA |
-| `gt-qa` | build/test manifest, font·runtime evidence | 릴리스 |
+| `gt-qa` | build/test manifest, 단일 MCP smoke 원장, 공식 배포 릴리즈 runtime receipt | 릴리스 |
 | `gt-release` | adapter 계약의 canonical package와 notes | 완료 |
 
 각 스킬은 시작 전에 프로젝트 정책·입력 해시·canonical 경로를 확인하고, 계약을
@@ -74,11 +74,27 @@ qa_ready ≠ review_ready ≠ user-approved ≠ PASS (runtime) ≠ released
 ## 이미지 생성·보존 하네스
 
 `image_scope=required`인 raster 번역은 [`image-translation-contract.md`](image-translation-contract.md)를
-따른다. 에이전트가 생성한 후보는 `$imagegen`의 내장 `image_gen.imagegen` edit provenance를
-가져야 하며 Python/Pillow/OpenCV/임의 스크립트 생성물은 허용하지 않는다. 원본/reference/
-기존 candidate를 생성 도구로 직접 덮어쓰지 않는다.
+따른다. 에이전트가 생성한 후보는 API 키가 필요 없는 `$imagegen` 내장
+`image_gen.imagegen` edit provenance를 가져야 한다. 내장 호출 표면이 노출하지 않는 모델이나
+quality를 주장하지 않고, 같은 reference와 prompt를 사용한 최소 3개 독립 후보 중 기술·시각
+검사를 모두 통과한 하나만 선택한다. Python/Pillow/OpenCV/임의 스크립트 raster 생성물과
+API/CLI 자동 폴백은 허용하지 않으며 원본/reference/기존 candidate를 덮어쓰지 않는다.
 
 `gt-image-translate`와 `gt-image-qa`는 현재 `IMAGE_GENERATION_MANIFEST.tsv`에 대해
 `scripts/validate-image-translation.mjs`를 실행한다. source/reference/candidate 경로·hash,
 canvas/format/color mode, anchor/atlas rect, 선언된 alpha policy, edit region 밖 decoded RGBA,
-분위기/style/layout/한글/왕복 상태가 모두 통과하지 않으면 이미지 branch를 승격하지 않는다.
+원문 완전 제거/no-overlay, 분위기/서체/색/외곽선/질감/광원/간격/layout/한글/왕복 상태가 모두
+통과하지 않으면 이미지 branch를 승격하지 않는다.
+
+## 런타임 QA 하네스
+
+NSW의 반복 smoke는 기본적으로 Eden-MCP를 사용하며 Eden/Ryubing 양쪽을 합쳐 Title ID당
+canonical live 세션을 하나만 허용한다. `50_test/eden/SESSION.json`은 두 backend가 공유하고,
+빌드 변경은 새 세션 생성 사유가 아니다. Ryubing 또는 교체 세션은 구체적 예외 사유와 이전
+exact close 증거가 있을 때만 허용한다.
+
+MCP 결과는 최종 QA를 충족하지 않는다. `qa_status=passed`와 `release_status=released`는
+[`release-runtime-contract.md`](release-runtime-contract.md)에 따라 플랫폼 allowlist의 공식
+사이트 배포용 릴리즈 바이너리를 MCP 없이 직접 실행하고, 현재 binary/build/mod/log/screenshot
+hash를 담은 `50_test/RELEASE_RUNTIME_QA.json`이 `scripts/validate-release-runtime.mjs`를
+통과할 때만 허용한다.

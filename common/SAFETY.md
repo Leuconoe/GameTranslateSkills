@@ -48,12 +48,15 @@
 
 ### Raster 이미지 생성·편집
 
-- 에이전트의 게임 raster 생성·편집은 `common/image-translation-contract.md`에 따라
-  `$imagegen`과 내장 `image_gen.imagegen` edit만 사용한다. Python/Pillow/OpenCV,
-  ImageMagick, SVG/HTML/canvas 또는 임의 스크립트로 글자·배경·alpha를 만들거나 지우거나
-  합성하고 후보 파일을 저장하지 않는다.
-- 생성 전 local reference를 직접 확인하고 분위기·스타일·edit region·anchor·alpha 계약을
-  prompt에 고정한다. 생성 결과는 프로젝트 내부의 새 `tmp-imagegen-*` 경로로 받으며
+- 에이전트의 게임 raster 생성·편집은 `common/image-translation-contract.md`에 따라 API 키가
+  필요 없는 `$imagegen` 내장 `image_gen.imagegen` edit만 사용한다. 모델과 quality는
+  `provider-selected`/`provider-managed`로 정직하게 기록하고, 같은 reference·prompt로 최소
+  3개 독립 후보를 만든 뒤 전수 QA를 통과한 하나만 선택한다. API/CLI나 낮은 품질 후보로
+  자동 폴백하지 않는다. Python/Pillow/OpenCV, ImageMagick, SVG/HTML/canvas 또는 임의
+  스크립트로 글자·배경·alpha를 만들거나 지우거나 합성·resize·덮어쓰기하지 않는다.
+- 생성 전 local reference를 직접 확인하고 원문 완전 제거·no-overlay, 분위기, 서체 인상,
+  색, 외곽선/그림자, 질감/재질/광원, 자간/baseline, edit region·anchor·alpha 계약을 prompt에
+  고정한다. 생성 결과는 프로젝트 내부의 새 `for_translation/attempts/*` 경로로 받으며
   원본, reference, 기존 canonical candidate를 직접 덮어쓰지 않는다.
 - decoded RGBA probe로 기본 전 픽셀 alpha exact를 증명한다. 글자 모양이 alpha에 들어 있는
   자산은 분석 단계에서 선언한 `edit-region-only`일 때만 영역 안 alpha 변경을 허용하며,
@@ -73,15 +76,16 @@
 - 실행 중인 세션이 같은 타이틀·같은 데이터 루트를 사용하면 그 세션이 열어 둔 기존 모드를 덮어쓰거나 삭제하지 않는다. 새 고유 모드 루트나 격리 데이터 루트에 준비하고, 파괴적 교체는 대상 세션 종료 후에만 수행한다.
 - 중간 번역 배치나 빌드 변경마다 실행 시험을 반복하지 않는다. 번역·병합·빌드·정적 무결성 검사·최종 패키징을 먼저 끝내고, 최종 산출물에 대해 실제 입력·확인·저장·다음 화면 시험을 1회 수행하며 로그와 캡처를 보존한다.
 
-## 5-a. canonical 산출물·Eden 세션 중복 방지
+## 5-a. canonical 산출물·MCP 세션 중복 방지
 
 - 생성 전 `common/qa-session-rules.md`의 논리 키와 canonical 경로를 확인한다. 같은
   프로젝트·단계·논리 키의 파일이 이미 있으면 크기·해시·manifest를 비교해 exact reuse하고,
   `-1`, `(1)`, 날짜·세션 ID 접미사를 붙인 복사본을 만들지 않는다.
-- NSW `eden-mcp` QA는 프로젝트당 `50_test/eden/SESSION.json` 하나와
-  `ARTIFACT_MANIFEST.tsv` 하나만 사용한다. 같은 세션 키의 active 세션이 있으면 재사용하고,
-  소유권이 증명되는 이전 세션만 정확한 `session_id`로 종료한 뒤 새 세션을 만든다.
-- Eden 세션 목록·상태가 local `SESSION.json`과 다르면 새 세션을 생성하지 않고
+- NSW MCP smoke QA는 Eden-MCP와 Ryubing-MCP를 합쳐 프로젝트당
+  `50_test/eden/SESSION.json` 하나와 `ARTIFACT_MANIFEST.tsv` 하나만 사용한다. 생성 전 양쪽
+  Title inventory를 조회하고 live 세션이 하나면 exact reuse한다. 기본은 Eden이며 Ryubing이나
+  두 번째 세션은 구체적 예외 사유와 이전 exact close 증거 없이는 만들지 않는다.
+- Eden/Ryubing 세션 목록·상태가 local `SESSION.json`과 다르면 새 세션을 생성하지 않고
   `BLOCKED`/`INVALID (cross-session)`로 기록한다. 프로세스 이름·전역 검색으로 다른 세션을
   종료하지 않는다.
 - 파일·디렉터리를 만드는 모든 단계는 기존 canonical 경로를 먼저 확인하고, 변경이 필요할
@@ -92,6 +96,9 @@
   증명한 뒤 `--previous-session-id`로 그 ID를 명시해야 다음 세션을 생성할 수 있다.
 - `ARTIFACT_MANIFEST.tsv`의 `artifact_key`와 `path`는 각각 유일해야 한다. 동일 논리 산출물은
   기존 행을 hash/status로 갱신하며, 세션별 로그·캡처 복사본을 계속 쌓지 않는다.
+- MCP smoke는 최종 QA가 아니다. 최종 QA는 `common/release-runtime-contract.md`의
+  allowlist에 있는 공식 사이트 배포 릴리즈 바이너리를 별도로 받아 MCP 없이 직접 실행하고,
+  현재 binary/build/mod/log/screenshot hash를 `RELEASE_RUNTIME_QA.json`으로 검증한다.
 
 ## 6. git 커밋 규칙
 
@@ -116,8 +123,9 @@
 - NSW에서 Eden 또는 Ryubing을 포터블/격리 프로파일로 실행할 때는 에뮬레이터가 실제로 읽는
   시스템 지역을 `한국`/`대한민국`, 시스템 언어를 `한국어`로 고정한다. 호스트 환경변수나
   게임 메뉴 표시만으로 갈음하지 말고 유효 설정·시작 로그와 확인 근거를 기록한다. 확인할
-  수 없으면 `PENDING_RUNTIME`으로 남긴다. `eden-mcp`가 사용 가능하면 실행·상태·캡처에
-  우선 사용하고, 직접 Eden 실행은 fallback 사유를 기록한다.
+  수 없으면 `PENDING_RUNTIME`으로 남긴다. 기본 smoke는 Eden-MCP의 단일 세션을 재사용한다.
+  최종 QA는 MCP fallback이 아니라 공식 배포 릴리즈의 별도 direct 실행이어야 하며, 실행할 수
+  없으면 릴리스 상태를 올리지 않는다.
 - 같은 타이틀에 여러 모드가 겹쳐 적용될 수 있으면, 원인 판정은 단일 모드만 적용된 격리 환경(또는 이전 모드를 읽지 않는 재시작)에서만 확정한다.
 - 다른 세션의 실행 시험 환경 프로세스는 종료·일시정지·입력하지 않는다. 종료·입력·화면 캡처는 자신이 시작한 프로세스에만 수행한다.
 - 로고 이후 정지나 영상 재생 중 정지가 복수의 환경에서 재현되면, 그 런타임/미디어 실패를 번역·폰트 변경과 분리해 취급한다. 우회책을 추가하거나 동작 중인 언어 패치를 바꾸기 전에 입력 데이터 경로와 환경 로그를 먼저 조사한다.
@@ -125,7 +133,7 @@
 
 ## 9. emucap/MCP 런타임 연동
 
-- emucap은 선택적 `gt-qa` 런타임 백엔드다. 번역·추출 단계의 전제 조건으로 설치하거나 NSW 실행시험을 emucap으로 대체하지 않는다.
+- emucap은 선택적 `gt-qa` smoke/진단 백엔드다. 번역·추출 단계의 전제 조건으로 설치하거나 NSW의 공식 배포 릴리즈 최종 실행시험을 emucap으로 대체하지 않는다.
 - 사용 전 [`common/emucap-integration.md`](emucap-integration.md)를 읽고, Control/Tracking MCP의 `bootstrap` 및 현재 `status` capability를 확인한다.
 - Tracking 원장은 반드시 현재 프로젝트의 `50_test/emucap/` 아래에 둔다. 기본 Git 루트 `.emucap` 또는 MCP 서버 현재 디렉터리 fallback은 거부한다.
 - emucap의 캡처·덤프·세이브스테이트·`output_path`는 프로젝트 내부 절대경로만 사용한다. 원본·공용 도구·플러그인 저장소·활성 모드 원본에는 쓰지 않는다.

@@ -14,7 +14,7 @@ description: "Run technical and visual QA after image translation: validate no-A
 - 원본·후보·staging의 exact path, stable key, 수량, SHA-256
 - canvas/format/alpha/atlas/import 계약
 - `$GT_HOME/common/image-translation-contract.md`, `IMAGE_GENERATION_MANIFEST.tsv`,
-  prompt·schema 3 receipt·모든 시도 output·decoded RGBA probe
+  prompt·schema 3 receipt 또는 검증된 size-normalization schema 4 receipt·모든 시도 output·decoded RGBA probe
 
 `hold-for-imagegen-review`, 누락·추가·중복 후보, 원본 hash 변경은 `BLOCKED`다.
 `image_scope=N/A`이면 가짜 행을 만들지 않고 `image_status=skipped`로 기록한다.
@@ -22,13 +22,17 @@ description: "Run technical and visual QA after image translation: validate no-A
 ## 절차
 
 1. 계획·원본·reference·후보·모든 attempt·prompt·receipt·probe의 귀속과 수량·hash를 확인한다.
-2. **내장 imagegen provenance 게이트**를 적용한다. agent-generated 행은 receipt schema 3의
+2. **내장 imagegen provenance 게이트**를 적용한다. agent-generated 행은 receipt schema 3 또는
+   크기 정규화 provenance가 연결된 schema 4의
    `tool=image_gen.imagegen`, `execution_surface=chatgpt-built-in`, `model=provider-selected`,
    `quality=provider-managed`, `candidate_policy=best-of-3-fail-closed`, `minimum_candidates=3`,
    `operation=edit`만 허용한다. 3–4개 물리적으로 다른 output과 정확히 하나의 합격
    `selected_attempt`가 있어야 한다.
 3. API/CLI, Python/Pillow/OpenCV/임의 스크립트 raster provenance, text-to-image 재생성,
    복사본을 독립 호출로 센 receipt, source/reference/candidate 경로 충돌을 즉시 실패시킨다.
+   schema 4는 PNG/RGBA8·동일 종횡비·`canvas-size-only`·고정 bilinear 알고리즘과 원본 schema 3
+   receipt/raw candidate/probe hash가 모두 연결된 경우만 허용한다. 정규화가 다른 QA 실패를
+   가리거나 crop/pad/atlas 변경을 포함하면 즉시 실패시킨다.
 4. canvas, format, color mode, alpha, compression, mip, atlas page/rect, padding, UV origin,
    sprite ID, clear bbox와 보존 영역을 전수 비교한다.
 5. 다음 기계 검증을 독립 실행한다.

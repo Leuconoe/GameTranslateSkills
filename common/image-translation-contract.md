@@ -20,16 +20,19 @@
   세지 않는다. 최대 4회까지만 허용하고, 합격 후보가 없으면 `hold-for-imagegen-review`로
   멈춘다. 낮은 품질 후보를 임의 채택하거나 API/로컬 생성기로 폴백하지 않는다.
 - Python/Pillow/OpenCV, ImageMagick, SVG/HTML/canvas 또는 임의 스크립트로 글자를 그리기·
-  지우기·합성하기·alpha 복구·resize하기·기존 파일 덮어쓰기는 금지한다. 분석기와 decoder는
-  읽기 전용 probe에만 사용할 수 있고 후보 생성기로 기록할 수 없다. 내장 imagegen이 반환한
-  파일을 새 프로젝트 경로로 byte-copy하는 것은 허용하지만 픽셀 변환은 허용하지 않는다.
+  지우기·합성하기·alpha 복구·기존 파일 덮어쓰기는 금지한다. 분석기와 decoder는 읽기 전용
+  probe에만 사용할 수 있고 후보 생성기로 기록할 수 없다. 내장 imagegen이 반환한 파일을 새
+  프로젝트 경로로 byte-copy하는 것은 허용한다. 픽셀 변환의 유일한 예외는 §3.1의 PNG/RGBA8
+  canvas-size-only 정규화이며, raw output과 기존 receipt를 보존하고 전체 QA를 다시 통과해야 한다.
 - 플랫폼·엔진 importer는 검증된 imagegen 결과를 새 staging에 인코딩할 수 있지만 한글 픽셀을
   새로 만들거나 원본/reference/candidate를 직접 덮어쓰지 않는다.
 - `10_extract` 원본, `reference/`, 기존 canonical candidate는 읽기 전용이다. 내장 도구가
   반환한 각 generated artifact를 픽셀 변환 없이
   `for_translation/attempts/<stable-key>-attempt-<NN>`의 새 파일로 byte-copy한다. 선택 뒤에는 합격
   output 하나만 비어 있는 canonical 경로로 byte-preserving rename하고 receipt의 선택 path를
-  그 최종 경로로 기록한다. canonical 경로에 파일이 이미 있으면 덮어쓰지 않고 `BLOCKED`다.
+  그 최종 경로로 기록한다. §3.1 정규화를 적용하면 이 경로가 보존된 raw input이 되고 새
+  `normalized/` 경로가 canonical candidate가 된다. 어떤 경로든 이미 파일이 있으면 덮어쓰지 않고
+  `BLOCKED`다.
 - ChatGPT UI에서 사용자가 직접 내려받아 제공한 파일은 `origin=user-supplied`,
   `generator=user-supplied`로 기록한다. 대화 밖 UI 작업을 에이전트의 내장 tool call로 가장하지
   않는다.
@@ -188,6 +191,42 @@ korean_text: <승인 용어집을 적용한 정확한 한글 문구>
 있어야 한다. 선택 시도의 `output_path`/hash는 manifest의 canonical candidate와 정확히 같아야
 한다. schema 1/2 receipt나 단일 후보를 문자열만 바꿔 schema 3으로 승격하지 않는다.
 
+### 3.1 canvas-size-only 정규화
+
+schema 3 manifest를 현재 validator로 검사했을 때 오류가 `canvas width changed` 및/또는
+`canvas height changed`뿐이고 다음 조건을 모두 만족할 때만 정규화를 시도한다.
+
+- `origin=agent-generated`, PNG→PNG, decoded color mode RGBA8
+- candidate와 source의 종횡비가 정수 교차곱 기준 exact 동일하며 crop/pad가 필요하지 않음
+- source/raw candidate PNG IHDR와 각 RGBA probe의 dimensions/bytes/hash가 exact 일치
+- selected attempt와 raw candidate/probe/schema 3 receipt가 exact 연결됨
+- resize 결과가 기존 alpha policy, edit region 밖 RGBA diff 0, 영역 안 RGB 변경을 통과함
+
+먼저 dry-run하고 `ELIGIBLE`일 때만 적용한다.
+
+```bash
+npm run image:normalize-size -- \
+  --project-root "<프로젝트 루트>" \
+  --manifest "<프로젝트 루트>/30_translation/image_translation/IMAGE_GENERATION_MANIFEST.tsv" \
+  --stable-key "<stable-key>" \
+  --apply
+```
+
+도구는 Node 표준 모듈만 사용하여 `premultiplied-alpha-bilinear-rgba8-v1`로 목표 canvas에
+리사이즈한다. 완전 투명 표본의 숨은 RGB도 보존 검증 대상이므로 alpha=0에서는 straight RGB
+보간값을 기록한다. raw candidate/probe/schema 3 receipt는 수정하지 않고 다음 새 파일을 만든다.
+
+- `for_translation/normalized/<stable-key>.png`
+- `probes/normalized/<stable-key>.candidate.rgba`
+- `receipts/normalized/<stable-key>.json` (schema 4)
+
+schema 4의 `normalization` 객체는 `status=applied`, `reason=canvas-size-only`, 고정 tool/algorithm,
+원본 schema 3 receipt path/hash, raw input candidate/probe path/hash/dimensions, normalized output
+candidate/probe path/hash/dimensions를 기록한다. `attempts`는 원본 schema 3에서 byte-semantic하게
+변경하지 않는다. selected attempt는 raw imagegen output을, top-level `candidate_*`는 normalized
+output을 가리킨다. 정규화 후 반드시 `image:validate`를 다시 실행하며, 다른 오류가 하나라도
+생기면 크기 문제만이 아니므로 합격시키지 않는다.
+
 ## 4. IMAGE_GENERATION_MANIFEST.tsv
 
 헤더 순서와 컬럼은 고정한다.
@@ -228,9 +267,11 @@ npm run image:validate -- --project-root "<프로젝트 루트>" --manifest "<�
 
 - source/reference/candidate가 서로 다른 프로젝트 내부 일반 파일이고 source/reference hash가 동일
 - declared SHA-256과 현재 파일·prompt·receipt·RGBA probe·모든 시도 output hash가 동일
-- agent-generated receipt가 schema 3, `image_gen.imagegen`, `chatgpt-built-in`,
+- agent-generated receipt가 schema 3 또는 검증된 canvas-size-only schema 4,
+  `image_gen.imagegen`, `chatgpt-built-in`,
   `provider-selected`/`provider-managed`, `best-of-3-fail-closed`, 최소 3개 독립 path/hash임
-- 정확히 하나의 선택 시도가 전 QA 상태를 통과하고 manifest candidate path/hash와 일치함
+- 정확히 하나의 선택 시도가 전 QA 상태를 통과함. schema 3은 manifest candidate와, schema 4는
+  normalization raw input과 일치하고 normalized output이 manifest candidate와 일치함
 - source/candidate canvas·format·color mode·anchor·atlas rect가 exact 동일
 - `alpha_policy=exact`면 모든 alpha byte가 동일하고, `edit-region-only`면 alpha 변경이 exact edit
   region 안으로만 제한됨

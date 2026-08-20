@@ -56,8 +56,9 @@ STYLE을 따르고 `$GT_HOME/common/image-translation-contract.md`를 적용한�
    호출로 안전하게 처리할 수 없으면 추적되지 않는 연쇄 편집 대신 분석 계획을 분할하거나
    `BLOCKED`로 둔다.
 5. source/reference/기존 candidate를 생성 도구로 직접 덮어쓰지 않는다. Python/Pillow/OpenCV,
-   ImageMagick, SVG/HTML/canvas 또는 임의 스크립트로 글자·배경·alpha를 생성·삭제·합성·resize하지
-   않는다. 내장 도구 반환 파일의 byte-copy와 읽기 전용 decoder/probe만 허용한다.
+   ImageMagick, SVG/HTML/canvas 또는 임의 스크립트로 글자·배경·alpha를 생성·삭제·합성하지
+   않는다. 내장 도구 반환 파일의 byte-copy와 읽기 전용 decoder/probe만 허용한다. 유일한 resize
+   예외는 아래 정규화 절차의 `image:normalize-size` 게이트다.
 6. 세 후보를 모두 before/after로 검사한다. 원문 흔적/no-overlay, 정확한 한글, 원본 분위기·서체·
    색·외곽선·재질·광원·자간/baseline, canvas/layout/alpha와 영역 밖 변형을 각각 판정한다.
    - 전 항목 통과: `qualified`
@@ -70,7 +71,20 @@ STYLE을 따르고 `$GT_HOME/common/image-translation-contract.md`를 적용한�
 7. 동일 decoder로 source/선택 후보의 header 없는 RGBA8 probe를 만들고 receipt schema 3와
    `IMAGE_GENERATION_MANIFEST.tsv`를 작성한다. receipt는 `image_gen.imagegen`,
    `chatgpt-built-in`, `provider-selected`, `provider-managed`, `best-of-3-fail-closed`, 모든 시도
-   path/hash/QA 상태, 정확히 하나의 `selected_attempt`를 포함해야 한다.
+   path/hash/QA 상태, 정확히 하나의 `selected_attempt`를 포함해야 한다. 이 상태에서 validator의
+   유일한 오류가 canvas width/height이고 PNG/RGBA8 및 종횡비가 exact이면 다음을 dry-run한다.
+
+   ```bash
+   npm run image:normalize-size -- \
+     --project-root "<프로젝트 루트>" \
+     --manifest "<프로젝트 루트>/30_translation/image_translation/IMAGE_GENERATION_MANIFEST.tsv" \
+     --stable-key "<stable-key>"
+   ```
+
+   `ELIGIBLE`일 때만 `--apply`를 추가한다. 이 명령은 raw candidate/probe/schema 3 receipt를
+   보존하고 `normalized/`의 새 PNG·probe와 schema 4 receipt를 만든다. crop/pad/종횡비 변경,
+   PNG 외 포맷, 다른 validator 오류가 있으면 실패하며 resize 뒤 alpha·영역 밖 RGBA·영역 안 변경
+   검사를 다시 통과하지 못해도 실패한다.
 8. 다음 검증을 실행한다.
 
    ```bash
@@ -95,7 +109,7 @@ STYLE을 따르고 `$GT_HOME/common/image-translation-contract.md`를 적용한�
 ## 완료 기준
 
 - [ ] required 대상에 누락·추가·중복이 없음
-- [ ] 모든 agent-generated 대상에 schema 3 best-of-3 receipt와 정확히 하나의 합격 선택 후보가 있음
+- [ ] 모든 agent-generated 대상에 schema 3 또는 검증된 size-normalization schema 4 best-of-3 receipt와 정확히 하나의 합격 선택 후보가 있음
 - [ ] API/CLI/Python raster 생성·원본/reference/기존 candidate 덮어쓰기 0건
 - [ ] 원문 흔적·겹쳐쓰기 0건, 정확한 한글과 원본 시각적 정체성 검사 통과
 - [ ] canvas·format·alpha·atlas·anchor·보존 영역 검사와 validator `Issues: 0`

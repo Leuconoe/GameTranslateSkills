@@ -1,6 +1,6 @@
 {
   "name": "game-translate-skills",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "private": true,
   "description": "Cross-platform npm tooling for the GameTranslateSkills plugin.",
   "license": "MIT",
@@ -20,6 +20,7 @@
     "project:qa-session": "node scripts/qa-session.mjs",
     "workspace:cleanup": "node scripts/workspace-cleanup.mjs",
     "font:validate": "node scripts/validate-font-atlas.mjs",
+    "image:normalize-size": "node scripts/normalize-imagegen-size.mjs",
     "image:validate": "node scripts/validate-image-translation.mjs",
     "runtime:validate": "node scripts/validate-release-runtime.mjs",
     "release:package:nsw": "node scripts/create-nsw-release.mjs",

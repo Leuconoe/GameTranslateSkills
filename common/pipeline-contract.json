@@ -1,5 +1,5 @@
 {
-  "schema_version": 7,
+  "schema_version": 8,
   "entry_skill": "gt-analyze",
   "convergence_skill": "gt-qa",
   "release_skill": "gt-release",
@@ -47,6 +47,10 @@
     "document": "common/image-translation-contract.md",
     "manifest": "30_translation/image_translation/IMAGE_GENERATION_MANIFEST.tsv",
     "validator": "scripts/validate-image-translation.mjs",
+    "size_normalizer": "scripts/normalize-imagegen-size.mjs",
+    "normalized_receipt_schema": 4,
+    "normalization_reason": "canvas-size-only",
+    "normalization_algorithm": "premultiplied-alpha-bilinear-rgba8-v1",
     "agent_generator": "imagegen",
     "tool": "image_gen.imagegen",
     "execution_surface": "chatgpt-built-in",

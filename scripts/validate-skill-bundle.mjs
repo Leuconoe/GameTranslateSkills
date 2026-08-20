@@ -139,6 +139,8 @@ async function main() {
     'source/reference/candidate',
     'alpha byte',
     'decoded RGBA diff',
+    'npm run image:normalize-size',
+    'schema 4',
     'npm run image:validate',
   ]) if (!imageContract.includes(phrase)) add(issues, `image contract: missing fail-closed phrase ${phrase}`);
   const imageAnalyze = contents.get('gt-image-analyze') ?? '';
@@ -181,6 +183,10 @@ async function main() {
     document: 'common/image-translation-contract.md',
     manifest: '30_translation/image_translation/IMAGE_GENERATION_MANIFEST.tsv',
     validator: 'scripts/validate-image-translation.mjs',
+    size_normalizer: 'scripts/normalize-imagegen-size.mjs',
+    normalized_receipt_schema: 4,
+    normalization_reason: 'canvas-size-only',
+    normalization_algorithm: 'premultiplied-alpha-bilinear-rgba8-v1',
     agent_generator: 'imagegen',
     tool: 'image_gen.imagegen',
     execution_surface: 'chatgpt-built-in',
@@ -192,6 +198,15 @@ async function main() {
     minimum_candidates: 3,
     operation: 'edit',
   })) if (imagePipeline?.[field] !== expected) add(issues, `contract: image_generation_contract.${field} must equal ${expected}`);
+  try {
+    const packageManifest = JSON.parse(await read(packagePath));
+    if (packageManifest.scripts?.['image:normalize-size'] !== 'node scripts/normalize-imagegen-size.mjs') {
+      add(issues, 'package.json: image:normalize-size must route to scripts/normalize-imagegen-size.mjs');
+    }
+    await fs.access(path.join(repositoryRoot, imagePipeline?.size_normalizer ?? ''));
+  } catch (error) {
+    add(issues, `image size normalizer: missing or unreadable (${error.message})`);
+  }
   let runtimeContract = '';
   try {
     runtimeContract = await read(runtimeContractPath);

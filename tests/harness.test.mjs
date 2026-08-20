@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { encodePngRgba } from '../scripts/lib/png-rgba.mjs';
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const scriptsRoot = path.join(repositoryRoot, 'scripts');
@@ -260,6 +261,55 @@ async function createImageHarnessFixture(tempRoot) {
   await writeReceipt();
   await writeManifest();
   return { projectRoot, absolute, row, receipt, sourceRgba, candidateRgba, writePrompt, writeReceipt, writeManifest, writeCandidateRgba };
+}
+
+async function createResizableImageHarnessFixture(tempRoot, inputWidth = 4, inputHeight = 4) {
+  const fixture = await createImageHarnessFixture(tempRoot);
+  const sourceWidth = 2;
+  const sourceHeight = 2;
+  const sourceRgba = Buffer.from(fixture.sourceRgba);
+  const targetRgba = Buffer.from(fixture.candidateRgba);
+  const inputRgba = Buffer.alloc(inputWidth * inputHeight * 4);
+  for (let y = 0; y < inputHeight; y += 1) {
+    for (let x = 0; x < inputWidth; x += 1) {
+      const sourceX = Math.min(sourceWidth - 1, Math.floor(x * sourceWidth / inputWidth));
+      const sourceY = Math.min(sourceHeight - 1, Math.floor(y * sourceHeight / inputHeight));
+      const sourceOffset = (sourceY * sourceWidth + sourceX) * 4;
+      targetRgba.copy(inputRgba, (y * inputWidth + x) * 4, sourceOffset, sourceOffset + 4);
+    }
+  }
+  const sourcePng = encodePngRgba(sourceWidth, sourceHeight, sourceRgba);
+  const inputPng = encodePngRgba(inputWidth, inputHeight, inputRgba);
+  const previousReferenceSha = fixture.row.reference_sha256;
+  await fs.writeFile(fixture.absolute.source, sourcePng);
+  await fs.writeFile(fixture.absolute.reference, sourcePng);
+  await fs.writeFile(fixture.absolute.candidate, inputPng);
+  await fs.writeFile(fixture.absolute.sourceRgba, sourceRgba);
+  await fs.writeFile(fixture.absolute.candidateRgba, inputRgba);
+
+  fixture.row.source_sha256 = sha256(sourcePng);
+  fixture.row.reference_sha256 = sha256(sourcePng);
+  fixture.row.candidate_sha256 = sha256(inputPng);
+  fixture.row.source_rgba_sha256 = sha256(sourceRgba);
+  fixture.row.candidate_rgba_sha256 = sha256(inputRgba);
+  fixture.row.source_width = String(sourceWidth);
+  fixture.row.source_height = String(sourceHeight);
+  fixture.row.candidate_width = String(inputWidth);
+  fixture.row.candidate_height = String(inputHeight);
+  fixture.row.source_format = 'png';
+  fixture.row.candidate_format = 'png';
+  fixture.receipt.reference_sha256 = fixture.row.reference_sha256;
+  fixture.receipt.candidate_sha256 = fixture.row.candidate_sha256;
+  fixture.receipt.source_rgba_sha256 = fixture.row.source_rgba_sha256;
+  fixture.receipt.candidate_rgba_sha256 = fixture.row.candidate_rgba_sha256;
+  for (const attempt of fixture.receipt.attempts) attempt.reference_sha256 = fixture.row.reference_sha256;
+  fixture.receipt.attempts[1].output_sha256 = fixture.row.candidate_sha256;
+  const prompt = (await fs.readFile(fixture.absolute.prompt, 'utf8'))
+    .replace(`reference_sha256: ${previousReferenceSha}`, `reference_sha256: ${fixture.row.reference_sha256}`);
+  await fixture.writePrompt(prompt);
+  await fixture.writeReceipt();
+  await fixture.writeManifest();
+  return { ...fixture, sourceRgba, targetRgba, inputRgba };
 }
 
 async function createReleaseRuntimeFixture(tempRoot, existingProjectRoot = null) {
@@ -848,6 +898,96 @@ test('image harness rejects alpha, anchor, and preserved-region drift', async ()
     assert.match(output, /alpha changed at 1 pixel/);
     assert.match(output, /decoded RGBA changed outside edit_regions at 1 pixel/);
     assert.match(output, /source and candidate anchors must match exactly/);
+  } finally {
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('image size normalizer converts a same-aspect PNG and preserves schema 4 provenance', async () => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'game-translate-image-normalize-'));
+  try {
+    const fixture = await createResizableImageHarnessFixture(tempRoot);
+    const dryRun = runNode('normalize-imagegen-size.mjs', [
+      '--project-root', fixture.projectRoot,
+      '--manifest', fixture.absolute.manifest,
+      '--stable-key', fixture.row.stable_key,
+    ]);
+    assert.match(dryRun, /Result: ELIGIBLE/);
+    const applied = runNode('normalize-imagegen-size.mjs', [
+      '--project-root', fixture.projectRoot,
+      '--manifest', fixture.absolute.manifest,
+      '--stable-key', fixture.row.stable_key,
+      '--apply',
+    ]);
+    assert.match(applied, /Result: APPLIED/);
+    const manifest = await fs.readFile(fixture.absolute.manifest, 'utf8');
+    assert.match(manifest, /for_translation\/normalized\/ui\/title\.png/);
+    const output = runNode('validate-image-translation.mjs', [
+      '--project-root', fixture.projectRoot,
+      '--manifest', fixture.absolute.manifest,
+    ]);
+    assert.match(output, /Issues: 0/);
+    assert.equal(await fs.readFile(fixture.absolute.candidate).then((buffer) => buffer.equals(encodePngRgba(4, 4, fixture.inputRgba))), true);
+  } finally {
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('image size normalizer rejects aspect-ratio changes before writing outputs', async () => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'game-translate-image-normalize-aspect-'));
+  try {
+    const fixture = await createResizableImageHarnessFixture(tempRoot, 4, 2);
+    const output = runNodeFailureOutput('normalize-imagegen-size.mjs', [
+      '--project-root', fixture.projectRoot,
+      '--manifest', fixture.absolute.manifest,
+      '--stable-key', fixture.row.stable_key,
+      '--apply',
+    ]);
+    assert.match(output, /aspect ratios differ/);
+    await assert.rejects(fs.lstat(path.join(fixture.projectRoot, '30_translation', 'image_translation', 'for_translation', 'normalized', 'ui', 'title.png')), { code: 'ENOENT' });
+  } finally {
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('image size normalizer refuses candidates with non-size QA errors', async () => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'game-translate-image-normalize-qa-'));
+  try {
+    const fixture = await createResizableImageHarnessFixture(tempRoot);
+    fixture.row.original_feel_status = 'fail';
+    await fixture.writeManifest();
+    const output = runNodeFailureOutput('normalize-imagegen-size.mjs', [
+      '--project-root', fixture.projectRoot,
+      '--manifest', fixture.absolute.manifest,
+      '--stable-key', fixture.row.stable_key,
+      '--apply',
+    ]);
+    assert.match(output, /validation has non-size issue/);
+    await assert.rejects(fs.lstat(path.join(fixture.projectRoot, '30_translation', 'image_translation', 'for_translation', 'normalized', 'ui', 'title.png')), { code: 'ENOENT' });
+  } finally {
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('image harness rejects tampered size-normalization provenance', async () => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'game-translate-image-normalize-tamper-'));
+  try {
+    const fixture = await createResizableImageHarnessFixture(tempRoot);
+    runNode('normalize-imagegen-size.mjs', [
+      '--project-root', fixture.projectRoot,
+      '--manifest', fixture.absolute.manifest,
+      '--stable-key', fixture.row.stable_key,
+      '--apply',
+    ]);
+    const receiptPath = path.join(fixture.projectRoot, '30_translation', 'image_translation', 'receipts', 'normalized', 'ui', 'title.json');
+    const receipt = JSON.parse(await fs.readFile(receiptPath, 'utf8'));
+    receipt.normalization.algorithm = 'unverified-resizer';
+    await fs.writeFile(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`);
+    const output = runNodeFailureOutput('validate-image-translation.mjs', [
+      '--project-root', fixture.projectRoot,
+      '--manifest', fixture.absolute.manifest,
+    ]);
+    assert.match(output, /normalization algorithm must equal premultiplied-alpha-bilinear-rgba8-v1/);
   } finally {
     await fs.rm(tempRoot, { recursive: true, force: true });
   }

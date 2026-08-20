@@ -3,19 +3,8 @@ import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { flag, parseArgs, requiredOption } from './lib/args.mjs';
-
-const requiredColumns = [
-  'stable_key', 'source_path', 'source_sha256', 'reference_path', 'reference_sha256',
-  'candidate_path', 'candidate_sha256', 'source_rgba_path', 'source_rgba_sha256',
-  'candidate_rgba_path', 'candidate_rgba_sha256', 'source_width', 'source_height',
-  'candidate_width', 'candidate_height', 'source_format', 'candidate_format',
-  'source_color_mode', 'candidate_color_mode', 'alpha_policy', 'edit_regions', 'source_anchors',
-  'candidate_anchors', 'atlas_page', 'source_atlas_rect', 'candidate_atlas_rect',
-  'origin', 'generator', 'tool', 'model', 'quality', 'generation_mode', 'prompt_path', 'prompt_sha256',
-  'receipt_path', 'receipt_sha256', 'style_contract', 'atmosphere_contract',
-  'style_status', 'atmosphere_status', 'original_feel_status', 'source_text_removal_status',
-  'alpha_status', 'layout_status', 'korean_text_status', 'roundtrip_status', 'status', 'notes',
-];
+import { parseImageManifest } from './lib/image-manifest.mjs';
+import { decodePngRgba, encodePngRgba, resizeRgbaBilinear } from './lib/png-rgba.mjs';
 
 const imageRoot = '30_translation/image_translation/';
 const requiredPrefixes = {
@@ -29,25 +18,6 @@ const requiredPrefixes = {
 
 function sha256(buffer) {
   return crypto.createHash('sha256').update(buffer).digest('hex');
-}
-
-function parseRows(text, source) {
-  const lines = text.split(/\r?\n/).filter((line) => line.length > 0);
-  if (lines.length < 2) throw new Error(`${source} must contain the exact header and at least one row`);
-  const header = lines[0].split('\t');
-  if (header.join('\t') !== requiredColumns.join('\t')) {
-    throw new Error(`${source} header must exactly match common/image-translation-contract.md`);
-  }
-  const rows = lines.slice(1).map((line, index) => {
-    const cells = line.split('\t');
-    if (cells.length !== header.length) {
-      throw new Error(`${source} line ${index + 2} has ${cells.length} cells; expected ${header.length}`);
-    }
-    const row = Object.fromEntries(header.map((column, columnIndex) => [column, cells[columnIndex]]));
-    row.__line = index + 2;
-    return row;
-  });
-  return rows;
 }
 
 function integer(value, label, row, issues, { positive = false } = {}) {
@@ -196,7 +166,8 @@ function requirePromptDescription(fields, key, row, issues) {
 function isSamePhysicalFile(left, right) {
   if (!left || !right) return false;
   if (canonicalPathKey(left.realPath) === canonicalPathKey(right.realPath)) return true;
-  return left.stat.dev !== 0 && left.stat.ino !== 0
+  return left.stat.nlink > 1 && right.stat.nlink > 1
+    && left.stat.dev !== 0 && left.stat.ino !== 0
     && right.stat.dev !== 0 && right.stat.ino !== 0
     && left.stat.dev === right.stat.dev && left.stat.ino === right.stat.ino;
 }
@@ -208,7 +179,7 @@ async function validateAgentAttempts(receipt, row, projectRoot, projectRealRoot,
 
   if (!Array.isArray(receipt.attempts)) {
     issues.push(`line ${row.__line}: receipt attempts must be an array`);
-    return;
+    return null;
   }
   if (receipt.attempts.length < 3 || receipt.attempts.length > 4) {
     issues.push(`line ${row.__line}: receipt must contain 3 or 4 independent imagegen attempts`);
@@ -308,8 +279,162 @@ async function validateAgentAttempts(receipt, row, projectRoot, projectRealRoot,
   }
   if (selectedAttempt) {
     if (selectedAttempt.attempt !== receipt.selected_attempt) issues.push(`line ${row.__line}: receipt selected_attempt does not match selection_status=selected`);
-    if (selectedAttempt.output_path !== row.candidate_path) issues.push(`line ${row.__line}: selected imagegen output_path must equal manifest candidate_path`);
-    if (selectedAttempt.output_sha256 !== row.candidate_sha256) issues.push(`line ${row.__line}: selected imagegen output_sha256 must equal manifest candidate_sha256`);
+    const expectedPath = receipt.schema_version === 4 ? receipt.normalization?.input_path : row.candidate_path;
+    const expectedHash = receipt.schema_version === 4 ? receipt.normalization?.input_sha256 : row.candidate_sha256;
+    if (selectedAttempt.output_path !== expectedPath) issues.push(`line ${row.__line}: selected imagegen output_path must equal the recorded raw candidate path`);
+    if (selectedAttempt.output_sha256 !== expectedHash) issues.push(`line ${row.__line}: selected imagegen output_sha256 must equal the recorded raw candidate hash`);
+  }
+  return selectedAttempt;
+}
+
+async function validateSizeNormalization(receipt, row, projectRoot, projectRealRoot, evidence, dimensions, selectedAttempt, issues) {
+  const normalization = receipt.normalization;
+  if (!normalization || typeof normalization !== 'object' || Array.isArray(normalization)) {
+    issues.push(`line ${row.__line}: schema 4 receipt requires a normalization object`);
+    return;
+  }
+  const expectedFields = {
+    status: 'applied',
+    reason: 'canvas-size-only',
+    tool: 'game-translate.normalize-imagegen-size',
+    algorithm: 'premultiplied-alpha-bilinear-rgba8-v1',
+    output_path: row.candidate_path,
+    output_sha256: row.candidate_sha256,
+    output_rgba_path: row.candidate_rgba_path,
+    output_rgba_sha256: row.candidate_rgba_sha256,
+    output_width: dimensions.sourceWidth,
+    output_height: dimensions.sourceHeight,
+  };
+  for (const [field, expected] of Object.entries(expectedFields)) {
+    if (normalization[field] !== expected) issues.push(`line ${row.__line}: normalization ${field} must equal ${expected}`);
+  }
+  if (!row.candidate_path.startsWith(`${imageRoot}for_translation/normalized/`)
+      || !row.candidate_rgba_path.startsWith(`${imageRoot}probes/normalized/`)
+      || !row.receipt_path.startsWith(`${imageRoot}receipts/normalized/`)) {
+    issues.push(`line ${row.__line}: schema 4 normalized candidate, probe, and receipt must use normalized/ paths`);
+  }
+  if (typeof normalization.original_receipt_path !== 'string'
+      || !normalization.original_receipt_path.startsWith(`${imageRoot}receipts/`)
+      || normalization.original_receipt_path.startsWith(`${imageRoot}receipts/normalized/`)
+      || typeof normalization.input_path !== 'string'
+      || !normalization.input_path.startsWith(`${imageRoot}for_translation/`)
+      || normalization.input_path.startsWith(`${imageRoot}for_translation/normalized/`)
+      || typeof normalization.input_rgba_path !== 'string'
+      || !normalization.input_rgba_path.startsWith(`${imageRoot}probes/`)
+      || normalization.input_rgba_path.startsWith(`${imageRoot}probes/normalized/`)) {
+    issues.push(`line ${row.__line}: schema 4 normalization must link non-normalized receipt/input/probe paths`);
+  }
+  if (row.source_format.toLowerCase() !== 'png' || row.candidate_format.toLowerCase() !== 'png'
+      || row.source_color_mode.toLowerCase() !== 'rgba8' || row.candidate_color_mode.toLowerCase() !== 'rgba8') {
+    issues.push(`line ${row.__line}: schema 4 size normalization supports PNG decoded as RGBA8 only`);
+  }
+
+  const originalReceipt = await fileEvidence(
+    projectRoot, projectRealRoot, normalization.original_receipt_path,
+    'normalization.original_receipt_path', row, issues,
+  );
+  const input = await fileEvidence(projectRoot, projectRealRoot, normalization.input_path, 'normalization.input_path', row, issues);
+  const inputRgba = await fileEvidence(
+    projectRoot, projectRealRoot, normalization.input_rgba_path,
+    'normalization.input_rgba_path', row, issues,
+  );
+  compareDeclaredHash(originalReceipt, normalization.original_receipt_sha256, 'normalization.original_receipt_sha256', row, issues);
+  compareDeclaredHash(input, normalization.input_sha256, 'normalization.input_sha256', row, issues);
+  compareDeclaredHash(inputRgba, normalization.input_rgba_sha256, 'normalization.input_rgba_sha256', row, issues);
+
+  const allEvidence = [
+    ...Object.entries(evidence),
+    ['originalReceipt', originalReceipt],
+    ['normalizationInput', input],
+    ['normalizationInputRgba', inputRgba],
+  ].filter(([, entry]) => entry);
+  for (let left = 0; left < allEvidence.length; left += 1) {
+    for (let right = left + 1; right < allEvidence.length; right += 1) {
+      if (isSamePhysicalFile(allEvidence[left][1], allEvidence[right][1])) {
+        issues.push(`line ${row.__line}: normalization ${allEvidence[left][0]} and ${allEvidence[right][0]} files must be physically distinct`);
+        left = allEvidence.length;
+        break;
+      }
+    }
+  }
+
+  const inputWidth = Number.isInteger(normalization.input_width) && normalization.input_width > 0
+    ? normalization.input_width : null;
+  const inputHeight = Number.isInteger(normalization.input_height) && normalization.input_height > 0
+    ? normalization.input_height : null;
+  if (inputWidth === null) issues.push(`line ${row.__line}: normalization input_width must be a positive integer`);
+  if (inputHeight === null) issues.push(`line ${row.__line}: normalization input_height must be a positive integer`);
+  if (inputWidth === dimensions.sourceWidth && inputHeight === dimensions.sourceHeight) {
+    issues.push(`line ${row.__line}: schema 4 normalization requires an actual input canvas mismatch`);
+  }
+  if (inputWidth !== null && inputHeight !== null
+      && BigInt(inputWidth) * BigInt(dimensions.sourceHeight) !== BigInt(inputHeight) * BigInt(dimensions.sourceWidth)) {
+    issues.push(`line ${row.__line}: normalized input and output aspect ratios must match exactly`);
+  }
+
+  let original = null;
+  if (originalReceipt) {
+    try {
+      original = JSON.parse(originalReceipt.buffer.toString('utf8'));
+    } catch (error) {
+      issues.push(`line ${row.__line}: original normalization receipt is not valid JSON (${error.message})`);
+    }
+  }
+  if (original) {
+    if (original.schema_version !== 3) issues.push(`line ${row.__line}: normalization must link a schema 3 original receipt`);
+    for (const field of [
+      'stable_key', 'origin', 'generator', 'tool', 'execution_surface', 'model', 'quality', 'api_endpoint',
+      'input_fidelity', 'operation', 'candidate_policy', 'minimum_candidates', 'selected_attempt',
+      'reference_path', 'reference_sha256', 'prompt_path', 'prompt_sha256', 'source_rgba_path',
+      'source_rgba_sha256', 'alpha_policy',
+    ]) {
+      if (original[field] !== receipt[field]) issues.push(`line ${row.__line}: normalized receipt changed original ${field}`);
+    }
+    if (original.candidate_path !== normalization.input_path || original.candidate_sha256 !== normalization.input_sha256
+        || original.candidate_rgba_path !== normalization.input_rgba_path
+        || original.candidate_rgba_sha256 !== normalization.input_rgba_sha256) {
+      issues.push(`line ${row.__line}: original receipt does not bind the normalization input candidate and probe`);
+    }
+    if (JSON.stringify(original.attempts) !== JSON.stringify(receipt.attempts)) {
+      issues.push(`line ${row.__line}: normalized receipt must preserve original imagegen attempts exactly`);
+    }
+  }
+  if (selectedAttempt && (selectedAttempt.output_path !== normalization.input_path
+      || selectedAttempt.output_sha256 !== normalization.input_sha256)) {
+    issues.push(`line ${row.__line}: selected imagegen attempt does not bind the normalization input`);
+  }
+
+  try {
+    if (evidence.source && evidence.sourceRgba) {
+      const decoded = decodePngRgba(evidence.source.buffer);
+      if (decoded.width !== dimensions.sourceWidth || decoded.height !== dimensions.sourceHeight
+          || !decoded.rgba.equals(evidence.sourceRgba.buffer)) {
+        issues.push(`line ${row.__line}: source PNG IHDR/decoded RGBA does not match manifest evidence`);
+      }
+    }
+    if (evidence.candidate && evidence.candidateRgba) {
+      const decoded = decodePngRgba(evidence.candidate.buffer);
+      if (decoded.width !== dimensions.sourceWidth || decoded.height !== dimensions.sourceHeight
+          || !decoded.rgba.equals(evidence.candidateRgba.buffer)) {
+        issues.push(`line ${row.__line}: normalized PNG IHDR/decoded RGBA does not match manifest evidence`);
+      }
+    }
+    if (input && inputRgba && inputWidth !== null && inputHeight !== null) {
+      const decoded = decodePngRgba(input.buffer);
+      if (decoded.width !== inputWidth || decoded.height !== inputHeight || !decoded.rgba.equals(inputRgba.buffer)) {
+        issues.push(`line ${row.__line}: normalization input PNG IHDR/decoded RGBA does not match provenance`);
+      } else if (evidence.candidate && evidence.candidateRgba) {
+        const expectedRgba = resizeRgbaBilinear(
+          decoded.rgba, inputWidth, inputHeight, dimensions.sourceWidth, dimensions.sourceHeight,
+        );
+        const expectedPng = encodePngRgba(dimensions.sourceWidth, dimensions.sourceHeight, expectedRgba);
+        if (!expectedRgba.equals(evidence.candidateRgba.buffer) || !expectedPng.equals(evidence.candidate.buffer)) {
+          issues.push(`line ${row.__line}: normalized candidate bytes do not match the declared deterministic resize algorithm`);
+        }
+      }
+    }
+  } catch (error) {
+    issues.push(`line ${row.__line}: cannot decode normalization PNG evidence (${error.message})`);
   }
 }
 
@@ -339,10 +464,7 @@ async function validateRow(row, projectRoot, projectRealRoot, issues) {
   if (new Set(pathKeys).size !== pathKeys.length) {
     issues.push(`line ${row.__line}: source/reference/candidate/probe paths must be physically distinct`);
   }
-  const fileIds = pathEntries
-    .map((entry) => `${entry.stat.dev}:${entry.stat.ino}`)
-    .filter((identity) => identity !== '0:0');
-  if (new Set(fileIds).size !== fileIds.length) {
+  if (pathEntries.some((entry) => entry.stat.nlink > 1)) {
     issues.push(`line ${row.__line}: source/reference/candidate/probe files must not be hard-linked`);
   }
   if (source && reference && source.sha256 !== reference.sha256) {
@@ -465,7 +587,8 @@ async function validateRow(row, projectRoot, projectRealRoot, issues) {
     }
   }
   if (receipt) {
-    exactReceiptField(receipt, 'schema_version', row.origin === 'agent-generated' ? 3 : 2, row, issues);
+    const expectedSchema = row.origin === 'agent-generated' && receipt.normalization ? 4 : (row.origin === 'agent-generated' ? 3 : 2);
+    exactReceiptField(receipt, 'schema_version', expectedSchema, row, issues);
     exactReceiptField(receipt, 'stable_key', row.stable_key, row, issues);
     exactReceiptField(receipt, 'origin', row.origin, row, issues);
     exactReceiptField(receipt, 'generator', row.generator, row, issues);
@@ -487,7 +610,7 @@ async function validateRow(row, projectRoot, projectRealRoot, issues) {
     exactReceiptField(receipt, 'candidate_rgba_sha256', row.candidate_rgba_sha256, row, issues);
     exactReceiptField(receipt, 'alpha_policy', row.alpha_policy, row, issues);
     if (row.origin === 'agent-generated') {
-      await validateAgentAttempts(
+      const selectedAttempt = await validateAgentAttempts(
         receipt,
         row,
         projectRoot,
@@ -495,6 +618,18 @@ async function validateRow(row, projectRoot, projectRealRoot, issues) {
         [source, reference, sourceRgba, candidateRgba, receiptEvidence, promptEvidence].filter(Boolean),
         issues,
       );
+      if (receipt.schema_version === 4) {
+        await validateSizeNormalization(
+          receipt,
+          row,
+          projectRoot,
+          projectRealRoot,
+          { source, reference, candidate, sourceRgba, candidateRgba, receiptEvidence, promptEvidence },
+          { sourceWidth, sourceHeight, candidateWidth, candidateHeight },
+          selectedAttempt,
+          issues,
+        );
+      }
     }
   }
 
@@ -565,7 +700,7 @@ async function main() {
   if (!manifestStat.isFile() || manifestStat.isSymbolicLink()) throw new Error('manifest must be a regular non-link file');
   const manifestRealPath = await fs.realpath(manifestPath);
   if (!isWithinRoot(projectRealRoot, manifestRealPath)) throw new Error('manifest resolves outside project root');
-  const rows = parseRows(await fs.readFile(manifestPath, 'utf8'), manifestPath);
+  const rows = parseImageManifest(await fs.readFile(manifestPath, 'utf8'), manifestPath);
   const issues = [];
   const seenStableKeys = new Set();
   const seenSourcePaths = new Set();

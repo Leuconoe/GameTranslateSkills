@@ -30,7 +30,7 @@ Claude Code 스킬 세트로 추출·구조화하여 공유 가능하게 만든�
 ```
 skills/          game-translate(오케스트레이터) + gt-analyze/text-translate/text-review/
                  image-translate/image-review/qa/release (7단계)
-platforms/       nsw(완전: PLATFORM+extract+build-test+release) / sfc·ps1·ps2·steam(골격) / _template
+platforms/       nsw·steam/pc(완전: PLATFORM+extract+build-test+release+runtime) / sfc·ps1·ps2(골격) / _template
 engines/         unity(TMP·SDF 폰트) / vn-common(GARbro·msg-tool·pfs-rs) / lucasystem(LuckSystem)
 common/          SAFETY.md / emucap-integration.md / glossary-rules.md(80행 배치 canonical) / project-structure.md
 package.json     크로스플랫폼 npm 명령(project:new, project:validate, project:clean, tools:install)
@@ -69,7 +69,7 @@ scripts/         new-translation-project.mjs(--titles-root, 재귀 중복검사)
 
 ## 6. 잔여 과제 (다음 사이클 후보)
 
-- 골격 어댑터(SFC/PS1/PS2/Steam) 첫 실전 작업 시 보강 (D7 결정에 따른 의도적 이연)
+- 골격 어댑터(SFC/PS1/PS2) 첫 실전 작업 시 보강 (Steam/PC는 MGCM 구조를 참고해 별도 사이클에서 완성)
 - 2~7단계(번역~배포)의 실전 드라이런 (1차는 1단계만 검증)
 - 드라이런 검증 기록(실제 타이틀 ID·해시 포함)은 개인정보 보호를 위해 git에서 제외
   (`docs/03-analysis/dryrun-*.md` gitignore) — 로컬에만 보관

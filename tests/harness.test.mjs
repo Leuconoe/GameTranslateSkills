@@ -438,6 +438,165 @@ test('NSW build and patch packaging creates only the canonical Title-ID/romfs ZI
   await fs.rm(tempRoot, { recursive: true, force: true });
 });
 
+test('Steam adapter scaffolds, validates, and creates a deterministic manifest-gated overlay ZIP', async () => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'game-translate-steam-adapter-'));
+  const installRoot = path.join(tempRoot, 'steamapps', 'common', 'Fixture Game');
+  const manifestPath = path.join(tempRoot, 'steamapps', 'appmanifest_123456.acf');
+  const executablePath = path.join(installRoot, 'FixtureGame.exe');
+  await fs.mkdir(installRoot, { recursive: true });
+  await fs.writeFile(executablePath, 'fixture native game executable');
+  await fs.writeFile(manifestPath, '"AppState"\n{\n\t"appid"\t\t"123456"\n\t"installdir"\t\t"Fixture Game"\n\t"buildid"\t\t"9876543"\n}\n');
+
+  const projectRoot = runNode('new-steam-translation-project.mjs', [
+    '--install-root', installRoot,
+    '--game-executable', 'FixtureGame.exe',
+    '--game-name', 'Fixture Game',
+    '--app-id', '123456',
+    '--steam-manifest', manifestPath,
+  ]).trim();
+  assert.equal(projectRoot, path.join(installRoot, '_work', 'steam-123456'));
+  assert.match(runNode('validate-project-boundary.mjs', [
+    '--project-root', projectRoot,
+    '--stage', 'build',
+    '--assert-output', '40_build/overlay/BepInEx/Translation/ko/Text/translations.txt',
+  ]), /Issues: 0/);
+  assert.match(runNode('validate-steam-project.mjs', ['--project-root', projectRoot]), /Issues: 0/);
+  assert.match(runNode('artifact-harness.mjs', ['--project-root', projectRoot]), /Issues: 0/);
+
+  const overlayFile = path.join(projectRoot, '40_build', 'overlay', 'BepInEx', 'Translation', 'ko', 'Text', 'translations.txt');
+  const overlayBytes = Buffer.from('title=제목\nstart=시작\n');
+  await fs.mkdir(path.dirname(overlayFile), { recursive: true });
+  await fs.writeFile(overlayFile, overlayBytes);
+  const patchManifest = [
+    'relative_path\ttarget_path\tpayload_kind\tredistribution_status\tsource_license\tsha256\tsize_bytes',
+    `BepInEx/Translation/ko/Text/translations.txt\tBepInEx/Translation/ko/Text/translations.txt\ttranslation-map\tcleared\tproject-authored\t${sha256(overlayBytes).toUpperCase()}\t${overlayBytes.length}`,
+    '',
+  ].join('\n');
+  await fs.writeFile(path.join(projectRoot, '40_build', 'PATCH_MANIFEST.tsv'), patchManifest);
+  const packageOutput = runNode('create-steam-release.mjs', ['--project-root', projectRoot]);
+  assert.match(packageOutput, /PASS\t.*steam-123456\.zip/);
+  assert.match(runNode('validate-steam-release.mjs', ['--project-root', projectRoot]), /PASS/);
+  const packageReceipt = JSON.parse(await fs.readFile(path.join(projectRoot, '40_build', 'releases', 'RELEASE_PACKAGE.json'), 'utf8'));
+  assert.equal(packageReceipt.archive_root, 'patch/');
+  assert.deepEqual(packageReceipt.entries.map((entry) => entry.path), [
+    'PATCH_MANIFEST.tsv',
+    'patch/BepInEx/Translation/ko/Text/translations.txt',
+  ]);
+  assert.match(runNode('create-steam-release.mjs', ['--project-root', projectRoot]), /reused=true/);
+
+  const forbiddenFile = path.join(projectRoot, '40_build', 'overlay', 'FixtureGame_Data', 'Managed', 'Assembly-CSharp.dll');
+  const forbiddenBytes = Buffer.from('original game assembly');
+  await fs.mkdir(path.dirname(forbiddenFile), { recursive: true });
+  await fs.writeFile(forbiddenFile, forbiddenBytes);
+  await fs.writeFile(path.join(projectRoot, '40_build', 'PATCH_MANIFEST.tsv'), [
+    patchManifest.trimEnd(),
+    `FixtureGame_Data/Managed/Assembly-CSharp.dll\tFixtureGame_Data/Managed/Assembly-CSharp.dll\tplugin\tcleared\tproject-authored\t${sha256(forbiddenBytes).toUpperCase()}\t${forbiddenBytes.length}`,
+    '',
+  ].join('\n'));
+  assert.match(runNodeFailureOutput('create-steam-release.mjs', ['--project-root', projectRoot, '--replace']), /Original-game or installer payload is forbidden/);
+  await fs.rm(tempRoot, { recursive: true, force: true });
+});
+
+test('Steam native runtime schema validates the current appmanifest, game binary, active patch, and screenshots', async () => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'game-translate-steam-runtime-'));
+  const installRoot = path.join(tempRoot, 'steamapps', 'common', 'Runtime Game');
+  const manifestPath = path.join(tempRoot, 'steamapps', 'appmanifest_654321.acf');
+  const executablePath = path.join(installRoot, 'RuntimeGame.exe');
+  await fs.mkdir(installRoot, { recursive: true });
+  const executableBytes = Buffer.from('official Steam installed executable');
+  const manifestBytes = Buffer.from('"AppState"\n{\n\t"appid"\t\t"654321"\n\t"installdir"\t\t"Runtime Game"\n\t"buildid"\t\t"7654321"\n}\n');
+  await fs.writeFile(executablePath, executableBytes);
+  await fs.writeFile(manifestPath, manifestBytes);
+  const projectRoot = runNode('new-steam-translation-project.mjs', [
+    '--install-root', installRoot,
+    '--game-executable', 'RuntimeGame.exe',
+    '--game-name', 'Runtime Game',
+    '--app-id', '654321',
+    '--steam-manifest', manifestPath,
+  ]).trim();
+  const activePatchRoot = path.join(installRoot, 'BepInEx', 'plugins', 'KoreanPatch');
+  const activePatchFile = path.join(activePatchRoot, 'KoreanPatch.dll');
+  const activePatchBytes = Buffer.from('verified Korean runtime plugin');
+  await fs.mkdir(activePatchRoot, { recursive: true });
+  await fs.writeFile(activePatchFile, activePatchBytes);
+
+  const buildManifestText = [
+    'build_id\tdate\tscope\tsource_clean_path\toutput_path\tsize_bytes\tsha256\tdevice_result\tnotes',
+    `final-001\t2026-08-20\tintegrated\t00_source/SOURCE_INVENTORY.tsv\t40_build/overlay\t${activePatchBytes.length}\t${sha256(activePatchBytes)}\tPASS (official-release-runtime)\tSteam native`,
+    '',
+  ].join('\n');
+  const activeManifestText = `relative_path\tsha256\tsize_bytes\nKoreanPatch.dll\t${sha256(activePatchBytes)}\t${activePatchBytes.length}\n`;
+  const logBytes = Buffer.from('Steam native direct launch; Korean title and gameplay verified');
+  const titleBytes = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+X2NDVQAAAABJRU5ErkJggg==', 'base64');
+  const gameplayBytes = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2KAAAAABJRU5ErkJggg==', 'base64');
+  const evidencePaths = {
+    build: path.join(projectRoot, '40_build', 'BUILD_MANIFEST.tsv'),
+    active: path.join(projectRoot, '50_test', 'release-runtime', 'ACTIVE_MOD_MANIFEST.tsv'),
+    log: path.join(projectRoot, '50_test', 'logs', 'release-runtime.log'),
+    title: path.join(projectRoot, '50_test', 'screenshots', 'release-title.png'),
+    gameplay: path.join(projectRoot, '50_test', 'screenshots', 'release-gameplay.png'),
+    receipt: path.join(projectRoot, '50_test', 'RELEASE_RUNTIME_QA.json'),
+  };
+  await fs.writeFile(evidencePaths.build, buildManifestText);
+  await fs.writeFile(evidencePaths.active, activeManifestText);
+  await fs.writeFile(evidencePaths.log, logBytes);
+  await fs.writeFile(evidencePaths.title, titleBytes);
+  await fs.writeFile(evidencePaths.gameplay, gameplayBytes);
+  const projectText = (await fs.readFile(path.join(projectRoot, 'PROJECT.md'), 'utf8'))
+    .replace('- runtime_authorization: pending', '- runtime_authorization: approved')
+    .replace('- image_scope: pending', '- image_scope: N/A')
+    .replace('- image_status: pending', '- image_status: skipped');
+  await fs.writeFile(path.join(projectRoot, 'PROJECT.md'), projectText);
+  const receipt = {
+    schema_version: 2,
+    stage: 'final-qa',
+    platform: 'steam',
+    project_id: 'steam-654321',
+    distribution: 'steam',
+    steam_app_id: '654321',
+    distribution_build_id: '7654321',
+    final_build_id: 'final-001',
+    final_build_manifest_path: '40_build/BUILD_MANIFEST.tsv',
+    final_build_manifest_sha256: sha256(Buffer.from(buildManifestText)),
+    execution_surface: 'official-distribution-release',
+    launch_mode: 'direct',
+    mcp_used: false,
+    runtime_name: 'steam-native',
+    runtime_version: '7654321',
+    release_channel: 'official-release',
+    official_store_page: 'https://store.steampowered.com/app/654321/',
+    distribution_manifest_path: manifestPath,
+    distribution_manifest_sha256: sha256(manifestBytes),
+    installation_root: installRoot,
+    game_binary_path: executablePath,
+    game_binary_sha256: sha256(executableBytes),
+    system_region: '대한민국',
+    system_language: '한국어',
+    active_mod_root: activePatchRoot,
+    active_mod_manifest_path: '50_test/release-runtime/ACTIVE_MOD_MANIFEST.tsv',
+    active_mod_manifest_sha256: sha256(Buffer.from(activeManifestText)),
+    runtime_log_path: '50_test/logs/release-runtime.log',
+    runtime_log_sha256: sha256(logBytes),
+    title_screen_evidence_path: '50_test/screenshots/release-title.png',
+    title_screen_evidence_sha256: sha256(titleBytes),
+    gameplay_evidence_path: '50_test/screenshots/release-gameplay.png',
+    gameplay_evidence_sha256: sha256(gameplayBytes),
+    checks: {
+      boot: 'pass', title_screen: 'pass', gameplay_entry: 'pass', korean_text: 'pass',
+      font_glyphs: 'pass', save_load: 'pass', image_assets: 'not-applicable',
+    },
+    result: 'pass',
+    tested_at: '2026-08-20T12:00:00+09:00',
+  };
+  await fs.writeFile(evidencePaths.receipt, `${JSON.stringify(receipt, null, 2)}\n`);
+  assert.match(runNode('validate-release-runtime.mjs', ['--project-root', projectRoot]), /Issues: 0/);
+
+  receipt.distribution_build_id = '7654322';
+  await fs.writeFile(evidencePaths.receipt, `${JSON.stringify(receipt, null, 2)}\n`);
+  assert.match(runNodeFailureOutput('validate-release-runtime.mjs', ['--project-root', projectRoot]), /appmanifest buildid differs/);
+  await fs.rm(tempRoot, { recursive: true, force: true });
+});
+
 test('cleanup finalization exposes only recoverable Trash backends', async () => {
   const source = await fs.readFile(path.join(scriptsRoot, 'lib', 'cleanup-archive.mjs'), 'utf8');
   assert.match(source, /RecycleOption\]::SendToRecycleBin/);

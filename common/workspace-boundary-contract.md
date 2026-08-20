@@ -1,6 +1,6 @@
 # 타이틀 작업공간·기능 경계 계약
 
-모든 생성·수정·임시 출력은 실제 원본 NSP/XCI가 직접 있는 타이틀 루트의
+모든 생성·수정·임시 출력은 플랫폼 원본(NSW의 NSP/XCI 또는 Steam/PC의 실제 게임 EXE)이 직접 있는 타이틀 루트의
 `<TITLE_ROOT>/_work/<PROJECT_ID>/` 안에서만 이루어진다. 저장소, `$GT_TOOLS`, OS 임시 폴더, 공용 MCP
 폴더, 타이틀 루트 직속 위치나 다른 `_work` 프로젝트는 출력 경로가 아니다.
 
@@ -29,7 +29,8 @@ npm run project:boundary -- --project-root "<타이틀 루트>/_work/<PROJECT_ID
   --stage <stage> --assert-output "<출력 경로>" [--assert-output "<추가 경로>"]
 ```
 
-- project root는 real directory여야 하고 `_work/<16-hex>` 형태여야 한다.
+- project root는 real directory여야 하고 NSW는 `_work/<16-hex>`, Steam은
+  `_work/steam-<APP_ID>`, 다른 PC 배포판은 `_work/pc-<safe-slug>` 형태여야 한다.
 - 상대 출력은 project root 기준으로 해석한다.
 - 절대·상대 경로 모두 resolve 후 project root 안이고 해당 stage root 아래여야 한다.
 - 존재하는 어느 ancestor에도 symlink/junction/reparse point가 없어야 한다.
@@ -39,7 +40,9 @@ npm run project:boundary -- --project-root "<타이틀 루트>/_work/<PROJECT_ID
 
 ## 기존 구조 감사
 
-검증기는 타이틀 루트의 원본 NSP/XCI·`_work`·기존 `HANDOFF.md` 외 항목, `_work`의 다른
-프로젝트/파일, 프로젝트 root의 비표준 단계 폴더, 프로젝트 내부 link를 fail-closed로
+NSW 검증기는 타이틀 루트의 원본 NSP/XCI·`_work`·기존 `HANDOFF.md` 외 항목을 엄격히
+검사한다. Steam/PC 설치 루트는 배포처가 관리하는 게임 파일을 허용하되 그 경로를 output으로
+사용하지 않는다. 모든 플랫폼에서 `_work`의 미분류 파일, 프로젝트 root의 비표준 단계 폴더,
+프로젝트 내부 link를 fail-closed로
 보고한다. 기존 legacy 경로는 자동 이동·rename·삭제하지 않는다. exact child inventory와
 manifest 등록·hash 검증을 완료한 후 별도 마이그레이션한다.

@@ -53,9 +53,13 @@ NSW 기본 반복 시험은 Eden-MCP를 사용합니다. Eden-MCP/Ryubing-MCP �
 로그·스크린샷 해시를 `RELEASE_RUNTIME_QA.json`으로 검증해야 릴리스할 수 있습니다.
 모든 격리 프로파일은 시스템 지역 `한국`/`대한민국`, 시스템 언어 `한국어`를 사용합니다.
 
-작업 루트는 원본 `.nsp`/`.xci`가 직접 있는 실제 타이틀 폴더의
-`_work/<베이스 Title ID>/`로 고정합니다. `_title`/`_titles` 아래에 임의의 `title` 폴더를
-새로 만들지 않습니다. 양쪽 MCP는 프로젝트당 `50_test/eden/SESSION.json` 하나를 공유하고,
+Steam/PC는 MCP 세션 없이 설치 게임을 직접 실행하고, 현재 App ID/build ID·game EXE·active
+patch·로그·화면 증거를 schema 2 영수증으로 검증합니다.
+
+작업 루트는 플랫폼 원본이 직접 있는 실제 타이틀 폴더의 `_work/<프로젝트 ID>/`로 고정합니다.
+NSW는 NSP/XCI와 16자리 Title ID, Steam/PC는 실제 게임 EXE와 `steam-<APP_ID>` 또는
+`pc-<slug>`를 사용합니다. 원본 없는 임의 `title` 폴더를 새로 만들지 않습니다. NSW 양쪽
+MCP는 프로젝트당 `50_test/eden/SESSION.json` 하나를 공유하고,
 remote 세션을 정확한 ID로 종료하기 전에는 예외 교체 세션을 추가하지 않습니다.
 `pending` 세션은 remote 상태를 재조회하기 전 재생성하지 않으며, 이전 `last_session_id`가
 있는 새 세션은 `--previous-session-id` 증명 없이는 생성하지 않습니다.
@@ -109,11 +113,19 @@ $game-translate 스킬로 <게임명> 한글화를 시작해줘. 플랫폼은 ns
 game-translate 스킬로 <게임명> 한글화를 시작해줘. 플랫폼은 nsw, 작업 루트는 D:\MyWork
 ```
 
+Steam/PC 프로젝트 도구의 시작점은 다음과 같다.
+
+```powershell
+npm run project:new:steam -- --install-root '<게임 설치 폴더>' --game-executable '<게임.exe>' --game-name '<게임명>' --app-id '<Steam App ID>' --steam-manifest '<appmanifest_APPID.acf>'
+npm run project:validate:steam -- --project-root '<게임 설치 폴더>\_work\steam-<APP_ID>'
+npm run release:package:steam -- --project-root '<게임 설치 폴더>\_work\steam-<APP_ID>'
+```
+
 - 언어 방향: 일/영/중 → 한 (한글화 특화)
 - 세션 재개: 프로젝트의 `PROJECT.md`를 읽고 마지막 단계부터 재개
 - 안전 규칙: 모든 작업 전 `common/SAFETY.md` 필독 (프로젝트 경계 보호, allowlist 커밋 등)
 - 완료 정리: `gt-project-cleanup` 또는 `npm run project:cleanup -- --project-root "<타이틀 루트>/_work/<프로젝트 ID>"`로 계획을 만들고, 승인된 exact allowlist와 plan SHA-256의 `--apply`는 파일을 아카이브로 이동함. 이어서 전체 재검토 보고서를 사용자에게 상세히 보고하고 멈추며, 이후 별도 승인에만 `--trash --trash-plan "<TRASH_PLAN.json>" --trash-plan-sha256 "<SHA-256>" --user-confirmed-trash` 사용. 파일은 복구 가능한 운영체제 휴지통으로만 이동하며 실패 시 영구 삭제하지 않음
-- MCP 세션 guard: `npm run project:qa-session -- --project-root "<타이틀 루트>/_work/<프로젝트 ID>" --action prepare ... --remote-inventory-checked --inventory-backend eden-mcp --inventory-backend ryubing-mcp`로 양쪽 목록을 확인하고 기존 타이틀 세션을 재사용
+- NSW MCP 세션 guard: `npm run project:qa-session -- --project-root "<타이틀 루트>/_work/<프로젝트 ID>" --action prepare ... --remote-inventory-checked --inventory-backend eden-mcp --inventory-backend ryubing-mcp`로 양쪽 목록을 확인하고 기존 타이틀 세션을 재사용. Steam/PC는 `direct-native`, session scope `none`이다.
 - 최종 runtime guard: `npm run runtime:validate -- --project-root "<타이틀 루트>/_work/<프로젝트 ID>" --receipt "<프로젝트 루트>/50_test/RELEASE_RUNTIME_QA.json"`로 공식 배포 릴리즈의 non-MCP 직접 실행 증거를 검증
 - 이미지 보존 guard: `npm run image:validate -- --project-root "<타이틀 루트>/_work/<프로젝트 ID>" --manifest "<프로젝트 루트>/30_translation/image_translation/IMAGE_GENERATION_MANIFEST.tsv"`로 내장 imagegen best-of-3 provenance·원문 제거/no-overlay·원본 느낌·비덮어쓰기·좌표·alpha·보존 픽셀을 검증
 - 작업장 루트 정리: `gt-workspace-cleanup` 또는 `npm run workspace:cleanup -- --workspace-root "<루트>" --report "<외부 보고서 경로>"`; 기본은 이동·삭제하지 않고, 적용 시에도 외부 아카이브·전체 재검토·사용자 상세 보고를 거친 뒤 별도 승인에만 운영체제 휴지통 이동
@@ -126,7 +138,7 @@ game-translate 스킬로 <게임명> 한글화를 시작해줘. 플랫폼은 nsw
 .agents/      Codex repo marketplace 정의
 package.json  크로스플랫폼 npm 명령
 skills/       Codex/Claude Code 공용 스킬 (파이프라인·정리·청결화 — 플랫폼 무관)
-platforms/    플랫폼 어댑터: nsw(완전) / sfc·ps1·ps2·steam(골격) / _template(양식)
+platforms/    플랫폼 어댑터: nsw·steam/pc(완전) / sfc·ps1·ps2(골격) / _template(양식)
 engines/      엔진 모듈: unity / vn-common / lucasystem (플랫폼과 직교)
 common/       SAFETY.md(안전 규칙) · preflight-checks.md(사전 경고 게이트) ·
               qa-session-rules.md(MCP 단일 세션 규칙) · release-runtime-contract.md(공식 배포 릴리즈 최종 QA) ·

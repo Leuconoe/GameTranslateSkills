@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { inspectProjectRoot, projectPlatformFromId, projectRootShapeDescription } from './project-identity.mjs';
 
-const titleIdPattern = /^[0-9A-Fa-f]{16}$/;
 const sourceExtensions = new Set(['.nsp', '.xci']);
 const projectFiles = new Set(['PROJECT.md', 'WORK_LOG.md', 'HANDOFF.md']);
 const projectDirectories = new Set(['00_source', '10_extract', '20_reference', '30_translation', '40_build', '50_test', '90_tools']);
@@ -63,33 +63,53 @@ async function assertNoLinkedAncestor(projectRoot, target) {
   return null;
 }
 
+async function configuredGameExecutable(projectRoot, titleRoot) {
+  try {
+    const project = await fs.readFile(path.join(projectRoot, 'PROJECT.md'), 'utf8');
+    const raw = project.match(/^\s*-\s*game_executable\s*:\s*(.+?)\s*$/im)?.[1]?.trim();
+    if (!raw || path.isAbsolute(raw) || raw.includes('\0')) return null;
+    const target = path.resolve(titleRoot, ...raw.replaceAll('\\', '/').split('/'));
+    if (!isContained(titleRoot, target)) return null;
+    const stats = await fs.lstat(target);
+    return stats.isFile() && !stats.isSymbolicLink() && path.extname(target).toLowerCase() === '.exe' ? target : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function validateProjectBoundary(projectRoot, { stage = null, outputs = [], scanLinks = true } = {}) {
-  const resolvedProject = path.resolve(projectRoot);
-  const workRoot = path.dirname(resolvedProject);
-  const titleRoot = path.dirname(workRoot);
-  const projectId = path.basename(resolvedProject).toUpperCase();
+  const identity = inspectProjectRoot(projectRoot);
+  const {
+    projectRoot: resolvedProject, workRoot, titleRoot, projectId, platform,
+  } = identity;
   const issues = [];
-  if (path.basename(workRoot) !== '_work' || !titleIdPattern.test(projectId)) {
-    issues.push({ path: resolvedProject, problem: 'Project root must be <title-root>/_work/<16-hex-project-id>' });
-    return { projectRoot: resolvedProject, titleRoot, projectId, issues };
+  if (!identity.valid) {
+    issues.push({ path: resolvedProject, problem: `Project root must be ${projectRootShapeDescription()}` });
+    return { projectRoot: resolvedProject, titleRoot, projectId, platform, issues };
   }
   const projectStats = await fs.lstat(resolvedProject).catch(() => null);
   if (!projectStats?.isDirectory() || projectStats.isSymbolicLink()) {
     issues.push({ path: resolvedProject, problem: 'Project root must be a real directory, never a link/reparse path' });
-    return { projectRoot: resolvedProject, titleRoot, projectId, issues };
+    return { projectRoot: resolvedProject, titleRoot, projectId, platform, issues };
   }
 
   const titleEntries = await directEntries(titleRoot);
-  if (!titleEntries.some((entry) => entry.isFile() && sourceExtensions.has(path.extname(entry.name).toLowerCase()))) {
-    issues.push({ path: titleRoot, problem: 'Title root must directly contain a source NSP/XCI package' });
-  }
-  for (const entry of titleEntries) {
-    if (entry.name === '_work') continue;
-    if (entry.isFile() && (sourceExtensions.has(path.extname(entry.name).toLowerCase()) || titleFiles.has(entry.name))) continue;
-    issues.push({ path: path.join(titleRoot, entry.name), problem: 'Generated/unclassified item is outside the title project workspace' });
+  if (platform === 'nsw') {
+    if (!titleEntries.some((entry) => entry.isFile() && sourceExtensions.has(path.extname(entry.name).toLowerCase()))) {
+      issues.push({ path: titleRoot, problem: 'Title root must directly contain a source NSP/XCI package' });
+    }
+    for (const entry of titleEntries) {
+      if (entry.name === '_work') continue;
+      if (entry.isFile() && (sourceExtensions.has(path.extname(entry.name).toLowerCase()) || titleFiles.has(entry.name))) continue;
+      issues.push({ path: path.join(titleRoot, entry.name), problem: 'Generated/unclassified item is outside the title project workspace' });
+    }
+  } else if (!titleEntries.some((entry) => entry.isFile() && path.extname(entry.name).toLowerCase() === '.exe')
+      && !(await configuredGameExecutable(resolvedProject, titleRoot))) {
+    issues.push({ path: titleRoot, problem: 'Steam/PC title root must directly contain at least one game executable' });
   }
   for (const entry of await directEntries(workRoot)) {
-    if (entry.name.toUpperCase() === projectId) continue;
+    const siblingPlatform = entry.isDirectory() ? projectPlatformFromId(entry.name) : null;
+    if (entry.name.toLowerCase() === projectId.toLowerCase() || siblingPlatform) continue;
     issues.push({ path: path.join(workRoot, entry.name), problem: 'Foreign or unclassified item exists beside the exact project ID under _work' });
   }
   for (const entry of await directEntries(resolvedProject)) {
@@ -116,5 +136,5 @@ export async function validateProjectBoundary(projectRoot, { stage = null, outpu
       issues.push({ path: rawOutput, problem: `Output for stage=${stage} must stay under ${stageRoots.get(stage).join(' or ')}` });
     }
   }
-  return { projectRoot: resolvedProject, titleRoot, projectId, issues };
+  return { projectRoot: resolvedProject, titleRoot, projectId, platform, issues };
 }

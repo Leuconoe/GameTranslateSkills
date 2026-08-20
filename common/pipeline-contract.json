@@ -18,11 +18,11 @@
     },
     "basic_test_backend": {
       "default": "eden-mcp",
-      "allowed": ["eden-mcp"]
+      "allowed": ["eden-mcp", "direct-native"]
     },
     "mcp_session_scope": {
       "default": "one-per-title",
-      "allowed": ["one-per-title"]
+      "allowed": ["one-per-title", "none"]
     },
     "final_qa_runtime": {
       "default": "official-distribution-release",
@@ -112,6 +112,16 @@
     "packager": "scripts/create-nsw-release.mjs",
     "validator": "scripts/validate-nsw-release.mjs",
     "forbidden_payloads": ["apply_patch.py", "*.gldelta", "*.nsp", "*.xci", "*.keys"]
+  },
+  "steam_release_package_contract": {
+    "platform_adapter": "platforms/steam/release.md",
+    "input": "40_build/overlay",
+    "redistribution_manifest": "40_build/PATCH_MANIFEST.tsv",
+    "output": "40_build/releases/<project-id>.zip",
+    "archive_root": "patch/",
+    "packager": "scripts/create-steam-release.mjs",
+    "validator": "scripts/validate-steam-release.mjs",
+    "forbidden_payloads": ["game executables", "original assemblies", "original assets", "installers", "unlicensed third-party files"]
   },
   "stages": [
     {

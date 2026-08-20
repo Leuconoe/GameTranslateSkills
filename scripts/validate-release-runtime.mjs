@@ -4,9 +4,9 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { flag, option, parseArgs, requiredOption } from './lib/args.mjs';
+import { inspectProjectRoot } from './lib/project-identity.mjs';
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const titleIdPattern = /^[0-9A-Fa-f]{16}$/;
 const shaPattern = /^[0-9a-f]{64}$/i;
 const isoTimestampPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
 const requiredChecks = new Set([
@@ -25,6 +25,10 @@ function isWithinRoot(root, target) {
 function pathKey(target) {
   const resolved = path.resolve(target);
   return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+}
+
+function samePath(left, right) {
+  return pathKey(left) === pathKey(right);
 }
 
 function isPng(buffer) {
@@ -58,6 +62,34 @@ async function regularFile(target, label, issues, { projectRoot = null, projectR
   } catch (error) {
     issues.push(`cannot read ${label}: ${error.message}`);
     return null;
+  }
+}
+
+async function hashedRegularFile(target, label, issues) {
+  let handle;
+  try {
+    const stat = await fs.lstat(target);
+    if (!stat.isFile() || stat.isSymbolicLink()) {
+      issues.push(`${label} must be a regular non-link file`);
+      return null;
+    }
+    const realPath = await fs.realpath(target);
+    handle = await fs.open(target, 'r');
+    const hash = crypto.createHash('sha256');
+    const buffer = Buffer.allocUnsafe(1024 * 1024);
+    let position = 0;
+    while (true) {
+      const { bytesRead } = await handle.read(buffer, 0, buffer.length, position);
+      if (bytesRead === 0) break;
+      hash.update(buffer.subarray(0, bytesRead));
+      position += bytesRead;
+    }
+    return { target, realPath, stat, sha256: hash.digest('hex') };
+  } catch (error) {
+    issues.push(`cannot read ${label}: ${error.message}`);
+    return null;
+  } finally {
+    await handle?.close();
   }
 }
 
@@ -119,10 +151,59 @@ function parseHttpsUrl(value, label, issues) {
   }
 }
 
-function validateOfficialSource(receipt, config, issues) {
+async function validateOfficialSource(receipt, config, issues, { projectRoot, projectRealRoot, titleRoot }) {
   const sources = config?.final_qa?.sources;
   if (!Array.isArray(sources) || sources.length === 0) {
     issues.push('platform runtime contract has no official release sources');
+    return;
+  }
+  if (config?.final_qa?.runtime_kind === 'native-game') {
+    const source = sources.find((entry) => entry.runtime_name === receipt.runtime_name
+      && entry.distribution === receipt.distribution);
+    if (!source) {
+      issues.push(`runtime_name/distribution is not an allowlisted native source: ${receipt.runtime_name}/${receipt.distribution}`);
+      return;
+    }
+    if (receipt.distribution !== 'steam') {
+      issues.push('non-Steam PC final QA requires a project-specific official distribution source added to the adapter allowlist');
+      return;
+    }
+    if (!/^[1-9][0-9]{0,9}$/.test(receipt.steam_app_id ?? '')) issues.push('steam_app_id must be a concrete Steam App ID');
+    if (receipt.runtime_version !== receipt.distribution_build_id) issues.push('runtime_version must equal the current Steam distribution_build_id');
+    const page = parseHttpsUrl(receipt.official_store_page, 'official_store_page', issues);
+    if (page && !source.store_page_prefixes.some((prefix) => receipt.official_store_page === `${prefix}${receipt.steam_app_id}`
+        || receipt.official_store_page === `${prefix}${receipt.steam_app_id}/`)) {
+      issues.push('official_store_page must be the exact allowlisted Steam app page');
+    }
+    if (typeof receipt.installation_root !== 'string' || !path.isAbsolute(receipt.installation_root)
+        || !samePath(receipt.installation_root, titleRoot)) {
+      issues.push('installation_root must equal the exact title root containing _work');
+    }
+    if (typeof receipt.distribution_manifest_path !== 'string' || !path.isAbsolute(receipt.distribution_manifest_path)) {
+      issues.push('distribution_manifest_path must be an absolute Steam appmanifest path');
+    } else {
+      const manifest = await regularFile(path.resolve(receipt.distribution_manifest_path), 'distribution_manifest_path', issues);
+      if (manifest && isWithinRoot(projectRealRoot, manifest.realPath)) issues.push('distribution_manifest_path must be external to the project root');
+      compareHash(manifest, receipt.distribution_manifest_sha256, 'distribution_manifest_sha256', issues);
+      if (manifest) {
+        const text = manifest.buffer.toString('utf8');
+        const appId = text.match(/"appid"\s+"([0-9]+)"/i)?.[1];
+        const buildId = text.match(/"buildid"\s+"([0-9]+)"/i)?.[1];
+        if (appId !== receipt.steam_app_id) issues.push('Steam appmanifest appid differs from steam_app_id');
+        if (buildId !== receipt.distribution_build_id) issues.push('Steam appmanifest buildid differs from distribution_build_id');
+      }
+    }
+    if (typeof receipt.game_binary_path !== 'string' || !path.isAbsolute(receipt.game_binary_path)) {
+      issues.push('game_binary_path must be an absolute installed game executable path');
+    } else {
+      const binaryPath = path.resolve(receipt.game_binary_path);
+      const binary = await hashedRegularFile(binaryPath, 'game_binary_path', issues);
+      const installRoot = path.resolve(receipt.installation_root || titleRoot);
+      if (binary && !isWithinRoot(installRoot, binary.realPath)) issues.push('game_binary_path must remain under installation_root');
+      if (binary && isWithinRoot(projectRealRoot, binary.realPath)) issues.push('game_binary_path must be external to the project root');
+      if (binary && path.extname(binary.realPath).toLowerCase() !== '.exe') issues.push('game_binary_path must be an .exe');
+      compareHash(binary, receipt.game_binary_sha256, 'game_binary_sha256', issues);
+    }
     return;
   }
   const source = sources.find((entry) => entry.emulator_name === receipt.emulator_name);
@@ -255,10 +336,9 @@ async function main() {
   }
   const projectRoot = path.resolve(requiredOption(args, 'project-root'));
   const projectRealRoot = await fs.realpath(projectRoot);
-  const projectId = path.basename(projectRoot).toUpperCase();
-  if (path.basename(path.dirname(projectRoot)) !== '_work' || !titleIdPattern.test(projectId)) {
-    throw new Error('--project-root must be an exact <title>/_work/<16-hex-title-id> project');
-  }
+  const identity = inspectProjectRoot(projectRoot);
+  if (!identity.valid) throw new Error('--project-root must be an exact canonical title project');
+  const { projectId, titleRoot } = identity;
   const receiptPath = path.resolve(option(args, 'receipt') ?? path.join(projectRoot, '50_test', 'RELEASE_RUNTIME_QA.json'));
   if (!isWithinRoot(projectRoot, receiptPath)) throw new Error('--receipt must remain inside the project root');
   const issues = [];
@@ -275,7 +355,21 @@ async function main() {
     }
   }
   if (receipt) {
-    exact(receipt, 'schema_version', 1, issues);
+    const schemaVersion = receipt.schema_version;
+    if (![1, 2].includes(schemaVersion)) issues.push('schema_version must be 1 (emulator) or 2 (native PC)');
+    if (schemaVersion === 2) {
+      exact(receipt, 'project_id', projectId, issues);
+      receipt = {
+        ...receipt,
+        title_id: receipt.project_id,
+        emulator_name: receipt.runtime_name,
+        emulator_version: receipt.runtime_version,
+        emulator_binary_path: receipt.game_binary_path,
+        emulator_binary_sha256: receipt.game_binary_sha256,
+        emulator_log_path: receipt.runtime_log_path,
+        emulator_log_sha256: receipt.runtime_log_sha256,
+      };
+    }
     exact(receipt, 'stage', 'final-qa', issues);
     exact(receipt, 'title_id', projectId, issues);
     exact(receipt, 'execution_surface', 'official-distribution-release', issues);
@@ -311,7 +405,7 @@ async function main() {
       exact(config.final_qa, 'launch_mode', 'direct', issues);
       exact(config.final_qa, 'mcp_allowed', false, issues);
       exact(config.final_qa, 'release_channel', 'official-release', issues);
-      validateOfficialSource(receipt, config, issues);
+      await validateOfficialSource(receipt, config, issues, { projectRoot, projectRealRoot, titleRoot });
     }
 
     const buildManifest = await projectEvidence(
@@ -323,9 +417,9 @@ async function main() {
     compareHash(buildManifest, receipt.final_build_manifest_sha256, 'final_build_manifest_sha256', issues);
     validateBuildManifest(buildManifest, receipt.final_build_id, issues);
 
-    if (typeof receipt.emulator_binary_path !== 'string' || !path.isAbsolute(receipt.emulator_binary_path)) {
+    if (schemaVersion === 1 && (typeof receipt.emulator_binary_path !== 'string' || !path.isAbsolute(receipt.emulator_binary_path))) {
       issues.push('emulator_binary_path must be an absolute path to the executed release binary');
-    } else {
+    } else if (schemaVersion === 1) {
       const binaryPath = path.resolve(receipt.emulator_binary_path);
       const binary = await regularFile(binaryPath, 'emulator_binary_path', issues);
       if (binary && isWithinRoot(projectRealRoot, binary.realPath)) issues.push('emulator_binary_path must be external to the project root');

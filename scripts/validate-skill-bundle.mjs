@@ -358,6 +358,16 @@ async function main() {
     if (runtimeAdapters?.basic_qa?.session_scope !== 'one-per-title') add(issues, 'NSW runtime adapter: session scope must be one-per-title');
     if (runtimeAdapters?.final_qa?.mcp_allowed !== false) add(issues, 'NSW runtime adapter: final QA must forbid MCP');
     if (!Array.isArray(runtimeAdapters?.final_qa?.sources) || runtimeAdapters.final_qa.sources.length === 0) add(issues, 'NSW runtime adapter: official sources must not be empty');
+    const steamAdapterFiles = ['PLATFORM.md', 'extract.md', 'build-test.md', 'release.md', 'runtime-emulators.json'];
+    for (const file of steamAdapterFiles) await read(path.join(repositoryRoot, 'platforms', 'steam', file));
+    const steamRuntime = JSON.parse(await read(path.join(repositoryRoot, 'platforms', 'steam', 'runtime-emulators.json')));
+    if (steamRuntime?.basic_qa?.backend !== 'direct-native') add(issues, 'Steam runtime adapter: basic backend must be direct-native');
+    if (steamRuntime?.basic_qa?.session_scope !== 'none') add(issues, 'Steam runtime adapter: native QA must not create MCP sessions');
+    if (steamRuntime?.final_qa?.runtime_kind !== 'native-game') add(issues, 'Steam runtime adapter: final runtime kind must be native-game');
+    if (steamRuntime?.final_qa?.mcp_allowed !== false) add(issues, 'Steam runtime adapter: final QA must forbid MCP');
+    for (const script of ['new-steam-translation-project.mjs', 'validate-steam-project.mjs', 'create-steam-release.mjs', 'validate-steam-release.mjs']) {
+      await read(path.join(repositoryRoot, 'scripts', script));
+    }
   } catch (error) {
     add(issues, `project harness: cannot inspect scaffold/validators (${error.message})`);
   }

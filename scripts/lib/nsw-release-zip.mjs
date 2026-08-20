@@ -181,15 +181,40 @@ function endOfCentralDirectory(entryCount, centralSize, centralOffset) {
 export async function createDeterministicNswZip({ titleId, romfsRoot, outputPath }) {
   const id = normalizeTitleId(titleId);
   const files = await inventoryRomfs(romfsRoot);
+  return createDeterministicZip({
+    files: files.map((file) => ({
+      ...file,
+      archivePath: `${id}/romfs/${file.patchPath}`,
+    })),
+    outputPath,
+  });
+}
+
+export async function createDeterministicZip({ files, outputPath }) {
+  if (!Array.isArray(files) || files.length === 0) throw new Error('Release ZIP input contains no files');
+  const orderedFiles = [...files].sort((left, right) => left.archivePath.localeCompare(right.archivePath, 'en'));
+  const seen = new Set();
+  for (const file of orderedFiles) {
+    if (!file.absolutePath || !file.archivePath) throw new Error('Release ZIP entries require absolutePath and archivePath');
+    const parts = file.archivePath.split('/');
+    if (file.archivePath.startsWith('/') || parts.some((part) => !part || part === '.' || part === '..') || file.archivePath.includes('\\')) {
+      throw new Error(`Invalid release ZIP path: ${file.archivePath}`);
+    }
+    const key = file.archivePath.toLowerCase();
+    if (seen.has(key)) throw new Error(`Duplicate/case-colliding release ZIP path: ${file.archivePath}`);
+    seen.add(key);
+  }
   await fsp.mkdir(path.dirname(outputPath), { recursive: true });
   const handle = await fsp.open(outputPath, 'wx');
   const state = { position: 0 };
   const entries = [];
 
   try {
-    for (const file of files) {
-      assertUint32(file.size, `RomFS file ${file.patchPath}`);
-      const archivePath = `${id}/romfs/${file.patchPath}`;
+    for (const file of orderedFiles) {
+      const sourceStats = await fsp.lstat(file.absolutePath);
+      if (!sourceStats.isFile() || sourceStats.isSymbolicLink()) throw new Error(`Release ZIP source must be a regular file: ${file.absolutePath}`);
+      assertUint32(sourceStats.size, `Release file ${file.archivePath}`);
+      const archivePath = file.archivePath;
       const nameBuffer = Buffer.from(archivePath, 'utf8');
       if (nameBuffer.length > 0xffff) throw new Error(`ZIP entry name is too long: ${archivePath}`);
       const localHeaderOffset = state.position;
@@ -221,8 +246,8 @@ export async function createDeterministicNswZip({ titleId, romfsRoot, outputPath
           }
         },
       );
-      assertUint32(uncompressedSize, `RomFS file ${file.patchPath}`);
-      assertUint32(compressedSize, `Compressed RomFS file ${file.patchPath}`);
+      assertUint32(uncompressedSize, `Release file ${file.archivePath}`);
+      assertUint32(compressedSize, `Compressed release file ${file.archivePath}`);
       const entry = {
         archivePath,
         sourcePath: file.absolutePath,
@@ -357,6 +382,19 @@ export async function sha256File(target) {
     for await (const chunk of stream) hash.update(chunk);
   });
   return hash.digest('hex').toUpperCase();
+}
+
+export async function inspectDeterministicZip(zipPath) {
+  const resolvedZip = path.resolve(zipPath);
+  const { entries } = await parseCentralDirectory(resolvedZip);
+  const verified = [];
+  for (const entry of entries) {
+    if (entry.flags !== UTF8_DATA_DESCRIPTOR_FLAGS) throw new Error(`Unexpected ZIP flags for ${entry.archivePath}`);
+    if (entry.method !== DEFLATE_METHOD) throw new Error(`Unexpected ZIP compression method for ${entry.archivePath}`);
+    const payload = await hashZipEntry(resolvedZip, entry);
+    verified.push({ path: entry.archivePath, size: payload.size, sha256: payload.sha256 });
+  }
+  return { zipPath: resolvedZip, zipSha256: await sha256File(resolvedZip), entries: verified };
 }
 
 export async function validateNswRelease({ titleId, zipPath, romfsRoot = null, allowTemporaryName = false }) {

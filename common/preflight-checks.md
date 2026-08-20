@@ -21,8 +21,8 @@
 8. 현재 문서가 참조하는 상대 경로의 존재 여부와 대소문자·폴더 위치
 9. NSW QA이면 `$GT_HOME/common/qa-session-rules.md`와 `50_test/eden/SESSION.json`,
    `ARTIFACT_MANIFEST.tsv`
-10. NSW 최종 QA/릴리스이면 `$GT_HOME/common/release-runtime-contract.md`,
-   `platforms/nsw/runtime-emulators.json`, `50_test/RELEASE_RUNTIME_QA.json`
+10. 최종 QA/릴리스이면 `$GT_HOME/common/release-runtime-contract.md`,
+   `platforms/<platform>/runtime-emulators.json`, `50_test/RELEASE_RUNTIME_QA.json`
 
 규칙의 우선순위는 다음과 같다.
 
@@ -50,8 +50,8 @@ batch_size_override_reason: <근거>     # 80이 아닌 경우 필수
 glossary_path: 30_translation/text/glossary.tsv
 runtime_policy: static-first           # static-first | slot-probe | final-only
 runtime_authorization: pending         # pending | approved | not_required
-basic_test_backend: eden-mcp
-mcp_session_scope: one-per-title       # Eden/Ryubing 합산
+basic_test_backend: eden-mcp           # Steam/PC는 direct-native
+mcp_session_scope: one-per-title       # Steam/PC는 none
 final_qa_runtime: official-distribution-release
 final_qa_mcp_allowed: false
 release_runtime_receipt: 50_test/RELEASE_RUNTIME_QA.json
@@ -161,8 +161,8 @@ date | type | observed | impact | decision | evidence | status(open/applied/reje
 - [ ] 배치 크기·용어집 경로·런타임 정책·릴리스 계약이 서로 일치함
 - [ ] 대상 수가 0이 아니거나 명시적 `N/A` 근거가 있으며, 실패·미확인 항목은 `blocked` 또는 `PENDING`으로 기록됨
 - [ ] 불일치는 `HANDOFF.md`에 기록했고, 추측으로 진행하지 않음
-- [ ] 타이틀 루트가 NSP/XCI 직접 보유 폴더이고 `_work/<프로젝트 ID>`가 그 아래에 있음
-- [ ] Eden/Ryubing 양쪽 inventory와 공유 세션 키·소유권이 local `SESSION.json`과 일치하고,
+- [ ] 타이틀 루트가 플랫폼 원본(NSP/XCI 또는 Steam/PC 게임 EXE) 직접 보유 폴더이고 `_work/<프로젝트 ID>`가 그 아래에 있음
+- [ ] MCP 플랫폼이면 Eden/Ryubing 양쪽 inventory와 공유 세션 키·소유권이 local `SESSION.json`과 일치하고,
   live 세션이 타이틀당 최대 하나이거나 불일치가 `BLOCKED`로 기록됨
 - [ ] 최종 QA/릴리스라면 공식 사이트 배포 릴리즈 직접 실행 receipt가 현재 바이트로 재검증됨
 - [ ] 생성할 산출물의 canonical 경로·논리 키가 기존 manifest와 중복되지 않음

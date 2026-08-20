@@ -72,7 +72,7 @@ qa_ready ≠ review_ready ≠ user-approved ≠ PASS (runtime) ≠ released
 | `gt-image-translate` | `for_translation/`, `IMAGE_GENERATION_MANIFEST.tsv`, imagegen prompt/receipt/RGBA probe, 계획 상태 | 이미지 QA |
 | `gt-image-qa` | `30_translation/image_translation/reports/IMAGE_QA_REPORT.md`, `30_translation/image_translation/reports/IMAGE_BUILD_MANIFEST.tsv`, image staging | 이미지 review |
 | `gt-image-review` | `30_translation/image_translation/reports/REVIEW_IMAGE.tsv`, `30_translation/image_translation/reports/IMAGE_REVIEW_HANDOFF.md` | 통합 QA |
-| `gt-qa` | build/test manifest, 단일 MCP smoke 원장, 공식 배포 릴리즈 runtime receipt | 릴리스 |
+| `gt-qa` | build/test manifest, 플랫폼 smoke 원장(NSW 단일 MCP·Steam native), 공식 배포 runtime receipt | 릴리스 |
 | `gt-release` | adapter 계약의 canonical package와 notes | 완료 |
 
 NSW에서 사용자의 `빌드 생성` 또는 `패치 생성` 요청은 전담 `gt-nsw-build`의 canonical
@@ -81,6 +81,11 @@ package 생성을 뜻한다. 입력은 `40_build/layeredfs/<BASE_TITLE_ID>/romfs
 `<BASE_TITLE_ID>/romfs/<패치파일>`로 고정한다. 자체 delta/적용기 패키지는 이 단계의
 산출물이 아니다. `gt-release`는 검증된 canonical ZIP을 인계받아 정식 릴리스의 runtime,
 문서, 상태 게이트를 수행한다.
+
+Steam/PC의 canonical 입력은 `40_build/overlay/`와 재배포 원장
+`40_build/PATCH_MANIFEST.tsv`, 출력은 `40_build/releases/<project-id>.zip`, ZIP root는
+`patch/`다. `release:package:steam`과 `release:validate:steam`이 원본 게임
+executable/assembly/asset/archive/installer와 미승인 서드파티 파일을 fail-closed로 거부한다.
 
 각 스킬은 시작 전에 프로젝트 정책·입력 해시·canonical 경로를 확인하고, 계약을
 증명할 수 없으면 `WARN` 또는 `BLOCKED`를 기록한다. 파일 존재나 종료 코드 0만으로
@@ -108,8 +113,11 @@ canonical live 세션을 하나만 허용한다. `50_test/eden/SESSION.json`은 
 빌드 변경은 새 세션 생성 사유가 아니다. Ryubing 또는 교체 세션은 구체적 예외 사유와 이전
 exact close 증거가 있을 때만 허용한다.
 
-MCP 결과는 최종 QA를 충족하지 않는다. `qa_status=passed`와 `release_status=released`는
+Steam/PC 반복 smoke는 `direct-native`, session scope `none`이며 MCP 세션 원장을 만들지 않는다.
+현재 배포 build ID·game EXE hash·active patch inventory를 기록하고 게임을 재시작해 확인한다.
+
+MCP 또는 기본 native smoke 결과는 최종 QA를 충족하지 않는다. `qa_status=passed`와 `release_status=released`는
 [`release-runtime-contract.md`](release-runtime-contract.md)에 따라 플랫폼 allowlist의 공식
-사이트 배포용 릴리즈 바이너리를 MCP 없이 직접 실행하고, 현재 binary/build/mod/log/screenshot
+배포용 릴리즈 binary/설치본을 MCP 없이 직접 실행하고, 현재 binary/build/mod/log/screenshot
 hash를 담은 `50_test/RELEASE_RUNTIME_QA.json`이 `scripts/validate-release-runtime.mjs`를
 통과할 때만 허용한다.

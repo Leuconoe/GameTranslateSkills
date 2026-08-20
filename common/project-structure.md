@@ -12,9 +12,10 @@
 검증한다.
 
 - 프로젝트의 식별자는 플랫폼별 고유 ID(예: NSW의 베이스 Title ID)다. 생성물은 반드시 `<릴리스 폴더>/_work/<프로젝트 ID>/` 아래에만 둔다.
-- 실제 타이틀 루트는 원본 `.nsp` 또는 `.xci`가 직접 존재하는 폴더로 확정한다. `_title`/`_titles`는
-  타이틀 컨테이너일 뿐이며, 그 안에 패키지가 없는 `title`·`game`·`output` 폴더를 새로 만들어
-  작업 루트로 사용하지 않는다. 패키지를 가진 폴더의 `_work/<프로젝트 ID>/`를 canonical로 사용한다.
+- 실제 타이틀 루트는 플랫폼 원본이 직접 존재하는 폴더로 확정한다. NSW는 `.nsp`/`.xci`,
+  Steam/PC는 실제 게임 EXE와 배포 build 증거가 있는 설치 폴더다. 컨테이너 안에 원본 없는
+  `title`·`game`·`output` 폴더를 새로 만들지 않고 실제 원본 폴더의
+  `_work/<프로젝트 ID>/`를 canonical로 사용한다.
 - 워크스페이스 루트는 항상 깨끗하게 유지한다. 추출물, 참고 자료, 번역 배치, 빌드, 시험 증거, 보고서, 로그, 캐시, 임시 파일 — 모든 타이틀별 작업물은 해당 타이틀의 `_work/<프로젝트 ID>/` 하위에 생성한다. 도구가 현재 디렉터리·OS 임시 폴더·공용 MCP 작업 디렉터리에 기본 출력하면 실행 전에 프로젝트 내부 단계별 폴더나 `90_tools/tmp-<purpose>`로 출력 경로를 명시한다.
 - 워크스페이스 루트나 타이틀 루트에 `data`, `output`, `temp`, `romfs` 같은 공용 작업 폴더를 만들지 않는다.
 - 작업 중 생성되는 임시 파일·중간 아티팩트·도구 출력은 `$GT_TOOLS`, 저장소 루트, `%TEMP%`, MCP 서버의 현재 디렉터리에 만들지 않는다. 반드시 현재 타이틀의 `_work/<프로젝트 ID>/` 아래에 생성한다.
@@ -106,8 +107,9 @@ _work/<프로젝트 ID>/
   `target_language_slot`, `image_scope`(`pending` → `required` 또는 `N/A`),
   `image_model=provider-selected`, `image_quality=provider-managed`,
   `image_input_fidelity=provider-managed`,
-  `text_review_policy`, `image_review_policy`, 해당 approval 필드, `basic_test_backend=eden-mcp`,
-  `mcp_session_scope=one-per-title`, `final_qa_runtime=official-distribution-release`,
+  `text_review_policy`, `image_review_policy`, 해당 approval 필드, 플랫폼별 `basic_test_backend`
+  (NSW `eden-mcp`, Steam/PC `direct-native`)와 `mcp_session_scope`(각각 `one-per-title`, `none`),
+  `final_qa_runtime=official-distribution-release`,
   `final_qa_mcp_allowed=false`, `release_contract`를 기록한다.
   80행이 아닌 배치는 근거가 있는 명시적 타이틀별 override로만 허용한다.
 - 단계별 스킬을 직접 호출하는 경우에도 [`preflight-checks.md`](preflight-checks.md)를 먼저 읽는다.
@@ -126,7 +128,7 @@ _work/<프로젝트 ID>/
 4. 지시서의 exact 파일만 `approved=true`로 표시하고 계획 SHA-256을 확인한 뒤 `--apply --plan`으로 `90_tools/cleanup-archive/<transaction>/`에 이동한다. 계획 밖 경로·glob·워크스페이스 전체 재귀 삭제·프로세스 이름 기반 세션 종료는 금지한다.
 5. `ARCHIVE_MANIFEST.json`의 모든 파일과 원래 위치, Handoff·세션·문서 해시·보존 anchor·남은 후보를 처음부터 다시 검사한다. `CLEANUP_ARCHIVE_REVIEW.md`의 전수 목록·해시·차단 항목·복원 방법·영구 삭제 0건을 사용자에게 상세히 보고하고 같은 turn에서 멈춘다.
 6. 이후 사용자가 별도 요청으로 휴지통 이동을 승인한 경우에만 `TRASH_PLAN.json`의 보고·사용자·항목별 승인을 기록하고 현재 SHA-256과 `--trash --user-confirmed-trash`를 사용한다. 상태가 달라졌으면 `--review-archive`로 재검토하고 승인을 초기화한다.
-7. 휴지통 이동 후 `TRASH_RECEIPT.json`, backend·원래 아카이브 경로·개수·시각·해시·복구 지침을 `WORK_LOG.md`에 기록하고 `project:validate -- --strict`를 실행한다. 휴지통 실패 시 영구 삭제로 폴백하지 않는다. 최종 릴리스·로그·QA·폰트·cleanup evidence는 삭제하지 않는다.
+7. 휴지통 이동 후 `TRASH_RECEIPT.json`, backend·원래 아카이브 경로·개수·시각·해시·복구 지침을 `WORK_LOG.md`에 기록하고 플랫폼 구조 검증(NSW `project:validate -- --strict`, Steam/PC `project:validate:steam -- --strict`)을 실행한다. 휴지통 실패 시 영구 삭제로 폴백하지 않는다. 최종 릴리스·로그·QA·폰트·cleanup evidence는 삭제하지 않는다.
 
 ### 실행 환경
 

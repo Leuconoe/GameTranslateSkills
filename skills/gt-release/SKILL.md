@@ -28,7 +28,7 @@ description: "Release a QA-verified Korean game patch using the platform adapter
 
 - **배포물에 원본 게임 데이터를 포함하지 않는다.** 패치는 변경분만 담는 형태여야 한다
   (NSW: LayeredFS 모드 폴더, SFC: IPS/BPS 델타 패치, PS1/PS2: xdelta 등 델타 패치,
-  Steam: 교체 파일 모음 — 단 원본 자산의 단순 재배포가 되지 않는 범위).
+  Steam/PC: `PATCH_MANIFEST.tsv`로 재배포 허용이 증명된 map/plugin/font/config/delta overlay).
 - 콘솔 키·펌웨어·롬 파일은 어떤 형태로도 포함 금지.
 - 공통 스킬은 게임명·날짜·버전이 붙은 파일명을 임의로 선택하지 않는다. 정확한 경로·파일명·
   ZIP 루트는 플랫폼 어댑터와 `PROJECT.md`의 계약을 그대로 사용한다.
@@ -51,9 +51,16 @@ description: "Release a QA-verified Korean game patch using the platform adapter
    - NSW는 `gt-nsw-build`에 위임해 다음 공용 명령으로 생성·재검증한다. 프로젝트별 임의
      ZIP 코드로 우회하지 않는다.
 
-     ```text
+   ```text
      npm run release:package:nsw -- --project-root "<타이틀 루트>/_work/<BASE_TITLE_ID>" --replace
-     npm run release:validate:nsw -- --project-root "<타이틀 루트>/_work/<BASE_TITLE_ID>"
+   npm run release:validate:nsw -- --project-root "<타이틀 루트>/_work/<BASE_TITLE_ID>"
+   ```
+   - Steam/PC는 `platforms/steam/release.md`의 공용 패키저로 `40_build/overlay/`와
+     `PATCH_MANIFEST.tsv`를 검증해 `patch/` root의 canonical ZIP을 만든다.
+
+     ```text
+     npm run release:package:steam -- --project-root "<install-root>/_work/<steam-APP_ID|pc-slug>"
+     npm run release:validate:steam -- --project-root "<install-root>/_work/<steam-APP_ID|pc-slug>"
      ```
 2. **설치 가이드 작성**: `INSTALL.md` — 대상 게임 버전/리전, 설치 경로, 적용 방법,
    제거 방법, 알려진 제한사항. 플랫폼별 설치법(에뮬레이터 모드 폴더/실기 적용)을
@@ -84,7 +91,7 @@ description: "Release a QA-verified Korean game patch using the platform adapter
 
 | 파일 | 내용 |
 |-----|------|
-| `<adapter release path>/<canonical>.zip` | 배포 패키지 (+ SHA-256). NSW: `<BASE_TITLE_ID>.zip` 안에 `<BASE_TITLE_ID>/romfs/<패치파일>` |
+| `<adapter release path>/<canonical>.zip` | 배포 패키지 (+ SHA-256). NSW: `<BASE_TITLE_ID>/romfs/`; Steam/PC: `patch/` + root `PATCH_MANIFEST.tsv` |
 | `<adapter release path>/INSTALL.md` | 설치 가이드 |
 | `<adapter release path>/RELEASE_NOTES.md` | 릴리스 노트 |
 
@@ -93,11 +100,12 @@ description: "Release a QA-verified Korean game patch using the platform adapter
 - [ ] 패키지에 원본 게임 데이터·키 미포함 확인 (내용물 전수 목록 검사)
 - [ ] 깨끗한 환경 적용 스모크 테스트 통과 (증거 보존)
 - [ ] 공식 사이트 배포용 릴리즈를 직접 실행했고 `mcp_used=false`, URL·버전·바이너리 SHA-256·현재 build/mod/evidence가 검증됨
-- [ ] `npm run runtime:validate` 및 `project:validate -- --strict` 통과; MCP-only 결과나 `PENDING_RUNTIME`으로 릴리스하지 않음
+- [ ] `npm run runtime:validate` 및 플랫폼 구조 검증(NSW `project:validate -- --strict`,
+  Steam/PC `project:validate:steam -- --strict`) 통과; MCP-only 결과나 `PENDING_RUNTIME`으로 릴리스하지 않음
 - [ ] INSTALL.md / RELEASE_NOTES.md 완비, 해시 기록
 - [ ] Handoff 기반 cleanup plan·지시서가 생성되고 보존 anchor와 승인 allowlist가 검증됨
 - [ ] 승인된 정리를 적용했다면 plan SHA-256·아카이브 경로·전수 재검토·사용자 상세 보고가 기록됨
-- [ ] 이후 별도 승인으로 휴지통 이동했다면 trash-plan SHA-256·backend·원래 아카이브 경로·`TRASH_RECEIPT.json`·`project:validate -- --strict` 결과가 기록됨
+- [ ] 이후 별도 승인으로 휴지통 이동했다면 trash-plan SHA-256·backend·원래 아카이브 경로·`TRASH_RECEIPT.json`·플랫폼 구조 검증 결과가 기록됨
 - [ ] canonical 파일명·경로·ZIP root·파일 allowlist가 어댑터 계약과 exact 일치
 - [ ] NSW이면 `release:validate:nsw`가 entry 경로·CRC-32·SHA-256과 canonical RomFS를 전수 대조해 통과
 - [ ] 공식 배포 릴리즈 런타임·하드웨어 상태와 `released` 판정이 서로 혼동되지 않음

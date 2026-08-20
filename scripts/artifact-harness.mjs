@@ -4,8 +4,7 @@ import path from 'node:path';
 import { flag, option, parseArgs, requiredOption } from './lib/args.mjs';
 import { ensureArtifactLayout, registerArtifact, validateArtifactLayout } from './lib/project-artifacts.mjs';
 import { validateProjectBoundary } from './lib/project-boundary.mjs';
-
-const titleIdPattern = /^[0-9A-Fa-f]{16}$/;
+import { inspectProjectRoot, projectRootShapeDescription } from './lib/project-identity.mjs';
 
 async function isDirectory(target) {
   try {
@@ -16,7 +15,7 @@ async function isDirectory(target) {
 }
 
 function usage() {
-  console.log(`Usage: npm run project:artifacts -- --project-root <title/_work/<16-hex-title-id>> [options]
+  console.log(`Usage: npm run project:artifacts -- --project-root ${projectRootShapeDescription()} [options]
 
 Options:
   --project-root <path> Exact title project root
@@ -40,8 +39,8 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (flag(args, 'help')) return usage();
   const projectRoot = path.resolve(requiredOption(args, 'project-root'));
-  if (path.basename(path.dirname(projectRoot)) !== '_work' || !titleIdPattern.test(path.basename(projectRoot))) {
-    throw new Error('--project-root must be an exact title project under <title>/_work/<16-hex-title-id>');
+  if (!inspectProjectRoot(projectRoot).valid) {
+    throw new Error(`--project-root must be an exact title project under ${projectRootShapeDescription()}`);
   }
   if (!(await isDirectory(projectRoot))) throw new Error(`Project root does not exist: ${projectRoot}`);
   if (flag(args, 'init')) console.log(`Artifact index: ${await ensureArtifactLayout(projectRoot)}`);

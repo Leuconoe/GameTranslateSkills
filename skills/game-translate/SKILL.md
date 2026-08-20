@@ -27,7 +27,8 @@ description: "Orchestrate a fail-closed Korean game-localization workflow across
 6. 플랫폼 어댑터 `platforms/<platform>/PLATFORM.md`와 현재 단계 문서
 7. 엔진을 식별한 뒤 `engines/<engine>/ENGINE.md`
 
-타이틀 루트는 원본 `.nsp`/`.xci`가 직접 있는 실제 폴더다. 작업물·임시 파일·staging·
+타이틀 루트는 플랫폼 어댑터가 증명한 원본이 직접 있는 실제 폴더다(NSW는 `.nsp`/`.xci`,
+Steam/PC는 실제 게임 EXE가 있는 설치 폴더). 작업물·임시 파일·staging·
 런타임 증거는 그 폴더의 `_work/<프로젝트 ID>/` 아래에만 둔다. `GT_HOME`, 저장소 루트,
 OS 임시 폴더, 공용 MCP 디렉터리, 임의 `title`/`output`/`temp` 폴더를 출력 경로로 쓰지
 않는다. 프로젝트·플랫폼·엔진·Title ID·정책을 확정하지 못하면 변경·삭제·런타임을 하지
@@ -93,7 +94,8 @@ canonical staging, handoff를 만들어 다음 단계가 실행 가능하게 준
 각 단계를 직접 호출할 때도 `PROJECT.md`, `WORK_LOG.md`, `HANDOFF.md`, 입력 manifest·
 출력 경로의 수정 시각/크기/SHA-256/`git status`를 읽는다. 정책 필수값은
 `batch_size`, `glossary_path`, `runtime_policy`, `runtime_authorization`,
-`basic_test_backend=eden-mcp`, `mcp_session_scope=one-per-title`,
+플랫폼별 `basic_test_backend`와 `mcp_session_scope`(NSW는 `eden-mcp`/`one-per-title`,
+Steam/PC는 `direct-native`/`none`),
 `final_qa_runtime=official-distribution-release`, `final_qa_mcp_allowed=false`,
 `target_language_slot`, `image_scope`, `image_model=provider-selected`,
 `image_quality=provider-managed`, `image_input_fidelity=provider-managed`,
@@ -113,9 +115,10 @@ canonical staging, handoff를 만들어 다음 단계가 실행 가능하게 준
 baseline·line metrics, 기존 glyph 보존, 왕복 추출, render probe를 증명한다. 이 증거가
 없거나 `font_status=verified`가 아니면 text review-ready나 통합 QA로 진행하지 않는다.
 
-`gt-qa`는 깨끗한 원본에서 한 번만 통합한다. 기본 smoke는 Eden-MCP의 단일 title 세션을
-재사용하지만 그 결과를 최종 PASS로 쓰지 않는다. 최종 QA는 플랫폼 allowlist의 공식 사이트
-배포 릴리즈를 별도로 받아 MCP 없이 직접 실행하고 입력 경로·Title ID·active mod 전수 hash·
+`gt-qa`는 깨끗한 원본에서 한 번만 통합한다. NSW 기본 smoke는 Eden-MCP의 단일 title 세션을
+재사용하고, Steam/PC는 설치 게임의 `direct-native` smoke를 사용하지만 어느 쪽도 그 결과를
+최종 PASS로 쓰지 않는다. 최종 QA는 플랫폼 allowlist의 공식 배포 릴리즈/설치본을 MCP 없이
+직접 실행하고 입력 경로·project/Title ID·active mod 전수 hash·
 binary/build hash·화면 전이·로그/캡처를 `RELEASE_RUNTIME_QA.json`에 귀속한다. 로더 생존·
 종료 코드·패치 적용 로그만으로 PASS하지 않는다.
 
@@ -189,8 +192,9 @@ exact 파일만 승인 후보로 삼는다. 미등록 managed-root 파일은 자
 
 ## 9. 신규 프로젝트·완료
 
-신규 프로젝트는 플랫폼 어댑터가 지정한 `project:new`를 사용해 실제 NSP/XCI 보유 폴더
-아래에 생성한다. 수동 generic `title` 폴더를 만들지 않는다.
+신규 프로젝트는 플랫폼 어댑터가 지정한 생성 명령을 사용한다. NSW는 실제 NSP/XCI 보유
+폴더 아래 `project:new`, Steam/PC는 실제 게임 EXE가 있는 설치 폴더 아래
+`project:new:steam`으로 생성한다. 수동 generic `title` 폴더를 만들지 않는다.
 
 완료는 `gt-qa`의 bench와 공식 배포 릴리즈 non-MCP runtime receipt, 별도 hardware 상태,
 `gt-release`의 exact package 계약이 모두 충족될 때만 선언한다. 릴리스 후에도
@@ -210,3 +214,13 @@ exact 파일만 승인 후보로 삼는다. 미등록 managed-root 파일은 자
 ZIP root 계약은 완화하지 않고 `release_status`도 `released`로 올리지 않는다. 정식 릴리스
 요청이면 `gt-nsw-build`가 검증한 canonical ZIP을 `gt-release`로 인계해 나머지 QA·문서·
 상태 게이트를 수행한다.
+
+Steam/PC에서 같은 표현은 `platforms/steam/release.md`의 canonical package 생성으로
+라우팅한다. 입력은 재배포 원장이 검증한 `40_build/overlay/`, 출력은
+`40_build/releases/<project-id>.zip`, ZIP root는 `patch/`다. 다음 공용 명령을 사용하며 원본
+게임 assembly/asset/archive/executable은 패키징하지 않는다.
+
+```text
+npm run release:package:steam -- --project-root "<install-root>/_work/<steam-APP_ID|pc-slug>"
+npm run release:validate:steam -- --project-root "<install-root>/_work/<steam-APP_ID|pc-slug>"
+```

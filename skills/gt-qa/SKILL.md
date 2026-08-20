@@ -55,19 +55,23 @@ description: "Integrated game-translation QA after text and conditional image re
 5. **빌드**: 플랫폼 어댑터의 deterministic build를 실행해 `40_build/`와
    `BUILD_MANIFEST.tsv`를 만든다. stale 파일·다른 Title ID·중복 output·source overwrite가
    있으면 실패시킨다.
-6. **기본 MCP smoke**: `runtime_policy=static-first`이면 사용자의 명시적 실행 요청 전에는
-   bench와 `PENDING_RUNTIME`만 기록한다. 실행이 승인되면 기본 backend는 Eden-MCP다.
-   - `project:qa-session`에 양쪽 inventory 조회를 명시하고 같은 Title 세션을 재사용한다.
+6. **플랫폼 기본 smoke**: `runtime_policy=static-first`이면 사용자의 명시적 실행 요청 전에는
+   bench와 `PENDING_RUNTIME`만 기록한다. NSW는 Eden-MCP, Steam/PC는 설치 게임 EXE의
+   `direct-native` 실행을 사용한다.
+   - NSW는 `project:qa-session`에 양쪽 inventory 조회를 명시하고 같은 Title 세션을 재사용한다.
      Ryubing-MCP나 두 번째 세션은 구체적 예외 사유, 이전 exact close 증거가 있어야 한다.
    - create/launch 오류 뒤 양쪽 목록/status를 다시 읽기 전 재호출하지 않는다. 빌드 변경은
      새 세션이 아니라 같은 세션에서 title restart로 반영한다.
+   - Steam/PC는 MCP 세션을 만들지 않고 현재 distribution build ID·game EXE hash·active patch를
+     기록한다. 기본 smoke만으로 최종 `PASS (runtime)`로 승격하지 않는다.
    - MCP 결과는 `PASS (mcp-smoke)`로만 기록하며 최종 QA 또는 `PASS (runtime)`로 승격하지 않는다.
 7. **공식 배포 릴리즈 최종 QA**: `qa_status=passed` 또는 릴리스로 진행하려면
    `release-runtime-contract.md`를 반드시 실행한다.
-   - 플랫폼 allowlist의 공식 릴리즈 페이지에서 배포 artifact를 받아 정확한 버전·URL·실행
-     바이너리 SHA-256을 기록한다. nightly/dev/CI/MCP 번들·전용 빌드는 거부한다.
+   - 플랫폼 allowlist의 공식 릴리즈 artifact 또는 공식 배포 설치본을 사용한다. NSW는 공식
+     에뮬레이터 버전·URL·binary SHA-256, Steam은 appmanifest App ID/build ID·store page·
+     game EXE SHA-256을 기록한다. nightly/dev/CI/MCP 번들·전용 빌드는 거부한다.
    - 별도 격리 프로파일과 현재 최종 mod를 사용해 바이너리를 **MCP 없이 직접** 실행한다.
-     Title ID, build manifest, 활성 mod 전수 inventory, 한국 지역/언어, 로그와 타이틀/인게임
+     project/Title ID, build manifest, 활성 mod 전수 inventory, 한국 지역/언어, 로그와 타이틀/인게임
      화면을 현재 해시에 귀속한다.
    - `50_test/RELEASE_RUNTIME_QA.json`을 만들고 `npm run runtime:validate`를 통과시킨다.
      `mcp_used=true`, 출처/바이너리/빌드/mod/증거 drift는 모두 fail-closed다.

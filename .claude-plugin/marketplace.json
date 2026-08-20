@@ -5,13 +5,13 @@
   },
   "metadata": {
     "description": "Game Korean-localization skill suite for Codex and Claude Code",
-    "version": "1.5.2"
+    "version": "1.6.0"
   },
   "plugins": [
     {
       "name": "game-translate",
       "source": "./",
-      "description": "Branch-based game Korean-localization workflow for Codex and Claude Code: no-API built-in imagegen best-of-three selection, original-feel Korean image QA, one title-scoped MCP smoke session, official-distribution direct runtime QA, recoverable cleanup, and release. Platform adapters (NSW complete; SFC/PS1/PS2/Steam skeletons) + engine modules (Unity/VN/LucaSystem).",
+      "description": "Branch-based game Korean-localization workflow for Codex and Claude Code: no-API built-in imagegen best-of-three selection, original-feel Korean image QA, platform-scoped smoke testing, official-distribution direct runtime QA, recoverable cleanup, and release. Complete NSW and Steam/PC adapters plus SFC/PS1/PS2 skeletons and Unity/VN/LucaSystem engine modules.",
       "category": "workflow",
       "keywords": ["game", "translation", "localization", "korean"]
     }

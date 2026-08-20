@@ -2,6 +2,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { flag, option, parseArgs, requiredOption } from './lib/args.mjs';
+import { inspectProjectRoot, projectRootShapeDescription } from './lib/project-identity.mjs';
 import {
   archiveApprovedFiles,
   atomicWrite,
@@ -22,7 +23,6 @@ import {
 } from './lib/project-artifacts.mjs';
 import { validateProjectBoundary } from './lib/project-boundary.mjs';
 
-const titleIdPattern = /^[0-9A-Fa-f]{16}$/;
 const canonicalFiles = new Set([
   'PROJECT.md',
   'WORK_LOG.md',
@@ -508,7 +508,7 @@ function requiredAliasedOption(args, primary, legacy) {
 }
 
 function usage() {
-  console.log(`Usage: npm run project:cleanup -- --project-root <title/_work/<16-hex-title-id>> [options]
+  console.log(`Usage: npm run project:cleanup -- --project-root ${projectRootShapeDescription()} [options]
 
 Default: generate a Handoff-based cleanup plan; never move or delete.
 
@@ -541,8 +541,7 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (flag(args, 'help')) return usage();
   const projectRoot = path.resolve(requiredOption(args, 'project-root'));
-  const workRoot = path.dirname(projectRoot);
-  if (path.basename(workRoot) !== '_work' || !titleIdPattern.test(path.basename(projectRoot))) throw new Error('--project-root must be an exact title project under <title>/_work/<16-hex-title-id>');
+  if (!inspectProjectRoot(projectRoot).valid) throw new Error(`--project-root must be an exact title project under ${projectRootShapeDescription()}`);
   if (!(await isDirectory(projectRoot))) throw new Error(`Project root does not exist: ${projectRoot}`);
   const primaryTrash = flag(args, 'trash');
   const legacyPurge = flag(args, 'purge');

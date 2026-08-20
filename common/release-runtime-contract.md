@@ -1,13 +1,15 @@
-# 공식 배포용 릴리즈 에뮬레이터 최종 QA 계약
+# 공식 배포용 릴리즈 런타임 최종 QA 계약
 
 이 계약은 MCP 기반의 빠른 반복 시험과 릴리즈 승인용 최종 런타임 시험을 분리한다.
 
 ## 판정 경계
 
-- 기본 반복 시험은 `eden-mcp`를 사용하며, 타이틀당 canonical 세션 하나를 재사용한다.
+- NSW 기본 반복 시험은 `eden-mcp`를 사용하며 타이틀당 canonical 세션 하나를 재사용한다.
+  Steam/PC는 `direct-native`, session scope `none`으로 설치 게임을 직접 실행한다.
 - `eden-mcp` 또는 `ryubing-mcp` 결과는 smoke/진단 증거일 뿐 최종 QA 통과를 만들지 못한다.
 - 최종 QA는 `platforms/<platform>/runtime-emulators.json`에 등록된 **공식 사이트의 배포용
-  릴리즈**를 별도로 내려받아 MCP 없이 직접 실행해야 한다.
+  릴리즈 또는 공식 배포 설치본**을 MCP 없이 직접 실행해야 한다. 파일명은 역사적 호환을
+  위해 유지하며 Steam adapter에서는 native runtime allowlist를 담는다.
 - nightly, development, CI artifact, MCP 번들·전용 빌드, 출처를 확인할 수 없는 미러는
   최종 QA 입력으로 인정하지 않는다.
 - 공식 배포용 릴리즈가 실제로 실행되지 않았거나 아래 증거가 현재 바이트와 일치하지 않으면
@@ -22,7 +24,7 @@
 50_test/release-runtime/ACTIVE_MOD_MANIFEST.tsv
 ```
 
-영수증은 다음을 모두 기록한다.
+schema 1 에뮬레이터 영수증은 다음을 모두 기록한다.
 
 - 현재 Title ID와 최종 `build_id`
 - 현재 `40_build/BUILD_MANIFEST.tsv`의 SHA-256 및 그 안의 유일한 build 행
@@ -84,6 +86,12 @@
   "tested_at": "<ISO-8601>"
 }
 ```
+
+Steam/PC 직접 실행은 `platforms/steam/build-test.md`의 schema 2를 사용한다. 이 schema는
+에뮬레이터 필드 대신 project ID, Steam App ID/build ID, 현재 appmanifest, install root,
+game EXE, runtime log를 기록한다. 공통 build/active patch/screenshot/check/result 증거는 schema
+1과 동일하게 검증한다. 비 Steam PC 배포처는 해당 공식 출처 allowlist가 adapter에 추가되기
+전까지 최종 PASS로 승격하지 않는다.
 
 활성 mod manifest의 헤더는 다음과 정확히 같고 데이터 행이 한 개 이상이어야 한다.
 

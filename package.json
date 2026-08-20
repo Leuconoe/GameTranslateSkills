@@ -1,6 +1,6 @@
 {
   "name": "game-translate-skills",
-  "version": "1.5.2",
+  "version": "1.6.0",
   "private": true,
   "description": "Cross-platform npm tooling for the GameTranslateSkills plugin.",
   "license": "MIT",
@@ -10,7 +10,9 @@
   "scripts": {
     "tools:install": "node setup/install-tools.mjs",
     "project:new": "node scripts/new-translation-project.mjs",
+    "project:new:steam": "node scripts/new-steam-translation-project.mjs",
     "project:validate": "node scripts/validate-translation-projects.mjs",
+    "project:validate:steam": "node scripts/validate-steam-project.mjs",
     "project:artifacts": "node scripts/artifact-harness.mjs",
     "project:boundary": "node scripts/validate-project-boundary.mjs",
     "project:cleanup": "node scripts/clean-translation-project.mjs",
@@ -22,6 +24,8 @@
     "runtime:validate": "node scripts/validate-release-runtime.mjs",
     "release:package:nsw": "node scripts/create-nsw-release.mjs",
     "release:validate:nsw": "node scripts/validate-nsw-release.mjs",
+    "release:package:steam": "node scripts/create-steam-release.mjs",
+    "release:validate:steam": "node scripts/validate-steam-release.mjs",
     "skills:validate": "node scripts/validate-skill-bundle.mjs",
     "test": "node --test tests/harness.test.mjs"
   }

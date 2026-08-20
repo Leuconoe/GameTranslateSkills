@@ -5,7 +5,7 @@ description: "Archive exact cleanup candidates for one game title project, fully
 
 # gt-project-cleanup — 타이틀 프로젝트 정리
 
-하나의 `<타이틀 루트>/_work/<16자리 프로젝트 ID>`만 대상으로 Handoff·manifest·세션
+하나의 canonical `<타이틀 루트>/_work/<프로젝트 ID>`만 대상으로 Handoff·manifest·세션
 상태를 추론한다. 정리는 `계획 → 아카이브 이동 → 전체 재검토·사용자 상세 보고 → 이후
 별도 승인에 따른 운영체제 휴지통 이동` 순서로만 수행한다. 원래 위치나 아카이브의 파일을
 영구 삭제하지 않는다.
@@ -35,7 +35,8 @@ Handoff의 `open` evidence, manifest가 참조하는 파일, 현재 active sessi
 
 ## 1. 정리 계획 생성
 
-1. 프로젝트 경로가 정확한 `_work/<16-hex>`인지 확인하고 다른 프로젝트를 순회하지 않는다.
+1. 프로젝트 경로가 플랫폼 canonical ID인지 확인한다(NSW 16-hex, Steam `steam-<APP_ID>`,
+   다른 PC 배포판 `pc-<safe-slug>`). 다른 프로젝트를 순회하지 않는다.
 2. `SESSION.json`과 remote 상태를 비교한다. active/pending/소유권 불명 세션의 파일은
    `BLOCKED`로 둔다. 이전 세션은 `last_session_id`와 `remote_close_session_id`가 exact
    일치하기 전까지 승인하지 않는다.
@@ -110,7 +111,8 @@ npm run project:cleanup -- --project-root "<프로젝트 루트>" --review-archi
 그대로 보존하고 `BLOCKED`로 중단하며 영구 삭제로 폴백하지 않는다. 보고 이후 프로젝트
 상태·문서·아카이브 해시가 바뀌면 거부하고 3단계부터 다시 수행한다. 완료 후
 `TRASH_RECEIPT.json`의 backend·원래 아카이브 경로·개수·해시·복구 지침을 보고하고
-`project:validate -- --strict`를 재실행한다. 예전 `--purge`와 `DELETE_PLAN.json`은 호환
+플랫폼 구조 검증(NSW `project:validate -- --strict`, Steam/PC
+`project:validate:steam -- --strict`)을 재실행한다. 예전 `--purge`와 `DELETE_PLAN.json`은 호환
 입력일 뿐이며 실행 결과는 동일한 휴지통 이동이다.
 
 ## 완료 기준

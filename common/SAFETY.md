@@ -59,10 +59,13 @@
   `provider-selected`/`provider-managed`로 정직하게 기록하고, 같은 reference·prompt로 최소
   3개 독립 후보를 만든 뒤 전수 QA를 통과한 하나만 선택한다. API/CLI나 낮은 품질 후보로
   자동 폴백하지 않는다. Python/Pillow/OpenCV, ImageMagick, SVG/HTML/canvas 또는 임의
-  스크립트로 글자·배경·alpha를 만들거나 지우거나 합성·덮어쓰기하지 않는다. 예외는
+  스크립트로 글자·배경을 만들거나 지우거나 덮어쓰기하지 않는다. 예외는
   `common/image-translation-contract.md`의 크기 정규화 게이트를 통과한 PNG/RGBA8 후보를
   `image:normalize-size`로 동일 종횡비 리사이즈하는 경우뿐이다. 이때도 raw imagegen output과
   기존 receipt는 보존하고 새 파생 파일을 만든 뒤 전체 alpha·보존 픽셀 QA를 다시 통과해야 한다.
+  두 번째 예외는 `edit-region-only` 자산의 imagegen alpha 손실을 복구하기 위해 best-of-3
+  imagegen mask를 `image:compose-alpha`로 합성하는 경우다. mask는 편집 영역 안 alpha에만
+  적용하고 영역 밖 source alpha와 candidate RGB를 byte-exact로 검증한다.
 - 생성 전 local reference를 직접 확인하고 원문 완전 제거·no-overlay, 분위기, 서체 인상,
   색, 외곽선/그림자, 질감/재질/광원, 자간/baseline, edit region·anchor·alpha 계약을 prompt에
   고정한다. 생성 결과는 프로젝트 내부의 새 `for_translation/attempts/*` 경로로 받으며

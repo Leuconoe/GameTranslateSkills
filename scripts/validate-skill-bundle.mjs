@@ -140,7 +140,9 @@ async function main() {
     'alpha byte',
     'decoded RGBA diff',
     'npm run image:normalize-size',
+    'npm run image:compose-alpha',
     'schema 4',
+    'schema 5',
     'npm run image:validate',
   ]) if (!imageContract.includes(phrase)) add(issues, `image contract: missing fail-closed phrase ${phrase}`);
   const imageAnalyze = contents.get('gt-image-analyze') ?? '';
@@ -160,6 +162,7 @@ async function main() {
     'Python/Pillow/OpenCV',
     'IMAGE_GENERATION_MANIFEST.tsv',
     'validate-image-translation.mjs',
+    'image:compose-alpha',
     'source/reference/기존 candidate',
     'hold-for-imagegen-review',
   ]) if (!imageTranslate.includes(phrase)) add(issues, `gt-image-translate: missing imagegen-only gate ${phrase}`);
@@ -173,6 +176,7 @@ async function main() {
     'original_feel_status',
     'Python/Pillow/OpenCV',
     'validate-image-translation.mjs',
+    'schema 5',
     '기본 alpha는 전 픽셀 exact',
     '영역 밖 decoded RGBA는 diff 0',
   ]) if (!imageQa.includes(phrase)) add(issues, `gt-image-qa: missing image harness gate ${phrase}`);
@@ -187,6 +191,10 @@ async function main() {
     normalized_receipt_schema: 4,
     normalization_reason: 'canvas-size-only',
     normalization_algorithm: 'premultiplied-alpha-bilinear-rgba8-v1',
+    alpha_compositor: 'scripts/compose-imagegen-alpha.mjs',
+    alpha_mask_receipt_schema: 1,
+    alpha_composition_receipt_schema: 5,
+    alpha_composition_algorithm: 'source-outside-mask-luma-inside-v1',
     agent_generator: 'imagegen',
     tool: 'image_gen.imagegen',
     execution_surface: 'chatgpt-built-in',
@@ -203,7 +211,11 @@ async function main() {
     if (packageManifest.scripts?.['image:normalize-size'] !== 'node scripts/normalize-imagegen-size.mjs') {
       add(issues, 'package.json: image:normalize-size must route to scripts/normalize-imagegen-size.mjs');
     }
+    if (packageManifest.scripts?.['image:compose-alpha'] !== 'node scripts/compose-imagegen-alpha.mjs') {
+      add(issues, 'package.json: image:compose-alpha must route to scripts/compose-imagegen-alpha.mjs');
+    }
     await fs.access(path.join(repositoryRoot, imagePipeline?.size_normalizer ?? ''));
+    await fs.access(path.join(repositoryRoot, imagePipeline?.alpha_compositor ?? ''));
   } catch (error) {
     add(issues, `image size normalizer: missing or unreadable (${error.message})`);
   }

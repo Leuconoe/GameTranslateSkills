@@ -124,8 +124,8 @@ binary/build hash·화면 전이·로그/캡처를 `RELEASE_RUNTIME_QA.json`에 
 
 이미지 branch는 `$GT_HOME/common/image-translation-contract.md`를 적용한다. 에이전트가
 만든 raster 후보는 API 키 없는 `$imagegen` 내장 `image_gen.imagegen`을 같은 byte-exact
-reference·prompt로 최소 3회 독립 호출한 schema 3 receipt(또는 canvas-size-only 정규화 provenance를
-보존한 schema 4 receipt)와 정확히 하나의 합격 선택 후보가
+reference·prompt로 최소 3회 독립 호출한 schema 3 receipt(canvas-size-only 정규화 schema 4 또는
+best-of-3 alpha mask composition schema 5 포함)와 정확히 하나의 합격 선택 후보가
 있어야 하고,
 `IMAGE_GENERATION_MANIFEST.tsv`에 대해 `validate-image-translation.mjs`가 source/reference
 비덮어쓰기, 원문 완전 제거와 no-overlay, 원어의 서체 인상·색·외곽선·질감·재질·광원·

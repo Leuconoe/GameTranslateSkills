@@ -26,7 +26,7 @@ description: "Prepare an image-review handoff after technical QA with complete b
    comparison을 재사용하지 않는다.
 2. `IMAGE_GENERATION_MANIFEST.tsv`를 현재 파일로 다시 검증한다. agent-generated 행의
    `image_gen.imagegen`/`chatgpt-built-in`/`best-of-3-fail-closed` schema 3 provenance 또는 검증된
-   canvas-size-only schema 4 provenance, 3–4개
+   canvas-size-only schema 4 provenance 또는 best-of-3 alpha mask composition schema 5 provenance, 3–4개
    attempt, 정확히 하나의 합격 선택 후보, 원문 완전 제거, `no_overlay=true`, 선언된 alpha
    policy, edit region 밖 RGBA diff 0이 아니면 review 자료를 만들지 않고 `BLOCKED`다.
 3. `30_translation/image_translation/reports/REVIEW_IMAGE.tsv`에 모든 이미지와 atlas

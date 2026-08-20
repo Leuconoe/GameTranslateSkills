@@ -40,9 +40,11 @@ Raster 이미지 번역은 [image-translation-contract.md](common/image-translat
 노출하지 않는 모델이나 quality를 거짓으로 고정하지 않고, 같은 byte-exact reference와 exact
 prompt로 최소 3개 독립 후보를 만든 뒤 기술·시각 QA를 모두 통과한 하나만 선택합니다. 첫 결과나
 가장 그럴듯한 실패 후보를 채택하지 않으며 전부 실패하면 `hold-for-imagegen-review`로 멈춥니다.
-Python/Pillow/OpenCV나 임의 스크립트로 글자를 그리거나 합성·덮어쓰지 않습니다. 단, PNG/RGBA8
+Python/Pillow/OpenCV나 임의 스크립트로 글자를 그리거나 덮어쓰지 않습니다. 단, PNG/RGBA8
 후보가 동일 종횡비를 유지하고 validator의 유일한 문제가 canvas 크기일 때는 provenance를 보존하는
-내장 Node 정규화 CLI로 새 파생 후보를 만들 수 있습니다. 원문
+내장 Node 정규화 CLI로 새 파생 후보를 만들 수 있습니다. 또한 `edit-region-only` 자산에서
+imagegen이 alpha를 잃은 경우에는 같은 한글 후보로 alpha mask를 3회 독립 생성하고 검증된 mask를
+편집 영역에만 합성할 수 있습니다. 원문
 완전 제거와 no-overlay, 원어의 서체 인상·색·외곽선·질감·재질·광원·자간/baseline·분위기·
 좌표·canvas, 기본 전 픽셀 alpha exact(글자 alpha 자산은 선언한 edit region 안만 변경), 편집
 영역 밖 decoded RGBA diff 0과 다중 후보 선택 receipt를 `IMAGE_GENERATION_MANIFEST.tsv`로
@@ -131,6 +133,7 @@ npm run release:package:steam -- --project-root '<게임 설치 폴더>\_work\st
 - 최종 runtime guard: `npm run runtime:validate -- --project-root "<타이틀 루트>/_work/<프로젝트 ID>" --receipt "<프로젝트 루트>/50_test/RELEASE_RUNTIME_QA.json"`로 공식 배포 릴리즈의 non-MCP 직접 실행 증거를 검증
 - 이미지 보존 guard: `npm run image:validate -- --project-root "<타이틀 루트>/_work/<프로젝트 ID>" --manifest "<프로젝트 루트>/30_translation/image_translation/IMAGE_GENERATION_MANIFEST.tsv"`로 내장 imagegen best-of-3 provenance·원문 제거/no-overlay·원본 느낌·비덮어쓰기·좌표·alpha·보존 픽셀을 검증
 - imagegen 크기 정규화: 먼저 `npm run image:normalize-size -- --project-root "<프로젝트 루트>" --manifest "<프로젝트 루트>/30_translation/image_translation/IMAGE_GENERATION_MANIFEST.tsv" --stable-key "<키>"`로 dry-run하고, 적격일 때만 같은 명령에 `--apply`를 추가합니다. PNG/RGBA8·동일 종횡비·크기 외 validator 오류 0건만 허용하며 schema 4 receipt를 만든 뒤 `image:validate`를 다시 실행해야 합니다.
+- imagegen alpha mask 합성: 같은 한글 후보와 exact mask prompt로 3–4개 mask를 생성해 schema 1 mask receipt를 작성한 뒤 `npm run image:compose-alpha -- --project-root "<프로젝트 루트>" --manifest "<프로젝트 루트>/30_translation/image_translation/IMAGE_GENERATION_MANIFEST.tsv" --stable-key "<키>" --mask-receipt "30_translation/image_translation/receipts/alpha_masks/<키>.json"`로 dry-run합니다. 적격일 때만 `--apply`를 추가하며 schema 5 receipt 생성 후 `image:validate`를 다시 실행합니다.
 - 작업장 루트 정리: `gt-workspace-cleanup` 또는 `npm run workspace:cleanup -- --workspace-root "<루트>" --report "<외부 보고서 경로>"`; 기본은 이동·삭제하지 않고, 적용 시에도 외부 아카이브·전체 재검토·사용자 상세 보고를 거친 뒤 별도 승인에만 운영체제 휴지통 이동
 - 사전 경고: 모든 단계에서 `common/preflight-checks.md`를 읽고 배치·경로·언어 슬롯·review policy·폰트·세션·릴리스 계약의 불일치를 `WARN`/`BLOCKED`로 기록
 

@@ -22,8 +22,9 @@
 - Python/Pillow/OpenCV, ImageMagick, SVG/HTML/canvas 또는 임의 스크립트로 글자를 그리기·
   지우기·합성하기·alpha 복구·기존 파일 덮어쓰기는 금지한다. 분석기와 decoder는 읽기 전용
   probe에만 사용할 수 있고 후보 생성기로 기록할 수 없다. 내장 imagegen이 반환한 파일을 새
-  프로젝트 경로로 byte-copy하는 것은 허용한다. 픽셀 변환의 유일한 예외는 §3.1의 PNG/RGBA8
-  canvas-size-only 정규화이며, raw output과 기존 receipt를 보존하고 전체 QA를 다시 통과해야 한다.
+  프로젝트 경로로 byte-copy하는 것은 허용한다. 픽셀 변환 예외는 §3.1의 PNG/RGBA8
+  canvas-size-only 정규화와 §3.2의 imagegen alpha-mask 합성뿐이며, raw output과 기존 receipt를
+  보존하고 전체 QA를 다시 통과해야 한다.
 - 플랫폼·엔진 importer는 검증된 imagegen 결과를 새 staging에 인코딩할 수 있지만 한글 픽셀을
   새로 만들거나 원본/reference/candidate를 직접 덮어쓰지 않는다.
 - `10_extract` 원본, `reference/`, 기존 canonical candidate는 읽기 전용이다. 내장 도구가
@@ -227,6 +228,72 @@ candidate/probe path/hash/dimensions를 기록한다. `attempts`는 원본 schem
 output을 가리킨다. 정규화 후 반드시 `image:validate`를 다시 실행하며, 다른 오류가 하나라도
 생기면 크기 문제만이 아니므로 합격시키지 않는다.
 
+### 3.2 imagegen alpha-mask 합성
+
+선택한 한글 후보의 RGB·문자·스타일·layout은 합격했지만 imagegen이 alpha를 잃은 경우 다음
+조건을 모두 만족할 때만 mask 합성을 시도한다.
+
+- `origin=agent-generated`, PNG/RGBA8, source/candidate canvas exact 동일
+- 분석 단계에서 `alpha_policy=edit-region-only`로 증명된 자산
+- 현재 validator가 성공하거나 오류가 edit region 밖 alpha/RGBA diff뿐임
+- candidate RGB는 edit region 밖에서 source와 byte-exact
+- prior color receipt는 검증 가능한 schema 3 또는 schema 4
+
+mask prompt는 선택한 Korean candidate를 `Image 1` edit target으로 사용하며 다음 필드를 exact로
+포함한다.
+
+```text
+use_case: alpha-mask-recovery
+input_image_role: Image 1 = selected Korean candidate
+tool: image_gen.imagegen
+execution_surface: chatgpt-built-in
+model: provider-selected
+quality: provider-managed
+candidate_policy: best-of-3-fail-closed
+minimum_candidates: 3
+reference_sha256: <selected-candidate-sha256>
+output_mode: grayscale-alpha-mask
+mask_polarity: white-opaque
+mask_channel: luminance-rec709
+mask_canvas: <width>x<height>
+edit_regions: <x,y,w,h[;x,y,w,h...]>
+preserve_korean_glyph_edges: true
+opaque_output: true
+```
+
+같은 candidate와 prompt로 내장 imagegen을 3회 독립 호출하고 4회까지만 허용한다. 각 output은
+`alpha_masks/attempts/`의 새 파일에 보존한다. mask receipt schema 1은 기존 imagegen provenance와
+함께 각 attempt의 `technical_status`, `visual_status`, `edge_status`,
+`transparency_intent_status`, selection 및 rejection reasons를 기록한다. 정확히 하나만 selected이고
+top-level `mask_path`/hash와 일치해야 한다. selected mask는 source와 같은 canvas의 불투명 PNG이고
+edit region 안 RGB channel spread가 8 이하인 grayscale이어야 한다.
+
+먼저 dry-run하고 `ELIGIBLE`일 때만 적용한다.
+
+```bash
+npm run image:compose-alpha -- \
+  --project-root "<프로젝트 루트>" \
+  --manifest "<프로젝트 루트>/30_translation/image_translation/IMAGE_GENERATION_MANIFEST.tsv" \
+  --stable-key "<stable-key>" \
+  --mask-receipt "30_translation/image_translation/receipts/alpha_masks/<stable-key>.json" \
+  --apply
+```
+
+`source-outside-mask-luma-inside-v1` 알고리즘은 candidate RGB를 변경하지 않는다. edit region 안
+alpha는 selected mask의 Rec.709 luminance로 설정하고, 영역 밖 alpha는 source에서 byte-exact로
+복구한다. raw candidate/prior receipt와 모든 mask attempt/receipt는 수정하지 않고 다음 새 파일을
+만든다.
+
+- `for_translation/composed/<stable-key>.png`
+- `probes/composed/<stable-key>.candidate.rgba`
+- `receipts/composed/<stable-key>.json` (schema 5)
+
+schema 5의 `alpha_composition` 객체는 prior receipt/input candidate/probe, 원본 selected imagegen
+output, mask receipt/selected mask, input/output dimensions와 hashes, 고정 tool/algorithm을 연결한다.
+prior가 schema 4이면 normalization chain도 exact 보존하고 재검증한다. 합성 후 `image:validate`를
+다시 실행하며 mask가 input alpha를 실제로 바꾸지 않거나 영역 밖 RGBA/다른 QA가 실패하면
+합격시키지 않는다.
+
 ## 4. IMAGE_GENERATION_MANIFEST.tsv
 
 헤더 순서와 컬럼은 고정한다.
@@ -245,7 +312,7 @@ stable_key\tsource_path\tsource_sha256\treference_path\treference_sha256\tcandid
   `width × height × 4`와 exact 일치해야 한다.
 - `alpha_policy=exact`가 기본이다. 글자 모양 자체가 alpha에 들어 있어 한글 glyph로 인한 변경이
   불가피하다고 분석에서 증명한 행만 `edit-region-only`를 사용한다. 이 경우에도 edit region 밖
-  alpha는 byte-exact여야 한다.
+  alpha는 byte-exact여야 한다. §3.2 mask 합성은 `edit-region-only`에서만 허용한다.
 - 에이전트 생성은 `origin=agent-generated`, `generator=imagegen`,
   `tool=image_gen.imagegen`, `model=provider-selected`, `quality=provider-managed`,
   `generation_mode=edit`만 허용한다. 사용자 공급은 `origin=user-supplied`,
@@ -267,11 +334,13 @@ npm run image:validate -- --project-root "<프로젝트 루트>" --manifest "<�
 
 - source/reference/candidate가 서로 다른 프로젝트 내부 일반 파일이고 source/reference hash가 동일
 - declared SHA-256과 현재 파일·prompt·receipt·RGBA probe·모든 시도 output hash가 동일
-- agent-generated receipt가 schema 3 또는 검증된 canvas-size-only schema 4,
+- agent-generated receipt가 schema 3, 검증된 canvas-size-only schema 4, 또는 검증된 alpha-mask
+  composition schema 5,
   `image_gen.imagegen`, `chatgpt-built-in`,
   `provider-selected`/`provider-managed`, `best-of-3-fail-closed`, 최소 3개 독립 path/hash임
-- 정확히 하나의 선택 시도가 전 QA 상태를 통과함. schema 3은 manifest candidate와, schema 4는
-  normalization raw input과 일치하고 normalized output이 manifest candidate와 일치함
+- 정확히 하나의 color 선택 시도가 전 QA 상태를 통과함. schema 3은 manifest candidate와,
+  schema 4는 normalization raw input과, schema 5는 prior receipt의 selected imagegen output과
+  일치함. schema 5의 mask receipt도 정확히 하나의 mask 시도만 선택함
 - source/candidate canvas·format·color mode·anchor·atlas rect가 exact 동일
 - `alpha_policy=exact`면 모든 alpha byte가 동일하고, `edit-region-only`면 alpha 변경이 exact edit
   region 안으로만 제한됨

@@ -3,7 +3,11 @@ import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { flag, parseArgs, requiredOption } from './lib/args.mjs';
+import {
+  ALPHA_COMPOSITION_ALGORITHM, composeAlphaMask, parseEditRegions,
+} from './lib/image-alpha-mask.mjs';
 import { parseImageManifest } from './lib/image-manifest.mjs';
+import { validateAlphaMaskReceipt } from './lib/image-mask-receipt.mjs';
 import { decodePngRgba, encodePngRgba, resizeRgbaBilinear } from './lib/png-rgba.mjs';
 
 const imageRoot = '30_translation/image_translation/';
@@ -279,8 +283,15 @@ async function validateAgentAttempts(receipt, row, projectRoot, projectRealRoot,
   }
   if (selectedAttempt) {
     if (selectedAttempt.attempt !== receipt.selected_attempt) issues.push(`line ${row.__line}: receipt selected_attempt does not match selection_status=selected`);
-    const expectedPath = receipt.schema_version === 4 ? receipt.normalization?.input_path : row.candidate_path;
-    const expectedHash = receipt.schema_version === 4 ? receipt.normalization?.input_sha256 : row.candidate_sha256;
+    let expectedPath = row.candidate_path;
+    let expectedHash = row.candidate_sha256;
+    if (receipt.schema_version === 4) {
+      expectedPath = receipt.normalization?.input_path;
+      expectedHash = receipt.normalization?.input_sha256;
+    } else if (receipt.schema_version === 5) {
+      expectedPath = receipt.alpha_composition?.selected_imagegen_output_path;
+      expectedHash = receipt.alpha_composition?.selected_imagegen_output_sha256;
+    }
     if (selectedAttempt.output_path !== expectedPath) issues.push(`line ${row.__line}: selected imagegen output_path must equal the recorded raw candidate path`);
     if (selectedAttempt.output_sha256 !== expectedHash) issues.push(`line ${row.__line}: selected imagegen output_sha256 must equal the recorded raw candidate hash`);
   }
@@ -438,6 +449,201 @@ async function validateSizeNormalization(receipt, row, projectRoot, projectRealR
   }
 }
 
+async function validateAlphaComposition(receipt, row, projectRoot, projectRealRoot, evidence, dimensions, selectedAttempt, issues) {
+  const composition = receipt.alpha_composition;
+  if (!composition || typeof composition !== 'object' || Array.isArray(composition)) {
+    issues.push(`line ${row.__line}: schema 5 receipt requires an alpha_composition object`);
+    return;
+  }
+  const expectedFields = {
+    status: 'applied',
+    reason: 'imagegen-alpha-loss',
+    tool: 'game-translate.compose-imagegen-alpha',
+    algorithm: ALPHA_COMPOSITION_ALGORITHM,
+    output_path: row.candidate_path,
+    output_sha256: row.candidate_sha256,
+    output_rgba_path: row.candidate_rgba_path,
+    output_rgba_sha256: row.candidate_rgba_sha256,
+    input_width: dimensions.sourceWidth,
+    input_height: dimensions.sourceHeight,
+    output_width: dimensions.sourceWidth,
+    output_height: dimensions.sourceHeight,
+  };
+  for (const [field, expected] of Object.entries(expectedFields)) {
+    if (composition[field] !== expected) issues.push(`line ${row.__line}: alpha_composition ${field} must equal ${expected}`);
+  }
+  if (row.alpha_policy !== 'edit-region-only') issues.push(`line ${row.__line}: schema 5 alpha composition requires alpha_policy=edit-region-only`);
+  if (!row.candidate_path.startsWith(`${imageRoot}for_translation/composed/`)
+      || !row.candidate_rgba_path.startsWith(`${imageRoot}probes/composed/`)
+      || !row.receipt_path.startsWith(`${imageRoot}receipts/composed/`)) {
+    issues.push(`line ${row.__line}: schema 5 candidate, probe, and receipt must use composed/ paths`);
+  }
+  if (row.source_format.toLowerCase() !== 'png' || row.candidate_format.toLowerCase() !== 'png'
+      || row.source_color_mode.toLowerCase() !== 'rgba8' || row.candidate_color_mode.toLowerCase() !== 'rgba8') {
+    issues.push(`line ${row.__line}: schema 5 alpha composition supports PNG decoded as RGBA8 only`);
+  }
+
+  const priorReceiptEvidence = await fileEvidence(
+    projectRoot, projectRealRoot, composition.prior_receipt_path,
+    'alpha_composition.prior_receipt_path', row, issues,
+  );
+  const input = await fileEvidence(projectRoot, projectRealRoot, composition.input_path, 'alpha_composition.input_path', row, issues);
+  const inputRgba = await fileEvidence(
+    projectRoot, projectRealRoot, composition.input_rgba_path,
+    'alpha_composition.input_rgba_path', row, issues,
+  );
+  compareDeclaredHash(priorReceiptEvidence, composition.prior_receipt_sha256, 'alpha_composition.prior_receipt_sha256', row, issues);
+  compareDeclaredHash(input, composition.input_sha256, 'alpha_composition.input_sha256', row, issues);
+  compareDeclaredHash(inputRgba, composition.input_rgba_sha256, 'alpha_composition.input_rgba_sha256', row, issues);
+  if (typeof composition.prior_receipt_path !== 'string'
+      || !composition.prior_receipt_path.startsWith(`${imageRoot}receipts/`)
+      || composition.prior_receipt_path.startsWith(`${imageRoot}receipts/composed/`)
+      || typeof composition.input_path !== 'string'
+      || !composition.input_path.startsWith(`${imageRoot}for_translation/`)
+      || composition.input_path.startsWith(`${imageRoot}for_translation/composed/`)
+      || typeof composition.input_rgba_path !== 'string'
+      || !composition.input_rgba_path.startsWith(`${imageRoot}probes/`)
+      || composition.input_rgba_path.startsWith(`${imageRoot}probes/composed/`)) {
+    issues.push(`line ${row.__line}: alpha_composition must link non-composed prior receipt/input/probe paths`);
+  }
+
+  let priorReceipt = null;
+  if (priorReceiptEvidence) {
+    try {
+      priorReceipt = JSON.parse(priorReceiptEvidence.buffer.toString('utf8'));
+    } catch (error) {
+      issues.push(`line ${row.__line}: alpha composition prior receipt is not valid JSON (${error.message})`);
+    }
+  }
+  let priorSelectedAttempt = null;
+  if (priorReceipt) {
+    if (![3, 4].includes(priorReceipt.schema_version)) issues.push(`line ${row.__line}: alpha composition prior receipt must use schema 3 or 4`);
+    for (const field of [
+      'stable_key', 'origin', 'generator', 'tool', 'execution_surface', 'model', 'quality', 'api_endpoint',
+      'input_fidelity', 'operation', 'candidate_policy', 'minimum_candidates', 'selected_attempt',
+      'reference_path', 'reference_sha256', 'prompt_path', 'prompt_sha256', 'source_rgba_path',
+      'source_rgba_sha256', 'alpha_policy',
+    ]) {
+      if (priorReceipt[field] !== receipt[field]) issues.push(`line ${row.__line}: composed receipt changed prior ${field}`);
+    }
+    if (priorReceipt.candidate_path !== composition.input_path || priorReceipt.candidate_sha256 !== composition.input_sha256
+        || priorReceipt.candidate_rgba_path !== composition.input_rgba_path
+        || priorReceipt.candidate_rgba_sha256 !== composition.input_rgba_sha256) {
+      issues.push(`line ${row.__line}: prior receipt does not bind the alpha composition input candidate and probe`);
+    }
+    if (JSON.stringify(priorReceipt.attempts) !== JSON.stringify(receipt.attempts)) {
+      issues.push(`line ${row.__line}: composed receipt must preserve prior imagegen attempts exactly`);
+    }
+    if (JSON.stringify(priorReceipt.normalization) !== JSON.stringify(receipt.normalization)) {
+      issues.push(`line ${row.__line}: composed receipt must preserve prior normalization provenance exactly`);
+    }
+    priorSelectedAttempt = priorReceipt.attempts?.find((attempt) => attempt.attempt === priorReceipt.selected_attempt) ?? null;
+    if (!priorSelectedAttempt || priorSelectedAttempt.output_path !== composition.selected_imagegen_output_path
+        || priorSelectedAttempt.output_sha256 !== composition.selected_imagegen_output_sha256) {
+      issues.push(`line ${row.__line}: alpha composition selected imagegen output does not match the prior receipt`);
+    }
+  }
+  if (selectedAttempt && (selectedAttempt.output_path !== composition.selected_imagegen_output_path
+      || selectedAttempt.output_sha256 !== composition.selected_imagegen_output_sha256)) {
+    issues.push(`line ${row.__line}: current selected imagegen attempt does not bind alpha composition provenance`);
+  }
+
+  const maskRow = { ...row, candidate_path: composition.input_path, candidate_sha256: composition.input_sha256 };
+  const maskValidation = await validateAlphaMaskReceipt({
+    projectRoot,
+    projectRealRoot,
+    receiptPath: composition.mask_receipt_path,
+    receiptSha256: composition.mask_receipt_sha256,
+    row: maskRow,
+    protectedEvidence: [...Object.values(evidence), priorReceiptEvidence, input, inputRgba].filter(Boolean),
+  });
+  for (const issue of maskValidation.issues) issues.push(`line ${row.__line}: ${issue}`);
+  if (maskValidation.receipt) {
+    for (const [field, expected] of Object.entries({
+      mask_path: maskValidation.receipt.mask_path,
+      mask_sha256: maskValidation.receipt.mask_sha256,
+      mask_polarity: maskValidation.receipt.mask_polarity,
+      mask_channel: maskValidation.receipt.mask_channel,
+    })) {
+      if (composition[field] !== expected) issues.push(`line ${row.__line}: alpha_composition ${field} must match the mask receipt`);
+    }
+  }
+
+  if (priorReceipt?.schema_version === 4 && input && inputRgba) {
+    const priorRow = {
+      ...row,
+      candidate_path: composition.input_path,
+      candidate_sha256: composition.input_sha256,
+      candidate_rgba_path: composition.input_rgba_path,
+      candidate_rgba_sha256: composition.input_rgba_sha256,
+      receipt_path: composition.prior_receipt_path,
+      receipt_sha256: composition.prior_receipt_sha256,
+    };
+    await validateSizeNormalization(
+      priorReceipt,
+      priorRow,
+      projectRoot,
+      projectRealRoot,
+      {
+        source: evidence.source,
+        reference: evidence.reference,
+        candidate: input,
+        sourceRgba: evidence.sourceRgba,
+        candidateRgba: inputRgba,
+        receiptEvidence: priorReceiptEvidence,
+        promptEvidence: evidence.promptEvidence,
+      },
+      dimensions,
+      priorSelectedAttempt,
+      issues,
+    );
+  }
+
+  const linkedEvidence = [priorReceiptEvidence, input, inputRgba, maskValidation.receiptEvidence, maskValidation.selectedMaskEvidence].filter(Boolean);
+  for (const entry of linkedEvidence) {
+    if (entry.stat.nlink > 1) issues.push(`line ${row.__line}: alpha composition provenance files must not be hard-linked`);
+    if (Object.values(evidence).filter(Boolean).some((protectedEntry) => isSamePhysicalFile(entry, protectedEntry))) {
+      issues.push(`line ${row.__line}: alpha composition input/mask/prior receipt must be physically distinct from output evidence`);
+    }
+  }
+
+  try {
+    if (evidence.source && evidence.sourceRgba && evidence.candidate && evidence.candidateRgba
+        && input && inputRgba && maskValidation.selectedMaskEvidence) {
+      const decodedSource = decodePngRgba(evidence.source.buffer);
+      const decodedInput = decodePngRgba(input.buffer);
+      const decodedMask = decodePngRgba(maskValidation.selectedMaskEvidence.buffer);
+      const decodedOutput = decodePngRgba(evidence.candidate.buffer);
+      const dimensionsMatch = [decodedSource, decodedInput, decodedMask, decodedOutput]
+        .every((decoded) => decoded.width === dimensions.sourceWidth && decoded.height === dimensions.sourceHeight);
+      if (!dimensionsMatch || !decodedSource.rgba.equals(evidence.sourceRgba.buffer)
+          || !decodedInput.rgba.equals(inputRgba.buffer) || !decodedOutput.rgba.equals(evidence.candidateRgba.buffer)) {
+        issues.push(`line ${row.__line}: alpha composition PNG IHDR/decoded RGBA does not match provenance evidence`);
+      } else {
+        const regions = parseEditRegions(row.edit_regions);
+        const expected = composeAlphaMask({
+          sourceRgba: decodedSource.rgba,
+          candidateRgba: decodedInput.rgba,
+          maskRgba: decodedMask.rgba,
+          width: dimensions.sourceWidth,
+          height: dimensions.sourceHeight,
+          regions,
+        });
+        const expectedPng = encodePngRgba(dimensions.sourceWidth, dimensions.sourceHeight, expected.rgba);
+        if (expected.metrics.rgbDriftOutsideRegions > 0) issues.push(`line ${row.__line}: alpha composition input RGB changed outside edit_regions`);
+        if (expected.metrics.nonOpaqueMaskPixels > 0) issues.push(`line ${row.__line}: alpha mask must be opaque inside edit_regions`);
+        if (expected.metrics.grayscaleDriftPixels > 0) issues.push(`line ${row.__line}: alpha mask exceeds grayscale tolerance inside edit_regions`);
+        if (expected.metrics.changedAlphaPixels === 0) issues.push(`line ${row.__line}: alpha composition mask does not change input alpha`);
+        if (!expected.rgba.equals(evidence.candidateRgba.buffer) || !expectedPng.equals(evidence.candidate.buffer)) {
+          issues.push(`line ${row.__line}: alpha-composed candidate bytes do not match the declared deterministic algorithm`);
+        }
+      }
+    }
+  } catch (error) {
+    issues.push(`line ${row.__line}: cannot validate alpha composition evidence (${error.message})`);
+  }
+}
+
 async function validateRow(row, projectRoot, projectRealRoot, issues) {
   if (!row.stable_key || /[\t\r\n]/.test(row.stable_key)) issues.push(`line ${row.__line}: stable_key is empty or invalid`);
   for (const [field, prefix] of Object.entries(requiredPrefixes)) {
@@ -587,7 +793,8 @@ async function validateRow(row, projectRoot, projectRealRoot, issues) {
     }
   }
   if (receipt) {
-    const expectedSchema = row.origin === 'agent-generated' && receipt.normalization ? 4 : (row.origin === 'agent-generated' ? 3 : 2);
+    const expectedSchema = row.origin === 'agent-generated' && receipt.alpha_composition
+      ? 5 : (row.origin === 'agent-generated' && receipt.normalization ? 4 : (row.origin === 'agent-generated' ? 3 : 2));
     exactReceiptField(receipt, 'schema_version', expectedSchema, row, issues);
     exactReceiptField(receipt, 'stable_key', row.stable_key, row, issues);
     exactReceiptField(receipt, 'origin', row.origin, row, issues);
@@ -620,6 +827,17 @@ async function validateRow(row, projectRoot, projectRealRoot, issues) {
       );
       if (receipt.schema_version === 4) {
         await validateSizeNormalization(
+          receipt,
+          row,
+          projectRoot,
+          projectRealRoot,
+          { source, reference, candidate, sourceRgba, candidateRgba, receiptEvidence, promptEvidence },
+          { sourceWidth, sourceHeight, candidateWidth, candidateHeight },
+          selectedAttempt,
+          issues,
+        );
+      } else if (receipt.schema_version === 5) {
+        await validateAlphaComposition(
           receipt,
           row,
           projectRoot,

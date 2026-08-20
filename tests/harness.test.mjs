@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { encodePngRgba } from '../scripts/lib/png-rgba.mjs';
+import { decodePngRgba, encodePngRgba } from '../scripts/lib/png-rgba.mjs';
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const scriptsRoot = path.join(repositoryRoot, 'scripts');
@@ -310,6 +310,173 @@ async function createResizableImageHarnessFixture(tempRoot, inputWidth = 4, inpu
   await fixture.writeReceipt();
   await fixture.writeManifest();
   return { ...fixture, sourceRgba, targetRgba, inputRgba };
+}
+
+async function createAlphaMaskHarnessFixture(tempRoot) {
+  const fixture = await createImageHarnessFixture(tempRoot);
+  const sourceRgba = Buffer.from(fixture.sourceRgba);
+  const inputRgba = Buffer.from(fixture.candidateRgba);
+  for (let offset = 3; offset < inputRgba.length; offset += 4) inputRgba[offset] = 255;
+  const sourcePng = encodePngRgba(2, 2, sourceRgba);
+  const inputPng = encodePngRgba(2, 2, inputRgba);
+  const previousReferenceSha = fixture.row.reference_sha256;
+  await fs.writeFile(fixture.absolute.source, sourcePng);
+  await fs.writeFile(fixture.absolute.reference, sourcePng);
+  await fs.writeFile(fixture.absolute.candidate, inputPng);
+  await fs.writeFile(fixture.absolute.sourceRgba, sourceRgba);
+  await fs.writeFile(fixture.absolute.candidateRgba, inputRgba);
+
+  fixture.row.source_sha256 = sha256(sourcePng);
+  fixture.row.reference_sha256 = sha256(sourcePng);
+  fixture.row.candidate_sha256 = sha256(inputPng);
+  fixture.row.source_rgba_sha256 = sha256(sourceRgba);
+  fixture.row.candidate_rgba_sha256 = sha256(inputRgba);
+  fixture.row.source_format = 'png';
+  fixture.row.candidate_format = 'png';
+  fixture.row.alpha_policy = 'edit-region-only';
+  fixture.receipt.reference_sha256 = fixture.row.reference_sha256;
+  fixture.receipt.candidate_sha256 = fixture.row.candidate_sha256;
+  fixture.receipt.source_rgba_sha256 = fixture.row.source_rgba_sha256;
+  fixture.receipt.candidate_rgba_sha256 = fixture.row.candidate_rgba_sha256;
+  fixture.receipt.alpha_policy = fixture.row.alpha_policy;
+  for (const attempt of fixture.receipt.attempts) attempt.reference_sha256 = fixture.row.reference_sha256;
+  fixture.receipt.attempts[1].output_sha256 = fixture.row.candidate_sha256;
+  const prompt = (await fs.readFile(fixture.absolute.prompt, 'utf8'))
+    .replace(`reference_sha256: ${previousReferenceSha}`, `reference_sha256: ${fixture.row.reference_sha256}`)
+    .replace('preserve_alpha: exact', 'preserve_alpha: edit-region-only');
+  await fixture.writePrompt(prompt);
+  await fixture.writeReceipt();
+  await fixture.writeManifest();
+
+  const maskRelative = {
+    prompt: '30_translation/image_translation/prompts/alpha_masks/ui/title.txt',
+    receipt: '30_translation/image_translation/receipts/alpha_masks/ui/title.json',
+    attempt1: '30_translation/image_translation/alpha_masks/attempts/ui/title-attempt-01.png',
+    selected: '30_translation/image_translation/alpha_masks/ui/title.png',
+    attempt3: '30_translation/image_translation/alpha_masks/attempts/ui/title-attempt-03.png',
+  };
+  const maskAbsolute = Object.fromEntries(Object.entries(maskRelative).map(([key, value]) => [key, path.join(fixture.projectRoot, ...value.split('/'))]));
+  for (const target of Object.values(maskAbsolute)) await fs.mkdir(path.dirname(target), { recursive: true });
+  const makeMask = (insideAlpha) => Buffer.from([
+    255, 255, 255, 255, insideAlpha, insideAlpha, insideAlpha, 255,
+    0, 0, 0, 255, 255, 255, 255, 255,
+  ]);
+  const masks = [makeMask(32), makeMask(64), makeMask(96)];
+  const maskPngs = masks.map((rgba) => encodePngRgba(2, 2, rgba));
+  await fs.writeFile(maskAbsolute.attempt1, maskPngs[0]);
+  await fs.writeFile(maskAbsolute.selected, maskPngs[1]);
+  await fs.writeFile(maskAbsolute.attempt3, maskPngs[2]);
+  const maskPrompt = [
+    'use_case: alpha-mask-recovery',
+    'input_image_role: Image 1 = selected Korean candidate',
+    'tool: image_gen.imagegen',
+    'execution_surface: chatgpt-built-in',
+    'model: provider-selected',
+    'quality: provider-managed',
+    'candidate_policy: best-of-3-fail-closed',
+    'minimum_candidates: 3',
+    `reference_sha256: ${fixture.row.candidate_sha256}`,
+    'output_mode: grayscale-alpha-mask',
+    'mask_polarity: white-opaque',
+    'mask_channel: luminance-rec709',
+    'mask_canvas: 2x2',
+    `edit_regions: ${fixture.row.edit_regions}`,
+    'preserve_korean_glyph_edges: true',
+    'opaque_output: true',
+    '',
+  ].join('\n');
+  await fs.writeFile(maskAbsolute.prompt, maskPrompt);
+  const maskReceipt = {
+    schema_version: 1,
+    purpose: 'alpha-mask',
+    stable_key: fixture.row.stable_key,
+    origin: 'agent-generated',
+    generator: 'imagegen',
+    tool: 'image_gen.imagegen',
+    execution_surface: 'chatgpt-built-in',
+    model: 'provider-selected',
+    quality: 'provider-managed',
+    api_endpoint: 'N/A',
+    input_fidelity: 'provider-managed',
+    operation: 'edit',
+    candidate_policy: 'best-of-3-fail-closed',
+    minimum_candidates: 3,
+    selected_attempt: 2,
+    reference_path: fixture.row.candidate_path,
+    reference_sha256: fixture.row.candidate_sha256,
+    prompt_path: maskRelative.prompt,
+    prompt_sha256: sha256(Buffer.from(maskPrompt)),
+    mask_path: maskRelative.selected,
+    mask_sha256: sha256(maskPngs[1]),
+    mask_polarity: 'white-opaque',
+    mask_channel: 'luminance-rec709',
+    canvas_width: 2,
+    canvas_height: 2,
+    edit_regions: fixture.row.edit_regions,
+    attempts: [
+      {
+        attempt: 1,
+        tool: 'image_gen.imagegen',
+        operation: 'edit',
+        reference_path: fixture.row.candidate_path,
+        reference_sha256: fixture.row.candidate_sha256,
+        prompt_path: maskRelative.prompt,
+        prompt_sha256: sha256(Buffer.from(maskPrompt)),
+        output_path: maskRelative.attempt1,
+        output_sha256: sha256(maskPngs[0]),
+        generation_status: 'completed',
+        technical_status: 'reject',
+        visual_status: 'reject',
+        edge_status: 'reject',
+        transparency_intent_status: 'pass',
+        selection_status: 'rejected',
+        rejection_reasons: ['glyph edge is too soft'],
+      },
+      {
+        attempt: 2,
+        tool: 'image_gen.imagegen',
+        operation: 'edit',
+        reference_path: fixture.row.candidate_path,
+        reference_sha256: fixture.row.candidate_sha256,
+        prompt_path: maskRelative.prompt,
+        prompt_sha256: sha256(Buffer.from(maskPrompt)),
+        output_path: maskRelative.selected,
+        output_sha256: sha256(maskPngs[1]),
+        generation_status: 'completed',
+        technical_status: 'pass',
+        visual_status: 'pass',
+        edge_status: 'pass',
+        transparency_intent_status: 'pass',
+        selection_status: 'selected',
+        rejection_reasons: [],
+      },
+      {
+        attempt: 3,
+        tool: 'image_gen.imagegen',
+        operation: 'edit',
+        reference_path: fixture.row.candidate_path,
+        reference_sha256: fixture.row.candidate_sha256,
+        prompt_path: maskRelative.prompt,
+        prompt_sha256: sha256(Buffer.from(maskPrompt)),
+        output_path: maskRelative.attempt3,
+        output_sha256: sha256(maskPngs[2]),
+        generation_status: 'completed',
+        technical_status: 'pass',
+        visual_status: 'pass',
+        edge_status: 'pass',
+        transparency_intent_status: 'pass',
+        selection_status: 'qualified',
+        rejection_reasons: [],
+      },
+    ],
+  };
+  async function writeMaskReceipt() {
+    await fs.writeFile(maskAbsolute.receipt, `${JSON.stringify(maskReceipt, null, 2)}\n`);
+  }
+  await writeMaskReceipt();
+  return {
+    ...fixture, sourceRgba, inputRgba, maskRelative, maskAbsolute, maskReceipt, masks, maskPngs, writeMaskReceipt,
+  };
 }
 
 async function createReleaseRuntimeFixture(tempRoot, existingProjectRoot = null) {
@@ -988,6 +1155,126 @@ test('image harness rejects tampered size-normalization provenance', async () =>
       '--manifest', fixture.absolute.manifest,
     ]);
     assert.match(output, /normalization algorithm must equal premultiplied-alpha-bilinear-rgba8-v1/);
+  } finally {
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('image alpha compositor applies a best-of-3 imagegen mask only inside edit regions', async () => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'game-translate-image-alpha-compose-'));
+  try {
+    const fixture = await createAlphaMaskHarnessFixture(tempRoot);
+    const args = [
+      '--project-root', fixture.projectRoot,
+      '--manifest', fixture.absolute.manifest,
+      '--stable-key', fixture.row.stable_key,
+      '--mask-receipt', fixture.maskRelative.receipt,
+    ];
+    assert.match(runNode('compose-imagegen-alpha.mjs', args), /Result: ELIGIBLE/);
+    assert.match(runNode('compose-imagegen-alpha.mjs', [...args, '--apply']), /Result: APPLIED/);
+    const output = runNode('validate-image-translation.mjs', [
+      '--project-root', fixture.projectRoot,
+      '--manifest', fixture.absolute.manifest,
+    ]);
+    assert.match(output, /Issues: 0/);
+    const composedPath = path.join(fixture.projectRoot, '30_translation', 'image_translation', 'for_translation', 'composed', 'ui', 'title.png');
+    const composed = decodePngRgba(await fs.readFile(composedPath)).rgba;
+    assert.equal(composed[7], 64);
+    assert.equal(composed[11], fixture.sourceRgba[11]);
+    assert.equal(await fs.readFile(fixture.absolute.candidate).then((buffer) => buffer.equals(encodePngRgba(2, 2, fixture.inputRgba))), true);
+  } finally {
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('image alpha compositor refuses non-alpha QA errors and outside-region RGB drift', async () => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'game-translate-image-alpha-compose-refuse-'));
+  try {
+    const fixture = await createAlphaMaskHarnessFixture(tempRoot);
+    fixture.row.original_feel_status = 'fail';
+    await fixture.writeManifest();
+    let output = runNodeFailureOutput('compose-imagegen-alpha.mjs', [
+      '--project-root', fixture.projectRoot,
+      '--manifest', fixture.absolute.manifest,
+      '--stable-key', fixture.row.stable_key,
+      '--mask-receipt', fixture.maskRelative.receipt,
+      '--apply',
+    ]);
+    assert.match(output, /validation has non-alpha issue/);
+
+    fixture.row.original_feel_status = 'pass';
+    fixture.inputRgba[0] = 222;
+    const inputPng = encodePngRgba(2, 2, fixture.inputRgba);
+    await fs.writeFile(fixture.absolute.candidate, inputPng);
+    await fs.writeFile(fixture.absolute.candidateRgba, fixture.inputRgba);
+    fixture.row.candidate_sha256 = sha256(inputPng);
+    fixture.row.candidate_rgba_sha256 = sha256(fixture.inputRgba);
+    fixture.receipt.candidate_sha256 = fixture.row.candidate_sha256;
+    fixture.receipt.candidate_rgba_sha256 = fixture.row.candidate_rgba_sha256;
+    fixture.receipt.attempts[1].output_sha256 = fixture.row.candidate_sha256;
+    await fixture.writeReceipt();
+    await fixture.writeManifest();
+    const previousMaskReferenceSha = fixture.maskReceipt.reference_sha256;
+    const maskPrompt = (await fs.readFile(fixture.maskAbsolute.prompt, 'utf8'))
+      .replace(`reference_sha256: ${previousMaskReferenceSha}`, `reference_sha256: ${fixture.row.candidate_sha256}`);
+    await fs.writeFile(fixture.maskAbsolute.prompt, maskPrompt);
+    fixture.maskReceipt.reference_sha256 = fixture.row.candidate_sha256;
+    fixture.maskReceipt.prompt_sha256 = sha256(Buffer.from(maskPrompt));
+    for (const attempt of fixture.maskReceipt.attempts) {
+      attempt.reference_sha256 = fixture.row.candidate_sha256;
+      attempt.prompt_sha256 = fixture.maskReceipt.prompt_sha256;
+    }
+    await fixture.writeMaskReceipt();
+    output = runNodeFailureOutput('compose-imagegen-alpha.mjs', [
+      '--project-root', fixture.projectRoot,
+      '--manifest', fixture.absolute.manifest,
+      '--stable-key', fixture.row.stable_key,
+      '--mask-receipt', fixture.maskRelative.receipt,
+      '--apply',
+    ]);
+    assert.match(output, /candidate RGB changed outside edit_regions/);
+  } finally {
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('image alpha compositor rejects a selected mask with failed edge QA', async () => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'game-translate-image-alpha-mask-tamper-'));
+  try {
+    const fixture = await createAlphaMaskHarnessFixture(tempRoot);
+    fixture.maskReceipt.attempts[1].edge_status = 'reject';
+    fixture.maskReceipt.attempts[1].rejection_reasons = ['glyph edge no longer matches'];
+    await fixture.writeMaskReceipt();
+    const output = runNodeFailureOutput('compose-imagegen-alpha.mjs', [
+      '--project-root', fixture.projectRoot,
+      '--manifest', fixture.absolute.manifest,
+      '--stable-key', fixture.row.stable_key,
+      '--mask-receipt', fixture.maskRelative.receipt,
+      '--apply',
+    ]);
+    assert.match(output, /selected alpha mask attempt must pass every QA status/);
+  } finally {
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('image harness rejects a selected alpha mask changed after composition', async () => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'game-translate-image-alpha-post-tamper-'));
+  try {
+    const fixture = await createAlphaMaskHarnessFixture(tempRoot);
+    runNode('compose-imagegen-alpha.mjs', [
+      '--project-root', fixture.projectRoot,
+      '--manifest', fixture.absolute.manifest,
+      '--stable-key', fixture.row.stable_key,
+      '--mask-receipt', fixture.maskRelative.receipt,
+      '--apply',
+    ]);
+    await fs.writeFile(fixture.maskAbsolute.selected, fixture.maskPngs[0]);
+    const output = runNodeFailureOutput('validate-image-translation.mjs', [
+      '--project-root', fixture.projectRoot,
+      '--manifest', fixture.absolute.manifest,
+    ]);
+    assert.match(output, /alpha mask attempts\[1\]\.output_sha256 does not match current file bytes/);
   } finally {
     await fs.rm(tempRoot, { recursive: true, force: true });
   }

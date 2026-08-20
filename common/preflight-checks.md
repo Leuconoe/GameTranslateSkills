@@ -101,8 +101,8 @@ project_artifact_manifest: 90_tools/PROJECT_ARTIFACT_MANIFEST.tsv
 - 전체 가시 코드포인트·폰트 glyph 매핑·아틀라스 rect·metrics·왕복·render probe가 없거나
   `font_status=verified`가 아닌데 text/image review-ready를 선언함
 - `image_scope: N/A`인데 이미지 대상이 남아 있거나, 반대로 이미지 대상이 없는데 가짜 후보·검수 행을 만든 경우
-- 이미지 후보가 내장 `image_gen.imagegen` schema 3 receipt 또는 검증된 canvas-size-only schema 4
-  receipt, 같은 reference/prompt의 최소 3개
+- 이미지 후보가 내장 `image_gen.imagegen` schema 3 receipt, 검증된 canvas-size-only schema 4,
+  또는 best-of-3 alpha mask composition schema 5 receipt이며 같은 reference/prompt의 최소 3개
   독립 호출, 정확히 하나의 전 QA 합격 선택 후보를 증명하지 못하거나 API/CLI·로컬 raster
   생성기로 폴백한 경우
 - 기본 smoke 전에 Eden-MCP와 Ryubing-MCP 양쪽 Title inventory를 확인하지 않았거나,

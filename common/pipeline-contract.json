@@ -1,5 +1,5 @@
 {
-  "schema_version": 8,
+  "schema_version": 9,
   "entry_skill": "gt-analyze",
   "convergence_skill": "gt-qa",
   "release_skill": "gt-release",
@@ -51,6 +51,10 @@
     "normalized_receipt_schema": 4,
     "normalization_reason": "canvas-size-only",
     "normalization_algorithm": "premultiplied-alpha-bilinear-rgba8-v1",
+    "alpha_compositor": "scripts/compose-imagegen-alpha.mjs",
+    "alpha_mask_receipt_schema": 1,
+    "alpha_composition_receipt_schema": 5,
+    "alpha_composition_algorithm": "source-outside-mask-luma-inside-v1",
     "agent_generator": "imagegen",
     "tool": "image_gen.imagegen",
     "execution_surface": "chatgpt-built-in",

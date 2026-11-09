@@ -27,6 +27,10 @@ description: "Orchestrate a fail-closed Korean game-localization workflow across
 6. 플랫폼 어댑터 `platforms/<platform>/PLATFORM.md`와 현재 단계 문서
 7. 엔진을 식별한 뒤 `engines/<engine>/ENGINE.md`
 
+도구를 실행하거나 재시도하기 전에는 `common/preflight-checks.md`의
+**도구 호출 중복 방지**를 적용한다. 완료 결과와 실행 중인 세션을 재사용하고,
+같은 실패 호출을 원인 변경 없이 반복하지 않는다.
+
 타이틀 루트는 플랫폼 어댑터가 증명한 원본이 직접 있는 실제 폴더다(NSW는 `.nsp`/`.xci`,
 Steam/PC는 실제 게임 EXE가 있는 설치 폴더). 작업물·임시 파일·staging·
 런타임 증거는 그 폴더의 `_work/<프로젝트 ID>/` 아래에만 둔다. `GT_HOME`, 저장소 루트,

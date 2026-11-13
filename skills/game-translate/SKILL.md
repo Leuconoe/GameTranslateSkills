@@ -48,10 +48,14 @@ managed root의 미등록 파일이나 hash drift가 있으면 해당 단계는 
 --stage <기능> --assert-output "<output/temp/cache>"`로 각 경로를 검사한다. 하나라도 프로젝트
 밖이거나 기능별 canonical root 밖이면 명령을 실행하지 않는다.
 
-## 0.1. 타이틀 언어·지역판 사전조사
+## 0.1. 타이틀 언어·지역판·기존 작업 이력 사전조사
 
 대량 추출·번역·폰트/이미지 수정 전에
-[`common/language-preflight.md`](../../common/language-preflight.md)를 적용한다. 공식
+[`common/language-preflight.md`](../../common/language-preflight.md)를 적용한다. 새 프로젝트
+생성 전에 이전 세션·기존/완료 타이틀의 번역 이력을 확인하고, 같은 게임이나 유사
+제목의 기록이 있으면 버전·범위·상태·결과물 및 이번 대상과의 관계를 먼저 알린다.
+같은 게임은 기존 결과 재사용/차이 작업을 기본으로 하며 전체 재번역을 자동 시작하지
+않는다. 공식
 스토어·개발사/배급사 자료에서 UI·자막·음성 언어와 동일 게임의 지역판 관계를 조사하고,
 보유 입력/업데이트의 최소 메타데이터와 교차 확인한다. 공식 한국어 지원판이 있으면
 먼저 사용자에게 안내하고, 기존 지시 또는 확인된 보완 범위에 맞춰 분기한다.
@@ -62,7 +66,7 @@ managed root의 미등록 파일이나 hash drift가 있으면 해당 단계는 
 
 | 순서 | 단계 | 스킬 | 완료 상태 |
 |---:|---|---|---|
-| 0 | 공식 언어·지역판 사전조사 및 작업 범위 결정 | `gt-analyze` / 공통 preflight | 조사 근거·분기 기록 |
+| 0 | 기존 번역 이력·공식 언어·지역판 조사 및 작업 범위 결정 | `gt-analyze` / 공통 preflight | 조사 근거·분기 기록 |
 | 1 | 공통 파일·엔진·언어 슬롯 분석 | `gt-analyze` | `project_status=analyzed` |
 | 2 | 텍스트 대상·왕복 계약 분석 | `gt-text-analyze` | text `analyzed` |
 | 3 | 텍스트 번역·용어집 누적 | `gt-text-translate` | text `translated` |

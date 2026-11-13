@@ -5,7 +5,8 @@ description: "Overall analysis entry stage for game localization: extract game f
 
 # gt-analyze — 공통 분석: 파일·엔진·언어 슬롯 분석
 
-게임 파일을 추출하고 엔진·포맷·언어 구조를 식별하여 번역 대상 인벤토리를 만든다.
+공식 지원 언어와 지역판 관계를 먼저 조사하여 번역 필요 범위를 결정한다. 번역이 필요한
+경우 게임 파일을 추출하고 엔진·포맷·언어 구조를 식별하여 번역 대상 인벤토리를 만든다.
 
 > `$GT_HOME` = 지식 베이스 루트. Codex에서는 이 스킬이 설치된 플러그인 루트(상위에 `.codex-plugin/`, `skills/`, `common/`이 있는 디렉터리)로 해석하고, Claude Code 플러그인에서는 `${CLAUDE_PLUGIN_ROOT}`를 사용한다. 플러그인 외 수동 설치는 지원하지 않는다.
 > 시작 전에 `$GT_HOME/common/preflight-checks.md`를 읽고 프로젝트·경로·입력 해시·정책 불일치를 점검한다.
@@ -26,6 +27,13 @@ description: "Overall analysis entry stage for game localization: extract game f
    확인한다. 종료 코드 0만으로 추출 성공을 선언하지 않으며, 빈 출력·예상보다 적은 파일·파싱 실패·
    선언 크기와 실제 크기 불일치가 하나라도 있으면 `BLOCKED`로 기록한다. 경로·Title ID·키 조건을
    확정하지 못하면 GUI나 임의 입력으로 우회하지 않는다.
+
+0.1. **언어·지역판 사전조사**: [`common/language-preflight.md`](../../common/language-preflight.md)를
+   적용한다. 대량 추출 전에 공식 UI/자막/음성 지원 언어와 다른 지역의 한국어 지원판을
+   검색하고 보유 입력/업데이트의 최소 메타데이터로 교차 확인한다. 동일 게임의 지역별
+   제품명과 패키지 ID를 구분한다. 공식 한국어가 있으면 먼저 안내하고 실제 보완 범위를
+   정한다. 미확인/불일치를 한국어 미지원으로 취급하지 않는다. 공식 한국어 사용 안내로
+   끝나면 아래 번역용 추출·전수 분석을 실행하지 않고 조사 결과와 분기만 기록한다.
 
 1. **원본 인벤토리**: 원본 파일의 절대경로·크기·해시를 `00_source/SOURCE_INVENTORY.tsv`로
    기록 (컬럼: `path │ size │ sha256 │ 비고`). 원본은 이후 절대 수정·이동하지 않는다.
@@ -59,6 +67,10 @@ description: "Overall analysis entry stage for game localization: extract game f
 
 ## 완료 기준
 
+언어 사전조사의 출처·지역/버전·로컬 확인 한계·사용자 안내·작업 결정을 먼저 기록한다.
+아래 기준은 번역 브랜치를 실제로 진행하는 경우에 적용한다. 공식 한국어 사용 안내로
+끝난 경우 수행하지 않은 추출/번역/QA를 완료로 표시하지 않는다.
+
 - [ ] 엔진과 텍스트 포맷이 식별되고 근거가 기록됨
 - [ ] 대상 언어 슬롯이 결정됨
 - [ ] 텍스트/이미지/폰트 대상 목록이 빠짐없이 작성됨 (전수 조사 — 샘플링 금지).
@@ -73,4 +85,6 @@ description: "Overall analysis entry stage for game localization: extract game f
 
 미충족 항목이 있으면 다음 단계로 진행하지 않는다.
 
-완료 시 `gt-text-analyze`로 진행한다. 사용자 승인을 기다리는 단계가 아니다.
+번역 필요 또는 사용자 지정 보완 범위가 확인되고 위 기준을 충족한 경우
+`gt-text-analyze`로 진행한다. 기존 `prepare-only` 검수 정책은 유지한다. 공식 한국어
+지원이 확인됐으나 보완 여부가 불명확하면 언어 사전조사 절차에 따라 범위만 확인한다.

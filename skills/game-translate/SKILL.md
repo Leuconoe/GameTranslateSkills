@@ -48,10 +48,21 @@ managed root의 미등록 파일이나 hash drift가 있으면 해당 단계는 
 --stage <기능> --assert-output "<output/temp/cache>"`로 각 경로를 검사한다. 하나라도 프로젝트
 밖이거나 기능별 canonical root 밖이면 명령을 실행하지 않는다.
 
+## 0.1. 타이틀 언어·지역판 사전조사
+
+대량 추출·번역·폰트/이미지 수정 전에
+[`common/language-preflight.md`](../../common/language-preflight.md)를 적용한다. 공식
+스토어·개발사/배급사 자료에서 UI·자막·음성 언어와 동일 게임의 지역판 관계를 조사하고,
+보유 입력/업데이트의 최소 메타데이터와 교차 확인한다. 공식 한국어 지원판이 있으면
+먼저 사용자에게 안내하고, 기존 지시 또는 확인된 보완 범위에 맞춰 분기한다.
+한국어 사용 안내로 목적이 충족되면 번역 브랜치를 자동 시작하지 않는다. 재개/개별 단계
+호출도 조사 누락·입력 변경을 점검하며 유효한 기존 근거는 재사용한다.
+
 ## 1. 실제 단계 흐름
 
 | 순서 | 단계 | 스킬 | 완료 상태 |
 |---:|---|---|---|
+| 0 | 공식 언어·지역판 사전조사 및 작업 범위 결정 | `gt-analyze` / 공통 preflight | 조사 근거·분기 기록 |
 | 1 | 공통 파일·엔진·언어 슬롯 분석 | `gt-analyze` | `project_status=analyzed` |
 | 2 | 텍스트 대상·왕복 계약 분석 | `gt-text-analyze` | text `analyzed` |
 | 3 | 텍스트 번역·용어집 누적 | `gt-text-translate` | text `translated` |
@@ -64,7 +75,8 @@ managed root의 미등록 파일이나 hash drift가 있으면 해당 단계는 
 | 10 | 텍스트·폰트·이미지 통합 빌드·실행 QA | `gt-qa` | `qa_status=passed` |
 | 11 | 플랫폼 배포 패키징 | `gt-release` | `release_status=released` |
 
-기본 실행 순서는 표와 같으며, 공통 분석 뒤 텍스트 브랜치를 먼저 끝내 이미지 안의
+번역이 필요한 것으로 결정된 경우의 기본 실행 순서는 표와 같으며, 공통 분석 뒤
+텍스트 브랜치를 먼저 끝내 이미지 안의
 문자에 glossary·STYLE을 공급한다. 프로젝트가 읽기 전용 병렬 분석을 허용해도 같은
 manifest·번역표·staging을 동시에 쓰지 않는다.
 

@@ -42,6 +42,31 @@ const classRules = new Map([
   ['cache', { stagePrefix: '90_tools/work/' }],
 ]);
 const scriptExtensions = new Set(['.ps1', '.py', '.mjs', '.js', '.sh', '.bat', '.cmd']);
+// Empty files legitimately share this hash, so they are exempt from duplicate-content checks.
+const EMPTY_SHA256 = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
+
+// Repeated-work guards: identical bytes registered twice mean a copy was made instead of reusing the
+// existing artifact; two active rows for the same producer+reproduce_command mean the same work was
+// re-run without superseding the earlier result.
+function workIdentity(row) {
+  return row.reproduce_command ? `${row.producer}\u0000${row.reproduce_command}` : null;
+}
+
+function repeatedWorkProblems(rows, candidate) {
+  const problems = [];
+  const live = rows.filter((row) => row.status !== 'archived' && row !== candidate);
+  const sha = candidate.sha256?.toLowerCase();
+  if (sha && sha !== EMPTY_SHA256 && candidate.status !== 'archived') {
+    const twin = live.find((row) => row.sha256?.toLowerCase() === sha);
+    if (twin) problems.push(`Duplicate content: same SHA-256 as ${twin.path} (${twin.artifact_key}); reuse that artifact instead of copying it`);
+  }
+  const work = workIdentity(candidate);
+  if (work && candidate.status === 'active') {
+    const twin = live.find((row) => row.status === 'active' && workIdentity(row) === work);
+    if (twin) problems.push(`Repeated active work: ${twin.artifact_key} already runs the same producer and reproduce_command; mark it superseded or reuse it`);
+  }
+  return problems;
+}
 const canonicalProjectDirectories = new Set(['00_source', '10_extract', '20_reference', '30_translation', '40_build', '50_test', '90_tools']);
 const canonicalTestDirectories = new Set(['screenshots', 'logs', 'eden', 'release-runtime', 'artifacts']);
 const canonicalTestFiles = new Set(['TEST_LOG.md', 'RELEASE_RUNTIME_QA.json']);
@@ -165,6 +190,8 @@ export async function registerArtifact(projectRoot, input) {
   if (loaded.issues.length > 0) throw new Error(`Cannot register against an invalid manifest: ${loaded.issues[0].problem}`);
   if (loaded.rows.some((existing) => existing.artifact_key === row.artifact_key)) throw new Error(`Duplicate artifact_key: ${row.artifact_key}`);
   if (loaded.rows.some((existing) => existing.path.toLowerCase() === row.path.toLowerCase())) throw new Error(`Duplicate artifact path: ${row.path}`);
+  const repeated = repeatedWorkProblems(loaded.rows, row);
+  if (repeated.length > 0) throw new Error(repeated[0]);
   const existing = await fs.readFile(loaded.indexPath, 'utf8');
   const next = `${existing.trimEnd()}\n${artifactIndexHeader.map((column) => row[column]).join('\t')}\n`;
   const temp = path.join(path.dirname(loaded.indexPath), `tmp-artifact-manifest-${process.pid}-${crypto.randomBytes(6).toString('hex')}`);
@@ -246,6 +273,10 @@ export async function validateArtifactLayout(projectRoot) {
       issues.push({ path: item, problem: 'test-script must use a recognized script extension' });
     }
     if (!isArtifactHarnessPath(row.path)) issues.push({ path: item, problem: `Path is outside artifact harness roots: ${row.path}` });
+    // Report each repeated-work pair once, on the later row.
+    for (const problem of repeatedWorkProblems(loaded.rows.filter((other) => other.line < row.line), row)) {
+      issues.push({ path: item, problem });
+    }
     const absolute = path.resolve(projectRoot, ...row.path.split('/'));
     if (!isContained(projectRoot, absolute)) {
       issues.push({ path: item, problem: `Artifact path escaped project root: ${row.path}` });
@@ -284,6 +315,26 @@ export async function validateArtifactLayout(projectRoot) {
   const legacyEntries = await auditLegacyArtifactLayout(projectRoot);
   for (const entry of legacyEntries) issues.push({ path: entry.path, problem: entry.problem });
   return { ...loaded, issues, files, legacyEntries };
+}
+
+// Before running a producer again: return a completed artifact of the same producer+reproduce_command
+// whose file still exists with the indexed hash, so the caller reuses it instead of repeating the work.
+export async function findReusableArtifact(projectRoot, { producer, reproduce_command: reproduce }) {
+  const loaded = await readArtifactIndex(projectRoot);
+  const wanted = workIdentity({ producer: String(producer ?? '').trim(), reproduce_command: String(reproduce ?? '').trim() });
+  if (!wanted) throw new Error('reuse check needs --producer and --reproduce-command');
+  for (const row of loaded.rows) {
+    if (row.status !== 'complete' || workIdentity(row) !== wanted) continue;
+    const absolute = path.resolve(projectRoot, ...row.path.split('/'));
+    if (!isContained(projectRoot, absolute)) continue;
+    try {
+      const stats = await fs.lstat(absolute);
+      if (stats.isFile() && (await sha256File(absolute)).toLowerCase() === row.sha256.toLowerCase()) return row;
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+  }
+  return null;
 }
 
 export function cleanupEligibleArtifactRows(rows) {

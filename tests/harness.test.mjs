@@ -1742,6 +1742,35 @@ test('project artifact manifest owns exports, translations, test artifacts, scri
   const manifestPath = path.join(projectRoot, '90_tools', 'PROJECT_ARTIFACT_MANIFEST.tsv');
   assert.match(runNode('artifact-harness.mjs', ['--project-root', projectRoot]), /Indexed: 4; Managed files: 4; Issues: 0/);
 
+  // Repeated-work guards: reuse lookup, no byte-identical copies, no second active run of the same work.
+  assert.match(runNode('artifact-harness.mjs', ['--project-root', projectRoot, '--reuse-check',
+    '--producer', 'extractor', '--reproduce-command', 'extract --output 10_extract/exports/dialogue.json']),
+  /^REUSE\t10_extract\/exports\/dialogue\.json\t[0-9a-f]{64}/m);
+  assert.match(runNodeFailureOutput('artifact-harness.mjs', ['--project-root', projectRoot, '--reuse-check',
+    '--producer', 'extractor', '--reproduce-command', 'extract --output other.json']), /^NONE/m);
+  const copyPath = path.join(projectRoot, '90_tools', 'work', 'extract', 'dialogue-copy.json');
+  await fs.mkdir(path.dirname(copyPath), { recursive: true });
+  await fs.copyFile(path.join(projectRoot, '10_extract', 'exports', 'dialogue.json'), copyPath);
+  assert.match(runNodeFailureOutput('artifact-harness.mjs', ['--project-root', projectRoot, '--register',
+    '--artifact-key', '0123456789ABCDEF/extract/dialogue-copy', '--stage', 'extract', '--class', 'work',
+    '--lifecycle', 'disposable', '--path', '90_tools/work/extract/dialogue-copy.json', '--producer', 'copy']),
+  /Duplicate content: same SHA-256 as 10_extract\/exports\/dialogue\.json/);
+  await fs.rm(copyPath);
+  const runA = path.join(projectRoot, '90_tools', 'work', 'build', 'run-a.bin');
+  const runB = path.join(projectRoot, '90_tools', 'work', 'build', 'run-b.bin');
+  await fs.mkdir(path.dirname(runA), { recursive: true });
+  await fs.writeFile(runA, 'build run a');
+  const buildArgs = (key, file) => ['--project-root', projectRoot, '--register', '--artifact-key', `0123456789ABCDEF/build/${key}`,
+    '--stage', 'build', '--class', 'work', '--lifecycle', 'reproducible', '--path', `90_tools/work/build/${file}`,
+    '--producer', 'packer', '--reproduce-command', 'pack --all', '--status', 'active'];
+  assert.match(runNode('artifact-harness.mjs', buildArgs('run-a', 'run-a.bin')), /Registered:/);
+  await fs.writeFile(runB, 'build run b');
+  assert.match(runNodeFailureOutput('artifact-harness.mjs', buildArgs('run-b', 'run-b.bin')), /Repeated active work: 0123456789ABCDEF\/build\/run-a/);
+  // Drop the fixture row and file again so the remaining scenario keeps its original 4 artifacts.
+  await fs.writeFile(manifestPath, (await fs.readFile(manifestPath, 'utf8')).split('\n').filter((line) => !line.includes('/build/run-a')).join('\n'));
+  await fs.rm(path.join(projectRoot, '90_tools', 'work', 'build'), { recursive: true });
+  assert.match(runNode('artifact-harness.mjs', ['--project-root', projectRoot]), /Indexed: 4; Managed files: 4; Issues: 0/);
+
   await fs.writeFile(path.join(projectRoot, 'HANDOFF.md'), '# Handoff\n');
   await fs.mkdir(path.join(projectRoot, '50_test', 'eden'), { recursive: true });
   runNode('clean-translation-project.mjs', ['--project-root', projectRoot]);

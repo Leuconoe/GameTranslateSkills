@@ -2,7 +2,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { flag, option, parseArgs, requiredOption } from './lib/args.mjs';
-import { ensureArtifactLayout, registerArtifact, validateArtifactLayout } from './lib/project-artifacts.mjs';
+import { ensureArtifactLayout, findReusableArtifact, registerArtifact, validateArtifactLayout } from './lib/project-artifacts.mjs';
 import { validateProjectBoundary } from './lib/project-boundary.mjs';
 import { inspectProjectRoot, projectRootShapeDescription } from './lib/project-identity.mjs';
 
@@ -31,7 +31,11 @@ Options:
                         Required for lifecycle=reproducible
   --status <status>     active | complete | failed | superseded (default: complete)
   --notes <text>        Optional single-line note
-  --validate            Validate paths, ownership, lifecycle, hashes, and unregistered files (default)
+  --reuse-check         Before re-running work: print REUSE<TAB>path<TAB>sha256 for a complete artifact with the
+                        same --producer and --reproduce-command whose file still matches (exit 0),
+                        otherwise print NONE (exit 3). Run the producer only on NONE.
+  --validate            Validate paths, ownership, lifecycle, hashes, unregistered files, duplicate content
+                        and repeated active work (default)
   --help                Show this help`);
 }
 
@@ -43,6 +47,15 @@ async function main() {
     throw new Error(`--project-root must be an exact title project under ${projectRootShapeDescription()}`);
   }
   if (!(await isDirectory(projectRoot))) throw new Error(`Project root does not exist: ${projectRoot}`);
+  if (flag(args, 'reuse-check')) {
+    const found = await findReusableArtifact(projectRoot, {
+      producer: requiredOption(args, 'producer'),
+      reproduce_command: requiredOption(args, 'reproduce-command'),
+    });
+    console.log(found ? `REUSE\t${found.path}\t${found.sha256}\t${found.artifact_key}` : 'NONE');
+    process.exitCode = found ? 0 : 3;
+    return;
+  }
   if (flag(args, 'init')) console.log(`Artifact index: ${await ensureArtifactLayout(projectRoot)}`);
   if (flag(args, 'register')) {
     const registered = await registerArtifact(projectRoot, {

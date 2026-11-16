@@ -51,6 +51,10 @@ OS 임시 폴더, 공용 MCP 디렉터리, 임의 `title`/`output`/`temp` 폴더
 lifecycle, status, SHA-256을 기록한다. 기존 프로젝트는 작업 전
 `npm run project:artifacts -- --project-root "<프로젝트 루트>" --init`으로 하네스를 만든다.
 managed root의 미등록 파일이나 hash drift가 있으면 해당 단계는 `BLOCKED`다.
+같은 작업을 다시 실행하기 전에는 반드시 `--reuse-check`로 기존 완료 산출물을 조회하고
+`REUSE`면 재사용한다. 같은 내용의 사본 등록과 같은 작업의 active 중복은 하네스가 거부한다.
+빌드는 canonical LayeredFS 한 벌을 원자 교체하고, 시험은 canonical ZIP을 hash로 참조해
+`50_test`에 로그·캡처·receipt만 남긴다(`artifact-layout-contract.md` **반복 작업 방지**).
 모든 쓰기 명령 전에는 `npm run project:boundary -- --project-root "<프로젝트 루트>"
 --stage <기능> --assert-output "<output/temp/cache>"`로 각 경로를 검사한다. 하나라도 프로젝트
 밖이거나 기능별 canonical root 밖이면 명령을 실행하지 않는다.

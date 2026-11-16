@@ -16,6 +16,7 @@
 | 속도 | 배치당 도구 호출 3회(읽기 1·쓰기 1·검증/병합 스크립트 1), 용어집·STYLE 1회 로드, 사용자가 명시하면 전체 TXT 일괄·병렬 처리 |
 | 반복 방지 | 하네스가 같은 작업 재실행·같은 내용 사본·active 중복을 막음(`--reuse-check`). 빌드는 한 벌, 시험은 canonical ZIP을 hash로 참조 |
 | 작업 경계 | 모든 산출물은 `<타이틀 루트>/_work/<프로젝트 ID>/` 안. 워크스페이스 루트 파일·비슷한 이름의 최상위 폴더·공용 임시 폴더 금지, 타이틀 폴더는 Title ID로 찾아 재사용 |
+| 상태 폴더 | `_titles/_waitng`(대기) → **`_working`(작업 중, 시작·재개 시 이동)** → `_complete`(릴리스 완료) / `_hold`(보류). Steam/PC 설치 폴더는 옮기지 않음 |
 | 안전 | 확인할 수 없으면 `WARN`/`BLOCKED`로 멈춤(fail-closed). 정리는 계획 → 승인 → 복구 가능한 휴지통 |
 | 릴리스 | NSW 기본 `<Title ID>.zip`. 사용자가 요청할 때만 `<게임 제목> - <Title ID>.zip` |
 
@@ -131,8 +132,8 @@ game-translate 스킬로 <게임명> 한글화를 시작해줘. 플랫폼은 nsw
 ### NSW 명령 요약
 
 ```powershell
-# 프로젝트 생성 (타이틀 루트 = NSP/XCI가 직접 있는 폴더)
-npm run project:new -- --titles-root '<작업루트>\_titles' --game-folder '<타이틀 폴더>' --game-name '<게임명>' --title-id '<16자리 Title ID>'
+# 프로젝트 생성 (타이틀 루트 = NSP/XCI가 직접 있는 폴더, 작업 시작 전 _titles\_working\으로 이동)
+npm run project:new -- --titles-root '<작업루트>\_titles' --game-folder '_working\<타이틀 폴더>' --game-name '<게임명>' --title-id '<16자리 Title ID>'
 # 작업 전 하네스 초기화 / 같은 작업 재실행 전 재사용 조회 (REUSE면 다시 만들지 않음)
 npm run project:artifacts -- --project-root '<타이틀 루트>\_work\<TITLE_ID>' --init
 npm run project:artifacts -- --project-root '<타이틀 루트>\_work\<TITLE_ID>' --reuse-check --producer '<도구>' --reproduce-command '<명령>'

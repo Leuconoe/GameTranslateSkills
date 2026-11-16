@@ -224,9 +224,16 @@ exact 파일만 승인 후보로 삼는다. 미등록 managed-root 파일은 자
 
 ## 9. 신규 프로젝트·완료
 
+작업을 시작하거나 재개할 때 `_titles/` 아래 타이틀 루트가 `_working` 밖(`_waitng`·`_hold`·
+`_titles` 바로 아래 등)에 있으면, 파일을 쓰기 전에 루트 전체를 `_titles/_working/`으로 옮긴다.
+작업을 끝내면 릴리스 완료는 `_complete`, 보류·차단은 `_hold`로 옮긴다. 이동 전 확인과 기록 방법은
+`workspace-boundary-contract.md`의 **타이틀 상태 폴더와 `_working` 이동**을 따른다. Steam/PC 설치
+폴더는 옮기지 않는다.
+
 신규 프로젝트는 플랫폼 어댑터가 지정한 생성 명령을 사용한다. NSW는 실제 NSP/XCI 보유
-폴더 아래 `project:new`, Steam/PC는 실제 게임 EXE가 있는 설치 폴더 아래
-`project:new:steam`으로 생성한다. 수동 generic `title` 폴더를 만들지 않는다.
+폴더(`_working`으로 옮긴 뒤) 아래 `project:new -- --game-folder _working/<타이틀 폴더>`, Steam/PC는
+실제 게임 EXE가 있는 설치 폴더 아래 `project:new:steam`으로 생성한다. 수동 generic `title` 폴더를
+만들지 않는다.
 
 완료는 `gt-qa`의 bench와 공식 배포 릴리즈 non-MCP runtime receipt, 별도 hardware 상태,
 `gt-release`의 exact package 계약이 모두 충족될 때만 선언한다. 릴리스 후에도
@@ -241,7 +248,8 @@ exact 파일만 승인 후보로 삼는다. 미등록 managed-root 파일은 자
 `40_build/layeredfs/<BASE_TITLE_ID>/romfs/`와 선택적 `exefs/main`의 검증된 패치 파일을 입력하고,
 `40_build/releases/<BASE_TITLE_ID>.zip` 안에
 `atmosphere/contents/<BASE_TITLE_ID>/romfs/<패치파일>` 및 선택적 `atmosphere/contents/<BASE_TITLE_ID>/exefs/main` 구조를 만든다. ZIP은 SD 카드 루트에 풀어 덮어쓴다. 별도 Python 적용기, `*.gldelta`,
-버전/candidate 하위 폴더, 게임명 ZIP은 허용하지 않는다. 릴리스 완료 게이트가 아직
+버전/candidate 하위 폴더, Title ID 없는 게임명 ZIP은 허용하지 않는다(게임 제목이 붙은
+`<게임 제목> - <BASE_TITLE_ID>.zip`은 사용자가 요청한 경우에만 쓴다). 릴리스 완료 게이트가 아직
 충족되지 않았다면 같은 canonical 형식의 `review_candidate`로 만들 수 있지만 경로·이름·
 ZIP root 계약은 완화하지 않고 `release_status`도 `released`로 올리지 않는다. 정식 릴리스
 요청이면 `gt-nsw-build`가 검증한 canonical ZIP을 `gt-release`로 인계해 나머지 QA·문서·

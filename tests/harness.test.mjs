@@ -607,7 +607,7 @@ test('NSW build and patch requests route to the dedicated canonical build skill'
   }
   assert.match(orchestrator, /전담 `gt-nsw-build`/);
   assert.match(releaseSkill, /`gt-nsw-build`에 위임/);
-  assert.match(buildSkill, /40_build\/releases\/<BASE_TITLE_ID>\.zip/);
+  assert.match(buildSkill, /40_build\/releases\/<GAME_TITLE> - <BASE_TITLE_ID>\.zip/);
   assert.match(buildSkill, /atmosphere\/contents\/<BASE_TITLE_ID>\/romfs\/<패치파일>/);
   assert.match(buildSkill, /release:validate:nsw/);
   assert.match(buildSkill, /release_status=released/);
@@ -622,12 +622,23 @@ test('NSW build and patch packaging creates only the canonical Title-ID/romfs ZI
   await fs.writeFile(path.join(romfsRoot, 'data', 'nx', 'script.dat'), 'translated-script');
   await fs.writeFile(path.join(romfsRoot, 'font.bin'), Buffer.from([0, 1, 2, 3, 4]));
 
+  assert.match(runNodeFailureOutput('create-nsw-release.mjs', ['--project-root', projectRoot]), /game name is unknown/);
+  await fs.writeFile(path.join(projectRoot, 'PROJECT.md'), '# Sample: Game [0123456789ABCDEF] — Korean localization\n');
+  const releaseName = `Sample Game - ${titleId}.zip`;
+
+  // A legacy "<ID>.zip" with identical bytes is renamed to the titled name instead of duplicated.
+  const legacyRoot = path.join(projectRoot, '40_build', 'releases');
+  runNode('create-nsw-release.mjs', ['--project-root', projectRoot, '--game-name', 'Legacy Tmp']);
+  await fs.rename(path.join(legacyRoot, `Legacy Tmp - ${titleId}.zip`), path.join(legacyRoot, `${titleId}.zip`));
   const output = runNode('create-nsw-release.mjs', ['--project-root', projectRoot]);
-  const zipPath = path.join(projectRoot, '40_build', 'releases', `${titleId}.zip`);
-  assert.match(output, new RegExp(`PASS\\t.*${titleId}\\.zip`));
+  const zipPath = path.join(projectRoot, '40_build', 'releases', releaseName);
+  assert.match(output, new RegExp(`PASS\\t.*${releaseName.replace(/[.]/g, '\\.')}\\t.*reused=true`));
   assert.equal((await fs.stat(zipPath)).isFile(), true);
   assert.match(runNode('validate-nsw-release.mjs', ['--project-root', projectRoot]), /PASS/);
   const receipt = JSON.parse(await fs.readFile(path.join(projectRoot, '40_build', 'releases', 'RELEASE_PACKAGE.json'), 'utf8'));
+  assert.equal(receipt.game_name, 'Sample Game');
+  assert.equal(receipt.archive_path, `40_build/releases/${releaseName}`);
+  assert.match(await fs.readFile(path.join(legacyRoot, 'SHA256SUMS.txt'), 'utf8'), new RegExp(`  ${releaseName}\\n$`));
   assert.equal(receipt.archive_root, `atmosphere/contents/${titleId}/romfs/`);
   assert.deepEqual(receipt.entries.map((entry) => entry.path), [
     `atmosphere/contents/${titleId}/romfs/data/nx/script.dat`,
@@ -641,7 +652,7 @@ test('NSW build and patch packaging creates only the canonical Title-ID/romfs ZI
   assert.match(runNode('create-nsw-release.mjs', ['--project-root', projectRoot, '--replace']), /reused=false/);
   assert.match(runNode('validate-nsw-release.mjs', ['--project-root', projectRoot]), /PASS/);
 
-  const wrongPath = path.join(projectRoot, '40_build', 'releases', 'v0.1.0-first-candidate', `${titleId}.zip`);
+  const wrongPath = path.join(projectRoot, '40_build', 'releases', 'v0.1.0-first-candidate', releaseName);
   await fs.mkdir(path.dirname(wrongPath), { recursive: true });
   await fs.copyFile(zipPath, wrongPath);
   assert.match(runNodeFailureOutput('validate-nsw-release.mjs', [

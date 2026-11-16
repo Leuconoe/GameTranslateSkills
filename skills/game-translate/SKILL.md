@@ -235,7 +235,7 @@ exact 파일만 승인 후보로 삼는다. 미등록 managed-root 파일은 자
 진단 후보 생성으로 해석하지 않는다. 플랫폼 어댑터의 canonical 배포 패키지를 생성하는
 요청으로 라우팅한다. NSW에서는 전담 `gt-nsw-build`와 `platforms/nsw/release.md`를 적용하여
 `40_build/layeredfs/<BASE_TITLE_ID>/romfs/`와 선택적 `exefs/main`의 검증된 패치 파일을 입력하고,
-`40_build/releases/<BASE_TITLE_ID>.zip` 안에
+`40_build/releases/<GAME_TITLE> - <BASE_TITLE_ID>.zip` 안에
 `atmosphere/contents/<BASE_TITLE_ID>/romfs/<패치파일>` 및 선택적 `atmosphere/contents/<BASE_TITLE_ID>/exefs/main` 구조를 만든다. ZIP은 SD 카드 루트에 풀어 덮어쓴다. 별도 Python 적용기, `*.gldelta`,
 버전/candidate 하위 폴더, 게임명 ZIP은 허용하지 않는다. 릴리스 완료 게이트가 아직
 충족되지 않았다면 같은 canonical 형식의 `review_candidate`로 만들 수 있지만 경로·이름·

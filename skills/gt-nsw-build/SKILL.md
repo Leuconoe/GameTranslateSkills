@@ -33,20 +33,24 @@ NSW 패치의 입력·출력·ZIP root를 하나의 계약으로 강제한다. �
 |---|---|
 | 프로젝트 루트 | `<타이틀 루트>/_work/<BASE_TITLE_ID>` |
 | 유일한 입력 | `40_build/layeredfs/<BASE_TITLE_ID>/romfs/`, 선택적 `exefs/main` |
-| 유일한 ZIP | `40_build/releases/<BASE_TITLE_ID>.zip` |
+| 유일한 ZIP | `40_build/releases/<GAME_TITLE> - <BASE_TITLE_ID>.zip` |
 | ZIP entry | `atmosphere/contents/<BASE_TITLE_ID>/romfs/<패치파일>`, 선택적 `atmosphere/contents/<BASE_TITLE_ID>/exefs/main` |
 | 생성기 | `$GT_HOME/scripts/create-nsw-release.mjs` |
 | 검증기 | `$GT_HOME/scripts/validate-nsw-release.mjs` |
 
-`BASE_TITLE_ID`는 대문자 16자리 hex여야 한다. update/DLC Title ID, NSP 파일명에서 추측한
-다른 ID, 게임명, 버전, 날짜, `candidate`를 ZIP 이름이나 중간 출력 폴더에 넣지 않는다.
+`BASE_TITLE_ID`는 대문자 16자리 hex여야 한다. `<GAME_TITLE>`은 생성기가
+`--game-name` → `PROJECT.md`의 `- Game name:` 필드 → `PROJECT.md` 첫 `# ` 제목(` — ` 뒤 부제 제외)
+순서로 정하며, `[Title ID]` 표기·Windows 금지 문자(`<>:"/\|?*`)·제어 문자를 지우고 공백을 하나로 줄인다.
+제목 줄이 게임명이 아니면 패키징 전에 `- Game name: \`<게임 제목>\``을 `PROJECT.md`에 기록하거나
+`--game-name`을 넘긴다. 제목을 정할 수 없으면 생성기가 실패한다. update/DLC Title ID, NSP 파일명에서
+추측한 다른 ID, 버전, 날짜, `candidate`를 ZIP 이름이나 중간 출력 폴더에 넣지 않는다.
 
 다음은 패치 산출물이 아니므로 입력·ZIP 어디에도 허용하지 않는다.
 
 - `apply_patch.py`, `*.gldelta` 또는 다른 별도 적용기/델타 묶음
 - `*.nsp`, `*.xci`, `*.keys`, prod/title keys, 펌웨어
 - symlink, junction, reparse point, canonical LayeredFS 밖에서 끌어온 파일
-- `40_build/releases/v*/...`, `*-candidate/...`, 게임명 ZIP, `<UPDATE_TITLE_ID>.zip`
+- `40_build/releases/v*/...`, `*-candidate/...`, Title ID 없는 게임명 ZIP, `<UPDATE_TITLE_ID>.zip`
 - `romfs/<패치파일>`나 `<BASE_TITLE_ID>/romfs/<패치파일>`처럼 SD 루트의 `atmosphere/contents/`가 빠진 ZIP entry
 
 ## 절차
@@ -67,7 +71,9 @@ NSW 패치의 입력·출력·ZIP root를 하나의 계약으로 강제한다. �
      npm run release:package:nsw -- --project-root "<타이틀 루트>/_work/<BASE_TITLE_ID>"
      ```
 
-   - 기존 canonical ZIP과 입력이 byte-identical이면 생성기가 이를 재사용한다.
+   - 기존 canonical ZIP과 입력이 byte-identical이면 생성기가 이를 재사용한다. 예전 이름
+     (`<BASE_TITLE_ID>.zip` 또는 다른 제목의 `… - <BASE_TITLE_ID>.zip`)의 ZIP이 하나 있고 bytes가 같으면
+     새 이름으로 바꿔 재사용한다. bytes가 다르면 아래 `--replace` 절차를 따른다.
    - 기존 ZIP의 bytes가 다르면 자동 덮어쓰지 않는다. 기존
      `RELEASE_PACKAGE.json`·`SHA256SUMS.txt`와 현재 RomFS/ExeFS 차이를 확인하고 `HANDOFF.md`에
      기록한다. 사용자의 현재 빌드/패치 생성 요청 범위 안에서 교체가 맞다는 근거가
@@ -99,7 +105,7 @@ NSW 패치의 입력·출력·ZIP root를 하나의 계약으로 강제한다. �
 
 ## 완료 기준
 
-- [ ] 산출물이 정확히 `40_build/releases/<BASE_TITLE_ID>.zip`
+- [ ] 산출물이 정확히 `40_build/releases/<GAME_TITLE> - <BASE_TITLE_ID>.zip`
 - [ ] 모든 ZIP entry가 `atmosphere/contents/<BASE_TITLE_ID>/romfs/<패치파일>` 또는 선택적 `atmosphere/contents/<BASE_TITLE_ID>/exefs/main`임
 - [ ] `apply_patch.py`, `*.gldelta`, NSP/XCI/keys/firmware, link가 없음
 - [ ] `release:validate:nsw` PASS 및 manifest/hash 동기화

@@ -77,7 +77,7 @@ qa_ready ≠ review_ready ≠ user-approved ≠ PASS (runtime) ≠ released
 
 NSW에서 사용자의 `빌드 생성` 또는 `패치 생성` 요청은 전담 `gt-nsw-build`의 canonical
 package 생성을 뜻한다. 입력은 `40_build/layeredfs/<BASE_TITLE_ID>/romfs/`, 출력은
-`40_build/releases/<BASE_TITLE_ID>.zip`, ZIP root는
+`40_build/releases/<GAME_TITLE> - <BASE_TITLE_ID>.zip`, ZIP root는
 `atmosphere/contents/<BASE_TITLE_ID>/romfs/<패치파일>`와 선택적
 `atmosphere/contents/<BASE_TITLE_ID>/exefs/main`으로 고정한다. SD 카드 루트에
 한 번에 풀어 설치한다. 자체 delta/적용기 패키지는 이 단계의

@@ -5,9 +5,21 @@ import { flag, option, parseArgs, requiredOption } from './lib/args.mjs';
 import {
   createDeterministicNswZip,
   normalizeTitleId,
+  nswReleaseFileName,
+  parseNswReleaseFileName,
+  resolveNswGameName,
   sha256File,
   validateNswRelease,
 } from './lib/nsw-release-zip.mjs';
+
+async function hashOrNull(target) {
+  try {
+    return await sha256File(target);
+  } catch (error) {
+    if (error?.code === 'ENOENT') return null;
+    throw error;
+  }
+}
 
 function samePath(left, right) {
   const a = path.resolve(left);
@@ -41,8 +53,13 @@ async function main() {
   if (!samePath(exefsRoot, canonicalExefs)) {
     throw new Error(`NSW ExeFS release input must be canonical: ${canonicalExefs}`);
   }
+  const gameName = await resolveNswGameName(projectRoot, option(args, 'game-name'));
+  if (!gameName) {
+    throw new Error('NSW release game name is unknown: pass --game-name or add "- Game name: `<title>`" to PROJECT.md');
+  }
+  const fileName = nswReleaseFileName(gameName, titleId);
   const releaseRoot = path.join(projectRoot, '40_build', 'releases');
-  const outputPath = path.join(releaseRoot, `${titleId}.zip`);
+  const outputPath = path.join(releaseRoot, fileName);
   const temporaryPath = path.join(releaseRoot, `tmp-package-${titleId}.zip.tmp`);
   const previousPath = path.join(releaseRoot, `tmp-previous-${titleId}.zip.tmp`);
   await fsp.mkdir(releaseRoot, { recursive: true });
@@ -58,41 +75,54 @@ async function main() {
       exefsRoot,
       allowTemporaryName: true,
     });
+    const newHash = temporaryReceipt.zipSha256;
 
-    let reused = false;
-    try {
-      const existingHash = await sha256File(outputPath);
-      if (existingHash === temporaryReceipt.zipSha256) {
-        await fsp.rm(temporaryPath);
-        reused = true;
-      } else if (!flag(args, 'replace')) {
-        throw new Error(`Canonical release already exists with different bytes: ${outputPath}; rerun with --replace after reviewing it`);
-      } else {
-        await fsp.rename(outputPath, previousPath);
-        try {
-          await fsp.rename(temporaryPath, outputPath);
-        } catch (error) {
-          await fsp.rename(previousPath, outputPath);
-          throw error;
-        }
-        await fsp.rm(previousPath);
-      }
-    } catch (error) {
-      if (error?.code === 'ENOENT') {
-        await fsp.rename(temporaryPath, outputPath);
-      } else {
-        throw error;
-      }
+    // Release ZIPs for this Title ID under another name: the legacy "<ID>.zip" or "<other title> - <ID>.zip".
+    const otherNames = (await fsp.readdir(releaseRoot)).filter((name) =>
+      name !== fileName && (name.toUpperCase() === `${titleId}.ZIP` || parseNswReleaseFileName(name, titleId)));
+    const currentHash = await hashOrNull(outputPath);
+    let renameFrom = null;
+    if (currentHash === null && otherNames.length === 1
+      && await sha256File(path.join(releaseRoot, otherNames[0])) === newHash) {
+      renameFrom = path.join(releaseRoot, otherNames[0]);
+    }
+    const leftovers = otherNames.map((name) => path.join(releaseRoot, name)).filter((p) => p !== renameFrom);
+    const conflicts = [...(currentHash !== null && currentHash !== newHash ? [outputPath] : []), ...leftovers];
+    if (conflicts.length && !flag(args, 'replace')) {
+      throw new Error(`Canonical release already exists with different bytes: ${conflicts.join(', ')}; rerun with --replace after reviewing it`);
     }
 
-    const receipt = await validateNswRelease({ titleId, zipPath: outputPath, romfsRoot, exefsRoot });
+    let reused = false;
+    if (currentHash === newHash) {
+      await fsp.rm(temporaryPath);
+      reused = true;
+    } else if (renameFrom) {
+      await fsp.rename(renameFrom, outputPath);
+      await fsp.rm(temporaryPath);
+      reused = true;
+    } else if (currentHash === null) {
+      await fsp.rename(temporaryPath, outputPath);
+    } else {
+      await fsp.rename(outputPath, previousPath);
+      try {
+        await fsp.rename(temporaryPath, outputPath);
+      } catch (error) {
+        await fsp.rename(previousPath, outputPath);
+        throw error;
+      }
+      await fsp.rm(previousPath);
+    }
+    for (const leftover of leftovers) await fsp.rm(leftover);
+
+    const receipt = await validateNswRelease({ titleId, zipPath: outputPath, romfsRoot, exefsRoot, gameName });
     const stats = await fsp.stat(outputPath);
     const manifest = {
       schema_version: 1,
       platform: 'nsw',
       format: 'LayeredFS',
       base_title_id: titleId,
-      archive_path: `40_build/releases/${titleId}.zip`,
+      game_name: gameName,
+      archive_path: `40_build/releases/${fileName}`,
       archive_root: `atmosphere/contents/${titleId}/romfs/`,
       source_romfs: `40_build/layeredfs/${titleId}/romfs`,
       ...(receipt.entries.some((entry) => entry.path.startsWith(`atmosphere/contents/${titleId}/exefs/`)) ? {
@@ -106,7 +136,7 @@ async function main() {
       reused,
       entries: receipt.entries,
     };
-    await atomicText(path.join(releaseRoot, 'SHA256SUMS.txt'), `${receipt.zipSha256}  ${titleId}.zip\n`);
+    await atomicText(path.join(releaseRoot, 'SHA256SUMS.txt'), `${receipt.zipSha256}  ${fileName}\n`);
     await atomicText(path.join(releaseRoot, 'RELEASE_PACKAGE.json'), `${JSON.stringify(manifest, null, 2)}\n`);
     process.stdout.write(`PASS\t${outputPath}\t${receipt.zipSha256}\tentries=${receipt.entries.length}\treused=${reused}\n`);
   } finally {

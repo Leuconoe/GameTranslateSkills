@@ -50,6 +50,50 @@ export function normalizeTitleId(value) {
   return titleId;
 }
 
+// Release ZIPs are named "<game title> - <BASE_TITLE_ID>.zip". The title is made filesystem-safe:
+// bracketed Title IDs are dropped (the ID is already in the suffix), Windows-invalid characters and
+// control characters become spaces, whitespace collapses, and trailing dots/spaces are trimmed.
+export function sanitizeReleaseGameName(value) {
+  return String(value ?? '')
+    .normalize('NFC')
+    .replace(/\[(?:0x)?[0-9A-Fa-f]{16}\]/g, ' ')
+    .replace(/[<>:"/\\|?*\u0000-\u001F]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/[. ]+$/, '');
+}
+
+export function nswReleaseFileName(gameName, titleId) {
+  const name = sanitizeReleaseGameName(gameName);
+  if (!name) throw new Error(`NSW release game name is empty after sanitizing: ${JSON.stringify(gameName)}`);
+  return `${name} - ${normalizeTitleId(titleId)}.zip`;
+}
+
+// Returns the game-name part of a canonical release filename for this Title ID, or null.
+export function parseNswReleaseFileName(fileName, titleId) {
+  const suffix = ` - ${normalizeTitleId(titleId)}.zip`;
+  if (!fileName.endsWith(suffix)) return null;
+  const name = fileName.slice(0, -suffix.length);
+  return name && sanitizeReleaseGameName(name) === name ? name : null;
+}
+
+// Game title for the release filename: explicit option, then PROJECT.md "- Game name:" field,
+// then the first level-1 heading (an em-dash subtitle such as "— Korean localization" is dropped).
+export async function resolveNswGameName(projectRoot, explicit = null) {
+  if (explicit != null) return sanitizeReleaseGameName(explicit) || null;
+  let text;
+  try {
+    text = await fsp.readFile(path.join(projectRoot, 'PROJECT.md'), 'utf8');
+  } catch (error) {
+    if (error?.code === 'ENOENT') return null;
+    throw error;
+  }
+  const field = text.match(/^- Game name:\s*`?([^`\r\n]+?)`?\s*$/m);
+  if (field) return sanitizeReleaseGameName(field[1]) || null;
+  const heading = text.match(/^# (.+)$/m);
+  return heading ? sanitizeReleaseGameName(heading[1].split(' — ')[0]) || null : null;
+}
+
 function normalizedArchivePath(value) {
   return value.split(path.sep).join('/');
 }
@@ -423,13 +467,16 @@ export async function inspectDeterministicZip(zipPath) {
   return { zipPath: resolvedZip, zipSha256: await sha256File(resolvedZip), entries: verified };
 }
 
-export async function validateNswRelease({ titleId, zipPath, romfsRoot = null, exefsRoot = null, allowTemporaryName = false }) {
+export async function validateNswRelease({ titleId, zipPath, romfsRoot = null, exefsRoot = null, allowTemporaryName = false, gameName = null }) {
   const id = normalizeTitleId(titleId);
   const contentRoot = `atmosphere/contents/${id}`;
   const resolvedZip = path.resolve(zipPath);
-  const expectedName = `${id}.zip`;
-  if (!allowTemporaryName && path.basename(resolvedZip) !== expectedName) {
-    throw new Error(`NSW release filename must be exactly ${expectedName}`);
+  if (!allowTemporaryName) {
+    const fileName = path.basename(resolvedZip);
+    const expectedName = gameName != null ? nswReleaseFileName(gameName, id) : null;
+    if (expectedName ? fileName !== expectedName : !parseNswReleaseFileName(fileName, id)) {
+      throw new Error(`NSW release filename must be exactly ${expectedName ?? `<game title> - ${id}.zip`}: ${fileName}`);
+    }
   }
   if (!allowTemporaryName && path.basename(path.dirname(resolvedZip)).toLowerCase() !== 'releases') {
     throw new Error('NSW release ZIP must be directly under 40_build/releases (version/candidate subfolders are forbidden)');

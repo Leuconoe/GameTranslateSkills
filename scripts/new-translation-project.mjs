@@ -246,6 +246,7 @@ async function main() {
 
   await writeIfMissing(path.join(project, 'PROJECT.md'), `# ${gameName}
 
+- Game name: \`${gameName}\`
 - Base Title ID: \`${id}\`
 - Title root: \`${path.relative(titlesRoot, gameRoot) || '.'}\` (the folder containing the source NSP/XCI)
 - Update Title ID: unknown
@@ -279,12 +280,12 @@ async function main() {
 - final_qa_mcp_allowed: false
 - release_runtime_receipt: 50_test/RELEASE_RUNTIME_QA.json
 - target_language_slot: pending
-- release_contract: NSW-LayeredFS — \`40_build/releases/${id}.zip\`, ZIP root \`${id}/romfs/\`
+- release_contract: NSW-LayeredFS — \`40_build/releases/<Game name> - ${id}.zip\`, ZIP root \`atmosphere/contents/${id}/romfs/\`
 - Temporary artifacts: project-local only under this \`_work\` root; use \`tmp-<stage>-<purpose>\` or \`*.tmp\` for disposable files
 - Artifact layout: export·번역 중간물·테스트 산출물/스크립트는 \`$GT_HOME/common/artifact-layout-contract.md\`의 managed root에 두고 \`90_tools/PROJECT_ARTIFACT_MANIFEST.tsv\`에 lifecycle·producer·hash를 등록
 - Canonical MCP QA state: \`50_test/eden/SESSION.json\` and \`50_test/eden/ARTIFACT_MANIFEST.tsv\`; despite the historical folder name this is the one shared title ledger for Eden-MCP/Ryubing-MCP, and routine QA reuses it instead of creating session/copy files
 - Final QA: separately run an allowlisted official-site distribution release directly without MCP and validate \`50_test/RELEASE_RUNTIME_QA.json\`; MCP smoke evidence never qualifies as final PASS
-- Canonical NSW package: a user request for \`빌드 생성\` or \`패치 생성\` runs \`npm run release:package:nsw -- --project-root "<this project>" --replace\`; it packages only \`40_build/layeredfs/${id}/romfs/\` into \`40_build/releases/${id}.zip\` with ZIP entries rooted at \`${id}/romfs/\`
+- Canonical NSW package: a user request for \`빌드 생성\` or \`패치 생성\` runs \`npm run release:package:nsw -- --project-root "<this project>" --replace\`; it packages only \`40_build/layeredfs/${id}/romfs/\` into \`40_build/releases/<Game name> - ${id}.zip\` with ZIP entries rooted at \`atmosphere/contents/${id}/romfs/\`
 - Status: registered; extraction not started
 
 ## Stage status

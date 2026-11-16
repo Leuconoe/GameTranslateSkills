@@ -38,7 +38,7 @@ description: "Release a QA-verified Korean game patch using the platform adapter
 - 사용자가 NSW에서 `빌드 생성` 또는 `패치 생성`이라고 하면 전담 `gt-nsw-build`로
   라우팅한다. 이 스킬은 그 결과를 받아 정식 릴리스 게이트를 계속 수행한다.
   진단 폴더·버전/candidate 하위 폴더·delta 적용기 패키지를 대신 만들지 않는다.
-- NSW의 exact 결과는 `40_build/releases/<BASE_TITLE_ID>.zip` 하나이며 내부 entry는
+- NSW의 exact 결과는 `40_build/releases/<GAME_TITLE> - <BASE_TITLE_ID>.zip` 하나이며 내부 entry는
   `atmosphere/contents/<BASE_TITLE_ID>/romfs/<패치파일>` 및 선택적 `atmosphere/contents/<BASE_TITLE_ID>/exefs/main`이다. 입력은
   `40_build/layeredfs/<BASE_TITLE_ID>/romfs/`와 선택적 `exefs/main`이다. `romfs/` 단독 root,
   `<UPDATE_TITLE_ID>.zip`, `*.gldelta`, `apply_patch.py`, NSP/XCI/키가 있으면 실패한다.

@@ -7,7 +7,7 @@ import {
   normalizeTitleId,
   nswReleaseFileName,
   parseNswReleaseFileName,
-  resolveNswGameName,
+  resolveNswReleaseNaming,
   sha256File,
   validateNswRelease,
 } from './lib/nsw-release-zip.mjs';
@@ -53,10 +53,11 @@ async function main() {
   if (!samePath(exefsRoot, canonicalExefs)) {
     throw new Error(`NSW ExeFS release input must be canonical: ${canonicalExefs}`);
   }
-  const gameName = await resolveNswGameName(projectRoot, option(args, 'game-name'));
-  if (!gameName) {
-    throw new Error('NSW release game name is unknown: pass --game-name or add "- Game name: `<title>`" to PROJECT.md');
-  }
+  // Default "<ID>.zip"; titled only when the user asked for it (flag, --game-name, or PROJECT.md field).
+  const { gameName } = await resolveNswReleaseNaming(projectRoot, {
+    titled: flag(args, 'titled-name'),
+    gameName: option(args, 'game-name') ?? null,
+  });
   const fileName = nswReleaseFileName(gameName, titleId);
   const releaseRoot = path.join(projectRoot, '40_build', 'releases');
   const outputPath = path.join(releaseRoot, fileName);
@@ -121,6 +122,7 @@ async function main() {
       platform: 'nsw',
       format: 'LayeredFS',
       base_title_id: titleId,
+      release_filename: gameName ? 'titled' : 'id',
       game_name: gameName,
       archive_path: `40_build/releases/${fileName}`,
       archive_root: `atmosphere/contents/${titleId}/romfs/`,

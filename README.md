@@ -8,6 +8,17 @@
 > 배포물은 원본 게임 데이터를 포함하지 않는 패치 형태여야 하며,
 > 롬·콘솔 키·펌웨어의 취급/재배포를 지원하지 않습니다.
 
+## 핵심 원칙
+
+| 영역 | 내용 |
+|---|---|
+| 품질 | 1차 번역 → 구조 검증 → **im-not-ai(`humanize-korean`) 윤문(기본)** → 원문부터 다시 읽는 독립 2차 검수. 의미·말투·고유명사·태그·개행은 보존 |
+| 속도 | 배치당 도구 호출 3회(읽기 1·쓰기 1·검증/병합 스크립트 1), 용어집·STYLE 1회 로드, 사용자가 명시하면 전체 TXT 일괄·병렬 처리 |
+| 반복 방지 | 하네스가 같은 작업 재실행·같은 내용 사본·active 중복을 막음(`--reuse-check`). 빌드는 한 벌, 시험은 canonical ZIP을 hash로 참조 |
+| 작업 경계 | 모든 산출물은 `<타이틀 루트>/_work/<프로젝트 ID>/` 안. 워크스페이스 루트 파일·비슷한 이름의 최상위 폴더·공용 임시 폴더 금지, 타이틀 폴더는 Title ID로 찾아 재사용 |
+| 안전 | 확인할 수 없으면 `WARN`/`BLOCKED`로 멈춤(fail-closed). 정리는 계획 → 승인 → 복구 가능한 휴지통 |
+| 릴리스 | NSW 기본 `<Title ID>.zip`. 사용자가 요청할 때만 `<게임 제목> - <Title ID>.zip` |
+
 ## 브랜치 기반 워크플로우
 
 | # | 단계 | 스킬 | 비고 |
@@ -117,6 +128,27 @@ $game-translate 스킬로 <게임명> 한글화를 시작해줘. 플랫폼은 ns
 game-translate 스킬로 <게임명> 한글화를 시작해줘. 플랫폼은 nsw, 작업 루트는 D:\MyWork
 ```
 
+### NSW 명령 요약
+
+```powershell
+# 프로젝트 생성 (타이틀 루트 = NSP/XCI가 직접 있는 폴더)
+npm run project:new -- --titles-root '<작업루트>\_titles' --game-folder '<타이틀 폴더>' --game-name '<게임명>' --title-id '<16자리 Title ID>'
+# 작업 전 하네스 초기화 / 같은 작업 재실행 전 재사용 조회 (REUSE면 다시 만들지 않음)
+npm run project:artifacts -- --project-root '<타이틀 루트>\_work\<TITLE_ID>' --init
+npm run project:artifacts -- --project-root '<타이틀 루트>\_work\<TITLE_ID>' --reuse-check --producer '<도구>' --reproduce-command '<명령>'
+# 빌드 생성·패치 생성 → 40_build\releases\<TITLE_ID>.zip
+npm run release:package:nsw -- --project-root '<타이틀 루트>\_work\<TITLE_ID>'
+npm run release:validate:nsw -- --project-root '<타이틀 루트>\_work\<TITLE_ID>'
+```
+
+릴리스 ZIP 이름은 기본 `<TITLE_ID>.zip`이다. 게임 제목이 들어간 이름이 필요하면 에이전트에게
+요청한다. 에이전트는 `PROJECT.md`에 `- release_filename: titled`(와 필요하면 `- Game name: \`<제목>\``)를
+기록해 이후 빌드에도 `<게임 제목> - <TITLE_ID>.zip`을 유지한다. 한 번만 바꾸려면
+`release:package:nsw`/`release:validate:nsw`에 `--game-name '<제목>'`(또는 `--titled-name`)을 넘긴다.
+내용이 같은 기존 ZIP은 새 이름으로 바뀌고, 내용이 다르면 `--replace` 없이는 교체하지 않는다.
+
+### Steam/PC 명령 요약
+
 Steam/PC 프로젝트 도구의 시작점은 다음과 같다.
 
 ```powershell
@@ -140,6 +172,7 @@ npm run release:package:steam -- --project-root '<게임 설치 폴더>\_work\st
 ## 구조
 
 ```
+.claude-plugin/ Claude Code 플러그인·마켓플레이스 manifest
 .codex-plugin/ Codex 플러그인 manifest
 .agents/      Codex repo marketplace 정의
 package.json  크로스플랫폼 npm 명령
@@ -149,7 +182,9 @@ engines/      엔진 모듈: unity / vn-common / lucasystem (플랫폼과 직교
 common/       SAFETY.md(안전 규칙) · preflight-checks.md(사전 경고 게이트) ·
               qa-session-rules.md(MCP 단일 세션 규칙) · release-runtime-contract.md(공식 배포 릴리즈 최종 QA) ·
               emucap-integration.md(선택적 smoke QA) · glossary-rules.md · project-structure.md · pipeline-contract.* ·
-              font-atlas-contract.md · image-translation-contract.md · cleanup-contract.md · handoff-rules.md
+              font-atlas-contract.md · image-translation-contract.md · cleanup-contract.md · handoff-rules.md ·
+              workspace-boundary-contract.md(작업 구역·중복 폴더 방지) · artifact-layout-contract.md(산출물 하네스·반복 작업 방지) ·
+              language-preflight.md(언어·지역판·기존 이력 사전 점검)
 setup/        도구 자동 설치 (tools.manifest.json + install-tools.mjs)
 scripts/      프로젝트 생성·검증·스킬/폰트·imagegen 이미지 보존·공식 릴리즈 runtime 검증·Handoff 기반 정리 계획·아카이브·재검토·승인된 휴지통 이동·QA 세션 guard Node CLI
 docs/         PDCA 문서 (plan / design / analysis / report)

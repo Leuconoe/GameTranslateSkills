@@ -50,7 +50,8 @@ export function normalizeTitleId(value) {
   return titleId;
 }
 
-// Release ZIPs are named "<game title> - <BASE_TITLE_ID>.zip". The title is made filesystem-safe:
+// Release ZIPs are named "<BASE_TITLE_ID>.zip" by default. "<game title> - <BASE_TITLE_ID>.zip" is opt-in
+// (user request: --titled-name/--game-name or PROJECT.md "- release_filename: titled"). The title is made filesystem-safe:
 // bracketed Title IDs are dropped (the ID is already in the suffix), Windows-invalid characters and
 // control characters become spaces, whitespace collapses, and trailing dots/spaces are trimmed.
 export function sanitizeReleaseGameName(value) {
@@ -64,6 +65,7 @@ export function sanitizeReleaseGameName(value) {
 }
 
 export function nswReleaseFileName(gameName, titleId) {
+  if (gameName == null) return `${normalizeTitleId(titleId)}.zip`;
   const name = sanitizeReleaseGameName(gameName);
   if (!name) throw new Error(`NSW release game name is empty after sanitizing: ${JSON.stringify(gameName)}`);
   return `${name} - ${normalizeTitleId(titleId)}.zip`;
@@ -92,6 +94,24 @@ export async function resolveNswGameName(projectRoot, explicit = null) {
   if (field) return sanitizeReleaseGameName(field[1]) || null;
   const heading = text.match(/^# (.+)$/m);
   return heading ? sanitizeReleaseGameName(heading[1].split(' — ')[0]) || null : null;
+}
+
+// Naming mode for one packaging/validation run. Default { gameName: null } → "<ID>.zip".
+// Titled only on explicit request: --titled-name, --game-name, or PROJECT.md "- release_filename: titled".
+export async function resolveNswReleaseNaming(projectRoot, { titled = false, gameName = null } = {}) {
+  let text = '';
+  try {
+    text = await fsp.readFile(path.join(projectRoot, 'PROJECT.md'), 'utf8');
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+  }
+  const mode = text.match(/^- release_filename:\s*`?([A-Za-z-]+)`?/m)?.[1]?.toLowerCase();
+  if (!titled && gameName == null && mode !== 'titled') return { gameName: null };
+  const resolved = await resolveNswGameName(projectRoot, gameName);
+  if (!resolved) {
+    throw new Error('Titled NSW release requested but the game name is unknown: pass --game-name or add "- Game name: `<title>`" to PROJECT.md');
+  }
+  return { gameName: resolved };
 }
 
 function normalizedArchivePath(value) {
@@ -473,9 +493,9 @@ export async function validateNswRelease({ titleId, zipPath, romfsRoot = null, e
   const resolvedZip = path.resolve(zipPath);
   if (!allowTemporaryName) {
     const fileName = path.basename(resolvedZip);
-    const expectedName = gameName != null ? nswReleaseFileName(gameName, id) : null;
-    if (expectedName ? fileName !== expectedName : !parseNswReleaseFileName(fileName, id)) {
-      throw new Error(`NSW release filename must be exactly ${expectedName ?? `<game title> - ${id}.zip`}: ${fileName}`);
+    const expectedName = nswReleaseFileName(gameName, id);
+    if (fileName !== expectedName) {
+      throw new Error(`NSW release filename must be exactly ${expectedName}: ${fileName}`);
     }
   }
   if (!allowTemporaryName && path.basename(path.dirname(resolvedZip)).toLowerCase() !== 'releases') {

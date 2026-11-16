@@ -133,7 +133,7 @@
     "skill": "gt-nsw-build",
     "trigger_phrases": ["빌드 생성", "패치 생성"],
     "input": "40_build/layeredfs/<BASE_TITLE_ID>/romfs",
-    "output": "40_build/releases/<GAME_TITLE> - <BASE_TITLE_ID>.zip",
+    "output": "40_build/releases/<BASE_TITLE_ID>.zip",
     "archive_root": "atmosphere/contents/<BASE_TITLE_ID>/romfs/",
     "packager": "scripts/create-nsw-release.mjs",
     "validator": "scripts/validate-nsw-release.mjs",

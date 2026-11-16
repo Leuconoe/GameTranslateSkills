@@ -308,7 +308,7 @@ async function main() {
   for (const [field, expected] of Object.entries({
     skill: 'gt-nsw-build',
     input: '40_build/layeredfs/<BASE_TITLE_ID>/romfs',
-    output: '40_build/releases/<GAME_TITLE> - <BASE_TITLE_ID>.zip',
+    output: '40_build/releases/<BASE_TITLE_ID>.zip',
     archive_root: 'atmosphere/contents/<BASE_TITLE_ID>/romfs/',
     packager: 'scripts/create-nsw-release.mjs',
     validator: 'scripts/validate-nsw-release.mjs',
@@ -321,7 +321,7 @@ async function main() {
     '빌드 생성',
     '패치 생성',
     '40_build/layeredfs/<BASE_TITLE_ID>/romfs/',
-    '40_build/releases/<GAME_TITLE> - <BASE_TITLE_ID>.zip',
+    '40_build/releases/<BASE_TITLE_ID>.zip',
     'atmosphere/contents/<BASE_TITLE_ID>/romfs/<패치파일>',
     'release:package:nsw',
     'release:validate:nsw',

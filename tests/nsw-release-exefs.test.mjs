@@ -17,7 +17,7 @@ test('NSW release accepts one ExeFS main and still validates RomFS-only archives
     await fs.mkdir(releases);
     await fs.writeFile(path.join(romfsRoot, 'translated.dat'), 'Korean patch');
     await fs.writeFile(path.join(exefsRoot, 'main'), Buffer.concat([Buffer.from('NSO0'), Buffer.alloc(252)]));
-    const zipPath = path.join(releases, `Clockwork Rayline - ${titleId}.zip`);
+    const zipPath = path.join(releases, `${titleId}.zip`);
     await createDeterministicNswZip({ titleId, romfsRoot, exefsRoot, outputPath: zipPath });
     const receipt = await validateNswRelease({ titleId, zipPath, romfsRoot, exefsRoot });
     assert.deepEqual(receipt.entries.map((entry) => entry.path), [
@@ -32,16 +32,17 @@ test('NSW release accepts one ExeFS main and still validates RomFS-only archives
 
     const legacyRoot = path.join(root, 'legacy', 'releases');
     await fs.mkdir(legacyRoot, { recursive: true });
-    const legacyZip = path.join(legacyRoot, `Clockwork Rayline - ${titleId}.zip`);
+    const legacyZip = path.join(legacyRoot, `${titleId}.zip`);
     await createDeterministicNswZip({ titleId, romfsRoot, outputPath: legacyZip });
     const legacy = await validateNswRelease({ titleId, zipPath: legacyZip, romfsRoot, exefsRoot });
     assert.deepEqual(legacy.entries.map((entry) => entry.path), [`atmosphere/contents/${titleId}/romfs/translated.dat`]);
 
-    // Bare "<ID>.zip", unsanitized titles and a mismatching expected title are rejected.
-    const bareZip = path.join(legacyRoot, `${titleId}.zip`);
-    await fs.copyFile(legacyZip, bareZip);
-    await assert.rejects(validateNswRelease({ titleId, zipPath: bareZip, romfsRoot }), /filename must be exactly/);
-    await assert.rejects(validateNswRelease({ titleId, zipPath: legacyZip, romfsRoot, gameName: 'Other' }), /filename must be exactly/);
+    // Default expects "<ID>.zip"; a titled name is accepted only when that title is requested.
+    const titledZip = path.join(legacyRoot, `Clockwork Rayline - ${titleId}.zip`);
+    await fs.copyFile(legacyZip, titledZip);
+    await assert.rejects(validateNswRelease({ titleId, zipPath: titledZip, romfsRoot }), /filename must be exactly/);
+    await validateNswRelease({ titleId, zipPath: titledZip, romfsRoot, gameName: 'Clockwork Rayline' });
+    await assert.rejects(validateNswRelease({ titleId, zipPath: titledZip, romfsRoot, gameName: 'Other' }), /filename must be exactly/);
     assert.equal(nswReleaseFileName('Bluey’s Quest: Gold Pen? [0100EF802631A000]', '0100EF802631A000'), 'Bluey’s Quest Gold Pen - 0100EF802631A000.zip');
     assert.equal(parseNswReleaseFileName('A  B - 0100EF802631A000.zip', '0100EF802631A000'), null);
   } finally {

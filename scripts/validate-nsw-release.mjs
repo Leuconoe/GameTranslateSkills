@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import path from 'node:path';
-import { option, parseArgs, requiredOption } from './lib/args.mjs';
-import { normalizeTitleId, nswReleaseFileName, resolveNswGameName, validateNswRelease } from './lib/nsw-release-zip.mjs';
+import { flag, option, parseArgs, requiredOption } from './lib/args.mjs';
+import { normalizeTitleId, nswReleaseFileName, resolveNswReleaseNaming, validateNswRelease } from './lib/nsw-release-zip.mjs';
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
@@ -12,12 +12,10 @@ async function main() {
   if (projectRoot && normalizeTitleId(inferredId) !== titleId) {
     throw new Error(`Project folder Title ID ${inferredId} does not match requested ${titleId}`);
   }
-  const gameName = projectRoot
-    ? await resolveNswGameName(projectRoot, option(args, 'game-name'))
-    : (option(args, 'game-name') ?? null);
-  if (projectRoot && !option(args, 'zip') && !gameName) {
-    throw new Error('NSW release game name is unknown: pass --game-name or add "- Game name: `<title>`" to PROJECT.md');
-  }
+  const naming = { titled: flag(args, 'titled-name'), gameName: option(args, 'game-name') ?? null };
+  const { gameName } = projectRoot
+    ? await resolveNswReleaseNaming(projectRoot, naming)
+    : { gameName: naming.gameName };
   const zipPath = path.resolve(option(args, 'zip') ?? (projectRoot
     ? path.join(projectRoot, '40_build', 'releases', nswReleaseFileName(gameName, titleId))
     : requiredOption(args, 'zip')));

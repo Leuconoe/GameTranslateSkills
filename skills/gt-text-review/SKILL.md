@@ -52,8 +52,9 @@ font manifest·render probe·왕복 보고서가 없거나 현재 입력 해시�
 5. **상태 분리**: `review_ready`는 사용자 승인, 런타임 PASS, 릴리스 준비를 의미하지
    않는다. `PASS (bench)`, `PASS (runtime)`, `user-approved`를 각각 별도 증거로 둔다.
 
-사용자가 im-not-ai 윤문을 요청한 경우에는 `glossary-rules.md` §7에 따른
-통합 `humanize-korean` 실행·게이트·finalize 증거를 확인한다. 이 handoff 단계에서
+`humanize_policy`가 `off`가 아니면 `glossary-rules.md` §7에 따른 기본
+im-not-ai(`humanize-korean`) 윤문의 실행·게이트·finalize 증거를 확인한다. 증거가 없으면
+review-ready로 넘기지 않고 텍스트 번역 단계로 되돌린다. 이 handoff 단계에서
 새로운 문구 수정이 생기면 변경 행을 텍스트 번역/QA로 돌려 현재 번역·폰트·왕복
 증거를 갱신한 뒤 handoff한다. 윤문 완료만으로 폰트·빌드·런타임 PASS를 선언하지 않는다.
 

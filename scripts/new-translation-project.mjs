@@ -272,6 +272,7 @@ async function main() {
 - batch_size: 80
 - batch_size_override_reason: none (canonical default)
 - glossary_path: 30_translation/text/glossary.tsv
+- humanize_policy: im-not-ai — run the installed humanize-korean skill once per title after the first full merge (glossary-rules §7); set \`off\` only when the user explicitly disables it
 - runtime_policy: static-first
 - runtime_authorization: pending
 - basic_test_backend: eden-mcp

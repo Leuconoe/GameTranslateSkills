@@ -31,9 +31,34 @@ description: "Text branch translation after text analysis: batch-translate extra
   read-range receipt·희소 수정 정책을 사용한다. 공유 문맥은 한 번 로드하고 수정·보류만
   모델이 출력하며, 코드의 유지 행 복사는 실제 대조가 확인된 ID에만 허용한다.
   변경 없는 행의 검증 캐시와 changed-only 검사 뒤 전량 최종 integrity gate를 유지한다.
-- 사용자가 im-not-ai 윤문을 요청하면 설치된 `humanize-korean`을 확인하고
-  `glossary-rules.md` §7의 통합 윤문 절차를 적용한다. 전체 초안이 확정되기 전에
-  내부 페이지마다 별도 윤문 run을 반복하지 않는다.
+- im-not-ai(`humanize-korean`) 윤문은 품질 향상을 위한 **기본 단계**다. `PROJECT.md`의
+  `humanize_policy`가 `off`가 아니면 1차 번역 전체 병합·구조 검증 뒤, 독립 2차 검수 전에
+  `glossary-rules.md` §7 절차로 한 번 수행한다. 전체 초안이 확정되기 전에 내부 페이지마다
+  별도 윤문 run을 반복하지 않는다. 스킬이 없으면 `WARN`을 남기고 2차 검수의 번역투
+  점검을 강화한다.
+
+## 도구 호출 예산 (반복 호출 방지)
+
+`common/preflight-checks.md` §6을 번역 루프에 구체화한다. 목표는 **배치 1개당 도구 호출 3회**다.
+
+1. **읽기 1회**: 배치 입력(ID·원문·참고 언어·화자)을 한 파일로 만든 chunk를 한 번에 읽는다.
+   행 단위 Read/grep, 같은 파일의 부분 재열람을 하지 않는다.
+2. **쓰기 1회**: 배치 번역 결과를 정해진 출력 파일 하나로 통째로 쓴다. 행마다 Edit하지 않는다.
+3. **검증·병합 1회**: 구조 검증·용어집 대조·병합을 하나의 프로젝트 스크립트
+   (`90_tools/scripts/`)로 묶어 한 번 실행한다. 작은 셸 명령 여러 개로 쪼개지 않는다.
+
+- 용어집·`STYLE.md`·화자 역할표는 세션(또는 컨텍스트 압축 후)마다 한 번 로드한다. 배치마다
+  다시 읽지 않고, 내용이 바뀐 경우에만 변경분을 읽는다.
+- 같은 도구를 같은 인자로 다시 호출하지 않는다. 실패하면 원인을 바꾼 뒤 한 번만 재시도하고,
+  같은 실패가 두 번이면 중단해 원인을 `WORKLOG.md`·`HANDOFF.md`에 기록한다.
+- 진행 상황을 확인하려고 파일·프로세스를 반복 조회(polling)하지 않는다. 백그라운드 작업은
+  완료 알림을 기다린다.
+- 전체 manifest 전수 읽기·전수 검증은 최종 integrity gate에서 한 번만 한다. 그 전에는 바뀐
+  배치만 검사한다.
+- 사용자가 일괄·병렬 번역을 명시해 병렬 서브에이전트를 쓰는 경우에도 배치 파일 경로만
+  넘기고, 각자 읽기 1회·쓰기 1회로 끝내게 한다.
+- 배치당 호출이 예산을 넘으면 그 원인(누락 문맥, 스크립트 부재 등)을 `WORKLOG.md`에 남기고
+  다음 배치 전에 입력 chunk나 스크립트를 고쳐 같은 초과가 반복되지 않게 한다.
 
 ## 절차
 
@@ -64,7 +89,12 @@ description: "Text branch translation after text analysis: batch-translate extra
 6. **배치별 구조 검증**: 번역 완료 배치마다 즉시 검증 (병합 게이트):
    - 행 수/ID 일치, 플레이스홀더·태그·개행 보존, 빈 번역 없음, 미번역 원문 잔존 없음
    - 검증 실패 배치는 병합 금지, 해당 배치만 수정 후 재검증
-7. **작업 로그**: 배치별 상태(완료/실패/재실행)를 `30_translation/WORKLOG.md`에 기록.
+7. **im-not-ai 기본 윤문**: 전 배치 병합·구조 검증이 끝나면 `humanize_policy`가 `off`가
+   아닌 한 `glossary-rules.md` §7대로 `humanize-korean`을 작품 단위로 한 번 실행해 번역투·
+   문장 흐름을 다듬는다. 윤문 결과도 6단계 구조 검증을 다시 통과해야 병합하며, run·원문·
+   최종본·게이트 증거는 `90_tools/work/translation/humanize/<run>/`에 두고
+   `PROJECT_ARTIFACT_MANIFEST.tsv`에 `evidence`로 등록한다. 이어서 독립 2차 검수를 한다.
+8. **작업 로그**: 배치별 상태(완료/실패/재실행)를 `30_translation/WORKLOG.md`에 기록.
    실패 배치는 원인과 함께 기록하고 재실행 시 실패분만 처리.
 
 ## 산출물
@@ -80,6 +110,7 @@ description: "Text branch translation after text analysis: batch-translate extra
 
 - [ ] 대상 텍스트 100% 번역 (상태=translated), 구조 검증 전 배치 통과
 - [ ] 용어집 위반 0건 (전 배치 대상 용어집 대조 스캔)
+- [ ] `humanize_policy`가 `off`가 아니면 im-not-ai 윤문 실행·게이트 증거가 있고 윤문 후 구조 검증 통과
 - [ ] 왕복 변환(TSV→게임 포맷→TSV) 무손실 확인
 - [ ] 배치 크기·용어집 경로·입력 manifest 해시가 `PROJECT.md`와 일치함
 

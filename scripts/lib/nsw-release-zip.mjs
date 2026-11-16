@@ -178,14 +178,40 @@ function endOfCentralDirectory(entryCount, centralSize, centralOffset) {
   return record;
 }
 
-export async function createDeterministicNswZip({ titleId, romfsRoot, outputPath }) {
+export async function inventoryExefs(exefsRoot) {
+  const rootStats = await fsp.lstat(exefsRoot).catch((error) => {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  });
+  if (!rootStats) return [];
+  const files = await inventoryRomfs(exefsRoot);
+  if (files.length !== 1 || files[0].patchPath !== 'main') {
+    throw new Error('Optional ExeFS release input must contain only main');
+  }
+  const handle = await fsp.open(files[0].absolutePath, 'r');
+  try {
+    const magic = Buffer.alloc(4);
+    await handle.read(magic, 0, 4, 0);
+    if (magic.toString('ascii') !== 'NSO0') throw new Error('ExeFS main must be an NSO0 image');
+  } finally {
+    await handle.close();
+  }
+  return files;
+}
+
+export async function createDeterministicNswZip({ titleId, romfsRoot, exefsRoot = null, outputPath }) {
   const id = normalizeTitleId(titleId);
-  const files = await inventoryRomfs(romfsRoot);
+  const contentRoot = `atmosphere/contents/${id}`;
+  const romfsFiles = await inventoryRomfs(romfsRoot);
+  const exefsFiles = exefsRoot ? await inventoryExefs(exefsRoot) : [];
   return createDeterministicZip({
-    files: files.map((file) => ({
+    files: [...romfsFiles.map((file) => ({
       ...file,
-      archivePath: `${id}/romfs/${file.patchPath}`,
-    })),
+      archivePath: `${contentRoot}/romfs/${file.patchPath}`,
+    })), ...exefsFiles.map((file) => ({
+      ...file,
+      archivePath: `${contentRoot}/exefs/${file.patchPath}`,
+    }))],
     outputPath,
   });
 }
@@ -397,8 +423,9 @@ export async function inspectDeterministicZip(zipPath) {
   return { zipPath: resolvedZip, zipSha256: await sha256File(resolvedZip), entries: verified };
 }
 
-export async function validateNswRelease({ titleId, zipPath, romfsRoot = null, allowTemporaryName = false }) {
+export async function validateNswRelease({ titleId, zipPath, romfsRoot = null, exefsRoot = null, allowTemporaryName = false }) {
   const id = normalizeTitleId(titleId);
+  const contentRoot = `atmosphere/contents/${id}`;
   const resolvedZip = path.resolve(zipPath);
   const expectedName = `${id}.zip`;
   if (!allowTemporaryName && path.basename(resolvedZip) !== expectedName) {
@@ -409,22 +436,29 @@ export async function validateNswRelease({ titleId, zipPath, romfsRoot = null, a
   }
   const { entries } = await parseCentralDirectory(resolvedZip);
   if (entries.length === 0) throw new Error('NSW release ZIP contains no patch files');
-  const prefix = `${id}/romfs/`;
+  const romfsPrefix = `${contentRoot}/romfs/`;
+  const exefsPrefix = `${contentRoot}/exefs/`;
   const seen = new Set();
   for (const entry of entries) {
     if (entry.flags !== UTF8_DATA_DESCRIPTOR_FLAGS) throw new Error(`Unexpected ZIP flags for ${entry.archivePath}`);
-    if (!entry.archivePath.startsWith(prefix)) throw new Error(`ZIP entry must use ${prefix}<patch-file>: ${entry.archivePath}`);
-    const patchPath = validatePatchRelativePath(entry.archivePath.slice(prefix.length));
-    const key = patchPath.toLowerCase();
+    const isRomfs = entry.archivePath.startsWith(romfsPrefix);
+    const isExefs = entry.archivePath.startsWith(exefsPrefix);
+    if (!isRomfs && !isExefs) throw new Error(`ZIP entry must use ${romfsPrefix} or ${exefsPrefix}: ${entry.archivePath}`);
+    const patchPath = validatePatchRelativePath(entry.archivePath.slice(isRomfs ? romfsPrefix.length : exefsPrefix.length));
+    if (isExefs && (patchPath !== 'main' || !exefsRoot)) throw new Error(`Unrecognized ExeFS release entry: ${entry.archivePath}`);
+    const key = entry.archivePath.toLowerCase();
     if (seen.has(key)) throw new Error(`Duplicate/case-colliding ZIP entry: ${entry.archivePath}`);
     seen.add(key);
   }
 
-  const sourceInventory = romfsRoot ? await inventoryRomfs(romfsRoot) : null;
+  const sourceInventory = romfsRoot ? [
+    ...(await inventoryRomfs(romfsRoot)).map((file) => ({ ...file, archivePath: `${romfsPrefix}${file.patchPath}` })),
+    ...(exefsRoot ? await inventoryExefs(exefsRoot) : []).map((file) => ({ ...file, archivePath: `${exefsPrefix}${file.patchPath}` })),
+  ] : null;
   if (sourceInventory && sourceInventory.length !== entries.length) {
     throw new Error(`ZIP/source file count mismatch: ${entries.length} != ${sourceInventory.length}`);
   }
-  const sourceByArchive = new Map(sourceInventory?.map((file) => [`${id}/romfs/${file.patchPath}`, file]) ?? []);
+  const sourceByArchive = new Map(sourceInventory?.map((file) => [file.archivePath, file]) ?? []);
   const verifiedEntries = [];
   for (const entry of entries) {
     const payload = await hashZipEntry(resolvedZip, entry);
@@ -438,7 +472,7 @@ export async function validateNswRelease({ titleId, zipPath, romfsRoot = null, a
     }
     verifiedEntries.push({ path: entry.archivePath, size: payload.size, sha256: payload.sha256 });
   }
-  if (sourceByArchive.size !== 0) throw new Error(`ZIP is missing RomFS source files: ${[...sourceByArchive.keys()].join(', ')}`);
+  if (sourceByArchive.size !== 0) throw new Error(`ZIP is missing source files: ${[...sourceByArchive.keys()].join(', ')}`);
   return {
     titleId: id,
     zipPath: resolvedZip,

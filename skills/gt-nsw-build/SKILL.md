@@ -1,6 +1,6 @@
 ---
 name: gt-nsw-build
-description: "Create or validate the one canonical NSW LayeredFS patch ZIP when the user asks for 빌드 생성, 패치 생성, an NSW build, or a Title-ID/romfs archive; reject alternate candidate, delta-applier, game-name, or update-Title-ID packages."
+description: "Create or validate the one canonical NSW LayeredFS ZIP with RomFS and optional ExeFS main when the user asks for 빌드 생성, 패치 생성, an NSW build, or a Title-ID patch archive."
 ---
 
 # gt-nsw-build — NSW canonical 패치 빌드 전담
@@ -32,9 +32,9 @@ NSW 패치의 입력·출력·ZIP root를 하나의 계약으로 강제한다. �
 | 항목 | exact 값 |
 |---|---|
 | 프로젝트 루트 | `<타이틀 루트>/_work/<BASE_TITLE_ID>` |
-| 유일한 입력 | `40_build/layeredfs/<BASE_TITLE_ID>/romfs/` |
+| 유일한 입력 | `40_build/layeredfs/<BASE_TITLE_ID>/romfs/`, 선택적 `exefs/main` |
 | 유일한 ZIP | `40_build/releases/<BASE_TITLE_ID>.zip` |
-| ZIP entry | `<BASE_TITLE_ID>/romfs/<패치파일>` |
+| ZIP entry | `atmosphere/contents/<BASE_TITLE_ID>/romfs/<패치파일>`, 선택적 `atmosphere/contents/<BASE_TITLE_ID>/exefs/main` |
 | 생성기 | `$GT_HOME/scripts/create-nsw-release.mjs` |
 | 검증기 | `$GT_HOME/scripts/validate-nsw-release.mjs` |
 
@@ -44,19 +44,21 @@ NSW 패치의 입력·출력·ZIP root를 하나의 계약으로 강제한다. �
 다음은 패치 산출물이 아니므로 입력·ZIP 어디에도 허용하지 않는다.
 
 - `apply_patch.py`, `*.gldelta` 또는 다른 별도 적용기/델타 묶음
-- `*.nsp`, `*.xci`, `*.keys`, prod/title keys, 펌웨어, 원본 게임 데이터
-- symlink, junction, reparse point, canonical RomFS 밖에서 끌어온 파일
+- `*.nsp`, `*.xci`, `*.keys`, prod/title keys, 펌웨어
+- symlink, junction, reparse point, canonical LayeredFS 밖에서 끌어온 파일
 - `40_build/releases/v*/...`, `*-candidate/...`, 게임명 ZIP, `<UPDATE_TITLE_ID>.zip`
-- `romfs/<패치파일>`처럼 BASE_TITLE_ID root가 빠진 ZIP entry
+- `romfs/<패치파일>`나 `<BASE_TITLE_ID>/romfs/<패치파일>`처럼 SD 루트의 `atmosphere/contents/`가 빠진 ZIP entry
 
 ## 절차
 
 1. **Preflight**
    - 플랫폼이 NSW인지, 프로젝트 디렉터리명·`PROJECT.md`·LayeredFS 경로의
      `BASE_TITLE_ID`가 exact 일치하는지 확인한다.
-   - canonical RomFS가 존재하고 실제 패치 파일이 하나 이상인지 확인한다.
-   - 원본/키/금지 payload, link/reparse point, 다른 Title ID staging이 하나라도 있으면
-     `BLOCKED`로 중단한다. 임의 후보 폴더에서 파일을 복구하거나 추측해 패키징하지 않는다.
+   - canonical RomFS가 존재하고 실제 패치 파일이 하나 이상인지 확인한다. ExeFS를 쓰면 같은 Title ID의 canonical `exefs/main`만 허용하고 NSO0와 원본/후보 해시·의존성을 확인한다.
+   - NSP/XCI·키·펌웨어 등 금지 payload, link/reparse point, 다른 Title ID staging이 하나라도 있으면
+      `BLOCKED`로 중단한다. 임의 후보 폴더에서 파일을 복구하거나 추측해 패키징하지 않는다.
+   - 타이틀별 사용자가 전체 컨테이너 교체를 명시적으로 허용했다면, 수정된 RomFS
+     컨테이너 안의 원본과 동일한 멤버만을 이유로 패키징을 거부하지 않는다.
 
 2. **생성**
    - `$GT_HOME`에서 아래 공용 생성기만 실행한다. 처음에는 `--replace`를 붙이지 않는다.
@@ -67,7 +69,7 @@ NSW 패치의 입력·출력·ZIP root를 하나의 계약으로 강제한다. �
 
    - 기존 canonical ZIP과 입력이 byte-identical이면 생성기가 이를 재사용한다.
    - 기존 ZIP의 bytes가 다르면 자동 덮어쓰지 않는다. 기존
-     `RELEASE_PACKAGE.json`·`SHA256SUMS.txt`와 현재 RomFS 차이를 확인하고 `HANDOFF.md`에
+     `RELEASE_PACKAGE.json`·`SHA256SUMS.txt`와 현재 RomFS/ExeFS 차이를 확인하고 `HANDOFF.md`에
      기록한다. 사용자의 현재 빌드/패치 생성 요청 범위 안에서 교체가 맞다는 근거가
      확인된 경우에만 다음을 실행한다.
 
@@ -82,7 +84,7 @@ NSW 패치의 입력·출력·ZIP root를 하나의 계약으로 강제한다. �
      npm run release:validate:nsw -- --project-root "<타이틀 루트>/_work/<BASE_TITLE_ID>"
      ```
 
-   - ZIP entry 전수 목록, CRC-32, SHA-256, canonical RomFS bytes, `RELEASE_PACKAGE.json`,
+   - ZIP entry 전수 목록, CRC-32, SHA-256, canonical RomFS/ExeFS bytes, `RELEASE_PACKAGE.json`,
      `SHA256SUMS.txt`가 일치해야 한다.
    - `40_build/releases/` 아래 다른 `.zip`이나 version/candidate 하위 ZIP이 있으면 이를
      별도 산출물로 인정하지 않는다. 경로와 해시를 보고하고 canonical 선택이 모호하면
@@ -98,8 +100,8 @@ NSW 패치의 입력·출력·ZIP root를 하나의 계약으로 강제한다. �
 ## 완료 기준
 
 - [ ] 산출물이 정확히 `40_build/releases/<BASE_TITLE_ID>.zip`
-- [ ] 모든 ZIP entry가 `<BASE_TITLE_ID>/romfs/<패치파일>` 아래에 있음
-- [ ] `apply_patch.py`, `*.gldelta`, NSP/XCI/keys, 원본 데이터, link가 없음
+- [ ] 모든 ZIP entry가 `atmosphere/contents/<BASE_TITLE_ID>/romfs/<패치파일>` 또는 선택적 `atmosphere/contents/<BASE_TITLE_ID>/exefs/main`임
+- [ ] `apply_patch.py`, `*.gldelta`, NSP/XCI/keys/firmware, link가 없음
 - [ ] `release:validate:nsw` PASS 및 manifest/hash 동기화
 - [ ] 기존 noncanonical ZIP을 성공 산출물로 보고하거나 임의 삭제하지 않음
 - [ ] `HANDOFF.md`에 패키징 증거와 남은 QA/릴리스 상태를 기록

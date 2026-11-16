@@ -22,6 +22,13 @@ font manifest·render probe·왕복 보고서가 없거나 현재 입력 해시�
 만들어 완료 처리하지 말고 `BLOCKED`로 돌린다. 이 단계에서 폰트 위치 문제를 시각적으로
 발견하면 `gt-text-qa`로 되돌려 원인(좌표계·padding·metrics·consumer·fallback)을 고친다.
 
+전체 의미 검수의 입력·출력은 `common/preflight-checks.md` §6의 토큰 절약 정책을
+따른다. source와 KO를 실제로 대조한 read-range receipt를 근거로 수정·보류만
+모델이 출력하고, 코드는 확인된 ID의 원 target 복사로 필수 유지 행·빈 findings를
+채울 수 있다. 생성된 전 행 시트나 기계 PASS 자체는 실제 의미 검수의 증거가 아니다.
+동일 source라도 KO·화자 역할·문맥이 다르면 합치지 않으며 현재 동결된 배정·출력은
+소급 재구성하지 않는다. 변경 행 검사 후 전량 최종 integrity gate를 한 번 수행한다.
+
 ## 절차
 
 1. **입력 재확인**: 행 수·안정 ID·원문·target_ko·제어 토큰·용어집·폰트 manifest와
@@ -44,6 +51,16 @@ font manifest·render probe·왕복 보고서가 없거나 현재 입력 해시�
      `gt-text-qa`의 폰트·왕복 검사를 다시 수행한다.
 5. **상태 분리**: `review_ready`는 사용자 승인, 런타임 PASS, 릴리스 준비를 의미하지
    않는다. `PASS (bench)`, `PASS (runtime)`, `user-approved`를 각각 별도 증거로 둔다.
+
+사용자가 im-not-ai 윤문을 요청한 경우에는 `glossary-rules.md` §7에 따른
+통합 `humanize-korean` 실행·게이트·finalize 증거를 확인한다. 이 handoff 단계에서
+새로운 문구 수정이 생기면 변경 행을 텍스트 번역/QA로 돌려 현재 번역·폰트·왕복
+증거를 갱신한 뒤 handoff한다. 윤문 완료만으로 폰트·빌드·런타임 PASS를 선언하지 않는다.
+
+대용량 통합 윤문 gate에는 `common/preflight-checks.md` §6의 복잡도·예산 사전 점검과
+stable ID scoped adapter 계약을 적용한다. 원본 non-PASS와 공식 subset 증거·프로젝트
+로컬 지표의 범위를 receipt·finalizer에 분리 보존하며, 이를 전량 공식 지표·동일 SSOT·
+전체 PASS로 바꾸지 않는다. 실제 의미 검수와 run·gate·finalize는 유지한다.
 
 ## 산출물
 

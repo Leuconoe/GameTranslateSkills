@@ -18,7 +18,10 @@ async function main() {
   const romfsRoot = path.resolve(option(args, 'romfs-root') ?? (projectRoot
     ? path.join(projectRoot, '40_build', 'layeredfs', titleId, 'romfs')
     : requiredOption(args, 'romfs-root')));
-  const receipt = await validateNswRelease({ titleId, zipPath, romfsRoot });
+  const exefsRoot = option(args, 'exefs-root') ?? (projectRoot
+    ? path.join(projectRoot, '40_build', 'layeredfs', titleId, 'exefs')
+    : null);
+  const receipt = await validateNswRelease({ titleId, zipPath, romfsRoot, exefsRoot });
   process.stdout.write(`PASS\t${receipt.zipPath}\t${receipt.zipSha256}\tentries=${receipt.entries.length}\n`);
 }
 

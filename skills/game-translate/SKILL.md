@@ -5,8 +5,9 @@ description: "Orchestrate a fail-closed Korean game-localization workflow across
 
 # game-translate — 게임 한글화 오케스트레이터
 
-사용자가 합법적으로 보유한 게임의 개인 번역 패치를 지휘한다. 원본 게임 데이터·콘솔 키·
-펌웨어는 작업·배포 산출물에 포함하지 않는다. 단계·상태·정리 규칙은
+사용자가 합법적으로 보유한 게임의 번역 패치를 지휘한다. 원본 NSP/XCI·콘솔 키·
+펌웨어는 배포 산출물에 포함하지 않는다. 타이틀별 명시적 사용자 지시가 있는 NSW
+전체 컨테이너 LayeredFS 교체는 원본과 동일한 내부 멤버를 허용한다. 단계·상태·정리 규칙은
 `$GT_HOME/common/pipeline-contract.json`과 `pipeline-contract.md`를 기준으로 한다.
 
 ## 0. 환경과 안전
@@ -37,6 +38,12 @@ Steam/PC는 실제 게임 EXE가 있는 설치 폴더). 작업물·임시 파일
 OS 임시 폴더, 공용 MCP 디렉터리, 임의 `title`/`output`/`temp` 폴더를 출력 경로로 쓰지
 않는다. 프로젝트·플랫폼·엔진·Title ID·정책을 확정하지 못하면 변경·삭제·런타임을 하지
 않고 `WARN`/`BLOCKED`와 Handoff만 기록한다.
+
+워크스페이스 최상위도 구역이 고정되어 있다(`workspace-boundary-contract.md`의 **워크스페이스 최상위
+구역**·**타이틀 폴더 중복 방지**). 루트에 파일을 쓰지 않고, `titles/`·`undefined/` 같은 비슷한 최상위
+폴더나 공용 임시 폴더에 타이틀 산출물을 남기지 않으며, 타이틀 루트는 Title ID로 찾아 재사용한다.
+`’`/`'` 같은 특수문자 차이로 같은 게임의 루트를 둘 만들지 않는다. 단계·세션 종료 시 루트와
+`_titles/` 최상위의 새 항목을 점검한다.
 
 도구가 만드는 export·번역 중간물·테스트 산출물/스크립트는
 `$GT_HOME/common/artifact-layout-contract.md`의 class별 managed root에 두고
@@ -227,9 +234,9 @@ exact 파일만 승인 후보로 삼는다. 미등록 managed-root 파일은 자
 사용자가 **“빌드 생성”** 또는 **“패치 생성”**이라고 요청하면 이를 중간 staging이나
 진단 후보 생성으로 해석하지 않는다. 플랫폼 어댑터의 canonical 배포 패키지를 생성하는
 요청으로 라우팅한다. NSW에서는 전담 `gt-nsw-build`와 `platforms/nsw/release.md`를 적용하여
-`40_build/layeredfs/<BASE_TITLE_ID>/romfs/`의 검증된 패치 파일만 입력하고,
+`40_build/layeredfs/<BASE_TITLE_ID>/romfs/`와 선택적 `exefs/main`의 검증된 패치 파일을 입력하고,
 `40_build/releases/<BASE_TITLE_ID>.zip` 안에
-`<BASE_TITLE_ID>/romfs/<패치파일>` 구조를 만든다. 별도 Python 적용기, `*.gldelta`,
+`atmosphere/contents/<BASE_TITLE_ID>/romfs/<패치파일>` 및 선택적 `atmosphere/contents/<BASE_TITLE_ID>/exefs/main` 구조를 만든다. ZIP은 SD 카드 루트에 풀어 덮어쓴다. 별도 Python 적용기, `*.gldelta`,
 버전/candidate 하위 폴더, 게임명 ZIP은 허용하지 않는다. 릴리스 완료 게이트가 아직
 충족되지 않았다면 같은 canonical 형식의 `review_candidate`로 만들 수 있지만 경로·이름·
 ZIP root 계약은 완화하지 않고 `release_status`도 `released`로 올리지 않는다. 정식 릴리스

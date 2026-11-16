@@ -312,8 +312,11 @@ async function validateActiveMod(receipt, projectRoot, projectRealRoot, issues) 
           continue;
         }
         const relative = path.relative(modRoot, target).split(path.sep).join('/');
-        const buffer = await fs.readFile(target);
-        observed.set(relative, { sha256: sha256(buffer), size: buffer.length });
+        // LayeredFS archives can legitimately exceed Node's 2 GiB Buffer limit.
+        // Hash the active-mod file incrementally so validation remains byte-exact
+        // without loading the entire container into memory.
+        const evidence = await hashedRegularFile(target, 'active mod file', issues);
+        if (evidence) observed.set(relative, { sha256: evidence.sha256, size: Number(evidence.stat.size) });
       }
     }
   }

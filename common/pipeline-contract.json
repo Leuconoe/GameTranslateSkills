@@ -64,6 +64,24 @@
     "api_endpoint": "N/A",
     "candidate_policy": "best-of-3-fail-closed",
     "minimum_candidates": 3,
+    "project_override": {
+      "project_policy_path_field": "image_generation_override",
+      "project_policy_sha256_field": "image_generation_override_sha256",
+      "policy": "project-local-max-2-then-typeset",
+      "policy_schema_version": 1,
+      "max_imagegen_attempts": 2,
+      "include_prior_failures": true,
+      "typeset_origin": "agent-typeset",
+      "typeset_generator": "typeset",
+      "typeset_receipt_schema": 6,
+      "scope_identity": [
+        "project_root",
+        "title_id",
+        "stable_key",
+        "source_sha256"
+      ],
+      "user_instruction_evidence_required": true
+    },
     "operation": "edit",
     "forbidden_generators": ["python", "pillow", "opencv", "imagemagick", "svg", "html-canvas"],
     "exact_invariants": ["source-reference-bytes", "canvas", "format", "color-mode", "anchor", "atlas-rect", "declared-alpha-policy", "preserved-rgba"]
@@ -116,7 +134,7 @@
     "trigger_phrases": ["빌드 생성", "패치 생성"],
     "input": "40_build/layeredfs/<BASE_TITLE_ID>/romfs",
     "output": "40_build/releases/<BASE_TITLE_ID>.zip",
-    "archive_root": "<BASE_TITLE_ID>/romfs/",
+    "archive_root": "atmosphere/contents/<BASE_TITLE_ID>/romfs/",
     "packager": "scripts/create-nsw-release.mjs",
     "validator": "scripts/validate-nsw-release.mjs",
     "forbidden_payloads": ["apply_patch.py", "*.gldelta", "*.nsp", "*.xci", "*.keys"]

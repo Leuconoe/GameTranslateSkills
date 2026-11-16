@@ -26,9 +26,10 @@ description: "Release a QA-verified Korean game patch using the platform adapter
 
 ## 절대 규칙
 
-- **배포물에 원본 게임 데이터를 포함하지 않는다.** 패치는 변경분만 담는 형태여야 한다
-  (NSW: LayeredFS 모드 폴더, SFC: IPS/BPS 델타 패치, PS1/PS2: xdelta 등 델타 패치,
-  Steam/PC: `PATCH_MANIFEST.tsv`로 재배포 허용이 증명된 map/plugin/font/config/delta overlay).
+- 배포 형식은 플랫폼 계약을 따른다. NSW에서 타이틀별 사용자 지시가 전체 컨테이너
+  LayeredFS 교체를 명시적으로 허용하면 이를 원본 데이터 포함만을 이유로 거부하지 않는다.
+  원본 NSP/XCI, 키, 펌웨어는 배포물에 넣지 않는다. 다른 플랫폼은 해당 어댑터의
+  델타·재배포 계약을 따른다.
 - 콘솔 키·펌웨어·롬 파일은 어떤 형태로도 포함 금지.
 - 공통 스킬은 게임명·날짜·버전이 붙은 파일명을 임의로 선택하지 않는다. 정확한 경로·파일명·
   ZIP 루트는 플랫폼 어댑터와 `PROJECT.md`의 계약을 그대로 사용한다.
@@ -37,9 +38,9 @@ description: "Release a QA-verified Korean game patch using the platform adapter
 - 사용자가 NSW에서 `빌드 생성` 또는 `패치 생성`이라고 하면 전담 `gt-nsw-build`로
   라우팅한다. 이 스킬은 그 결과를 받아 정식 릴리스 게이트를 계속 수행한다.
   진단 폴더·버전/candidate 하위 폴더·delta 적용기 패키지를 대신 만들지 않는다.
-- NSW의 exact 결과는 `40_build/releases/<BASE_TITLE_ID>.zip` 하나이며 내부 root는
-  `<BASE_TITLE_ID>/romfs/<패치파일>`이다. 입력은
-  `40_build/layeredfs/<BASE_TITLE_ID>/romfs/` 하나뿐이다. `romfs/` 단독 root,
+- NSW의 exact 결과는 `40_build/releases/<BASE_TITLE_ID>.zip` 하나이며 내부 entry는
+  `atmosphere/contents/<BASE_TITLE_ID>/romfs/<패치파일>` 및 선택적 `atmosphere/contents/<BASE_TITLE_ID>/exefs/main`이다. 입력은
+  `40_build/layeredfs/<BASE_TITLE_ID>/romfs/`와 선택적 `exefs/main`이다. `romfs/` 단독 root,
   `<UPDATE_TITLE_ID>.zip`, `*.gldelta`, `apply_patch.py`, NSP/XCI/키가 있으면 실패한다.
 
 ## 절차
@@ -91,13 +92,14 @@ description: "Release a QA-verified Korean game patch using the platform adapter
 
 | 파일 | 내용 |
 |-----|------|
-| `<adapter release path>/<canonical>.zip` | 배포 패키지 (+ SHA-256). NSW: `<BASE_TITLE_ID>/romfs/`; Steam/PC: `patch/` + root `PATCH_MANIFEST.tsv` |
+| `<adapter release path>/<canonical>.zip` | 배포 패키지 (+ SHA-256). NSW: `atmosphere/contents/<BASE_TITLE_ID>/romfs/`와 선택적 `atmosphere/contents/<BASE_TITLE_ID>/exefs/main`; Steam/PC: `patch/` + root `PATCH_MANIFEST.tsv` |
 | `<adapter release path>/INSTALL.md` | 설치 가이드 |
 | `<adapter release path>/RELEASE_NOTES.md` | 릴리스 노트 |
 
 ## 완료 기준
 
-- [ ] 패키지에 원본 게임 데이터·키 미포함 확인 (내용물 전수 목록 검사)
+- [ ] 패키지 내용물 전수 목록 검사; NSP/XCI·키·펌웨어가 없고 NSW 전체 컨테이너
+      교체에는 타이틀별 명시적 사용자 지시가 기록됨
 - [ ] 깨끗한 환경 적용 스모크 테스트 통과 (증거 보존)
 - [ ] 공식 사이트 배포용 릴리즈를 직접 실행했고 `mcp_used=false`, URL·버전·바이너리 SHA-256·현재 build/mod/evidence가 검증됨
 - [ ] `npm run runtime:validate` 및 플랫폼 구조 검증(NSW `project:validate -- --strict`,
@@ -107,5 +109,5 @@ description: "Release a QA-verified Korean game patch using the platform adapter
 - [ ] 승인된 정리를 적용했다면 plan SHA-256·아카이브 경로·전수 재검토·사용자 상세 보고가 기록됨
 - [ ] 이후 별도 승인으로 휴지통 이동했다면 trash-plan SHA-256·backend·원래 아카이브 경로·`TRASH_RECEIPT.json`·플랫폼 구조 검증 결과가 기록됨
 - [ ] canonical 파일명·경로·ZIP root·파일 allowlist가 어댑터 계약과 exact 일치
-- [ ] NSW이면 `release:validate:nsw`가 entry 경로·CRC-32·SHA-256과 canonical RomFS를 전수 대조해 통과
+- [ ] NSW이면 `release:validate:nsw`가 entry 경로·CRC-32·SHA-256과 canonical RomFS/ExeFS를 전수 대조해 통과
 - [ ] 공식 배포 릴리즈 런타임·하드웨어 상태와 `released` 판정이 서로 혼동되지 않음

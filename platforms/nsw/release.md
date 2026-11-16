@@ -4,7 +4,9 @@
 
 ## 전제
 
-배포물은 사용자가 보유한 게임에 덮어쓰는 **패치 데이터만** 담는다. 원본 게임 파일, 복호화 산출물, 키는 절대 포함하지 않는다.
+배포물은 사용자가 보유한 게임에 덮어쓰는 LayeredFS 파일을 담는다. 타이틀별 사용자가
+전체 컨테이너 교체를 명시적으로 허용한 경우, 수정된 컨테이너 안의 원본과 동일한
+멤버는 패키징 금지 사유로 삼지 않는다. 원본 NSP/XCI, 키, 펌웨어는 포함하지 않는다.
 
 ## 1. 최종 산출물 생성 방식
 
@@ -14,14 +16,15 @@
    - canonical 파일명은 항상 `40_build/releases/<BASE_TITLE_ID>.zip`이며, `<BASE_TITLE_ID>`는 대문자 16자리 16진수다(예: `0123456789ABCDEF.zip`).
    - 게임명·날짜·언어·버전·구성요소·준비 상태·진단용 접두사/접미사를 붙이지 않는다.
    - 표준형·SD-ready·텍스트 전용·폰트 전용·이미지 전용·진단용·단계별·루트 변형 ZIP을 병렬로 만들지 않는다. 중간·진단 빌드는 폴더와 보고서로만 유지한다.
-   - 패키징 전에 단 하나의 ZIP 루트와 설치 방식을 확정하고, 검증된 canonical ZIP만 **원자적으로 교체**한다.
+   - 패키징 전에 SD 카드 루트에 바로 풀어 덮어쓰는 설치 방식을 확정하고, 검증된 canonical ZIP만 **원자적으로 교체**한다.
    - canonical ZIP은 프로젝트가 정한 최종 위치에 두며, 다른 전달·설치 폴더로의 복사·이동은 사용자의 선택이므로 자동 수행하지 않는다.
    - 여러 베이스 Title ID는 한 ZIP에 합치지 않고 Title ID별로 별도 생성한다.
-4. ZIP의 유일한 루트는 `<BASE_TITLE_ID>/romfs/`로 한다. 즉 패치 파일 `data/foo.bin`은
-   ZIP 안에서 `<BASE_TITLE_ID>/romfs/data/foo.bin`이어야 한다. ZIP 파일명은
-   `<BASE_TITLE_ID>.zip`이며, 압축을 푼 `<BASE_TITLE_ID>/romfs/`가
-   `atmosphere/contents/<BASE_TITLE_ID>/romfs/` 또는 에뮬레이터의 해당 Title ID mod
-   경로에 대응한다. 최상위 `romfs/`만 두거나, 게임명·버전·candidate 폴더를 루트에 두거나,
+4. ZIP의 유일한 최상위 루트는 `atmosphere/`다. RomFS 패치 파일 `data/foo.bin`은
+   `atmosphere/contents/<BASE_TITLE_ID>/romfs/data/foo.bin`, 선택적 ExeFS 교체 파일은
+   `atmosphere/contents/<BASE_TITLE_ID>/exefs/main`이어야 한다. ZIP 파일명은
+   `<BASE_TITLE_ID>.zip`이며, SD 카드 루트에 압축을 풀어 한 번에 덮어쓴다.
+   Eden에는 ZIP의 `contents/<BASE_TITLE_ID>/` 아래 `romfs`와 `exefs`를 한 모드 폴더에 복사한다.
+   최상위 `romfs/`나 `<BASE_TITLE_ID>/`만 두거나, 게임명·버전·candidate 폴더를 루트에 두거나,
    별도 적용기와 delta 파일을 넣는 자체 포맷은 NSW canonical 빌드가 아니다.
 5. 패키징 도구는 다음을 **실패 조건**으로 검사한다.
    - 예상 번들/파일 수 불일치
@@ -37,24 +40,24 @@
 
 - 사용자가 **“빌드 생성”** 또는 **“패치 생성”**을 요청하면 NSW에서는 후보 폴더·delta
   생성이 아니라 canonical LayeredFS 패키징 요청으로 해석한다. 최종 입력을 먼저
-  `40_build/layeredfs/<BASE_TITLE_ID>/romfs/`에 확정한 다음 아래 공용 명령을 실행한다.
+  `40_build/layeredfs/<BASE_TITLE_ID>/romfs/` 및 선택적 `exefs/main`에 확정한 다음 아래 공용 명령을 실행한다.
 
   ```text
   npm run release:package:nsw -- --project-root "<타이틀 루트>/_work/<BASE_TITLE_ID>" --replace
   npm run release:validate:nsw -- --project-root "<타이틀 루트>/_work/<BASE_TITLE_ID>"
   ```
 
-  결과는 오직 `40_build/releases/<BASE_TITLE_ID>.zip`이며 ZIP 내부는 오직
-  `<BASE_TITLE_ID>/romfs/<패치파일>`이다. `--replace`는 기존 canonical ZIP의 현재 hash를
+  결과는 오직 `40_build/releases/<BASE_TITLE_ID>.zip`이며 ZIP 내부는
+  `atmosphere/contents/<BASE_TITLE_ID>/romfs/<패치파일>`와 선택적 `atmosphere/contents/<BASE_TITLE_ID>/exefs/main`이다. `--replace`는 기존 canonical ZIP의 현재 hash를
   확인하고 새 ZIP 전수 검증이 끝난 뒤 원자 교체할 때만 사용한다.
 - 공용 패키저는 프로젝트 폴더명·요청 Title ID·LayeredFS 폴더의 Title ID가 exact 일치하지
   않거나, 패치 파일이 0개이거나, link/reparse path·NSP/XCI·키·`*.gldelta`·별도 패처가
   섞이면 실패해야 한다. 생성 후 ZIP을 다시 열어 모든 entry의 경로·크기·CRC-32·SHA-256을
-  원본 canonical RomFS와 전수 비교한다.
+  원본 canonical RomFS/ExeFS와 전수 비교한다.
 
 - **최종 패키징은 문서가 아니라 빌드 스크립트의 출력명부터 canonical 규칙과 맞춘다.** 스크립트가 임시 통합명을 만들고 사람이 나중에 이름만 바꾸는 흐름은 매니페스트·README·해시 불일치를 만든다. 스크립트가 처음부터 `<BASE_TITLE_ID>.zip`을 원자적으로 생성하게 하고, 설정된 릴리스 파일명이 `^[0-9A-F]{16}\.zip$`과 다르면 즉시 실패시킨다. 정확한 파일 allowlist·ZIP root·리로드를 검사한 뒤 현재 SHA-256을 모든 릴리스 기록에 동기화한다.
 - **canonical 파일명 규칙은 빌드 불변조건이다.** 빌드·릴리스 검증기는 실제 경로·basename·확장자·대소문자가 규칙과 다르면 실패하고, 임의 접두사/접미사, 중복 확장자, 빌드 뒤 수동 이름 변경, 진단·후보 ZIP의 릴리스 전달을 거부해야 한다.
-- **여러 하위 시스템을 합친 최종 트리는 exact allowlist로 다시 검증한다.** 폰트·문자열·이미지 verifier가 혼합 디렉터리를 검사할 때 "추가 파일 허용"을 임의 파일 허용으로 구현하지 말고, 다른 하위 시스템의 이미 검증된 파일명 집합만 허용한다. 대상 집합 간 중복 경로 0, 누락·미등록 파일 0을 확인하고, 깨끗한 입력에서 **두 번 조립해 파일별·ZIP SHA-256 결정성**을 증명한 뒤 ZIP을 다시 열어 정렬된 `<BASE_TITLE_ID>/romfs/` entry와 payload를 전수 대조한다.
+- **여러 하위 시스템을 합친 최종 트리는 exact allowlist로 다시 검증한다.** 폰트·문자열·이미지 verifier가 혼합 디렉터리를 검사할 때 "추가 파일 허용"을 임의 파일 허용으로 구현하지 말고, 다른 하위 시스템의 이미 검증된 파일명 집합만 허용한다. 대상 집합 간 중복 경로 0, 누락·미등록 파일 0을 확인하고, 깨끗한 입력에서 **두 번 조립해 파일별·ZIP SHA-256 결정성**을 증명한 뒤 ZIP을 다시 열어 정렬된 `atmosphere/contents/<BASE_TITLE_ID>/{romfs,exefs}/` entry와 payload를 전수 대조한다.
 - **공식 배포 릴리즈 런타임 증거가 생긴 뒤에만 릴리스 상태를 동기화한다.** 컴파일 성공,
   ZIP 재로드, Eden/Ryubing MCP smoke는 런타임 PASS가 아니다. `runtime-emulators.json`에 등록된
   공식 release의 바이너리를 직접 실행해 URL·버전·binary hash, 입력 build, Title ID, 활성
@@ -81,5 +84,5 @@
   binary/build/mod/evidence hash로 검증되고 `qa_status=passed`
 - 릴리스 ZIP을 제거했을 때 다른 게임과 원본 실행에 영향이 없음 (패치는 원본을 변경하지 않는 overlay여야 함)
 - canonical ZIP의 이름이 `<BASE_TITLE_ID>.zip`이고 모든 entry가
-  `<BASE_TITLE_ID>/romfs/<패치파일>`이며 별도 패처·delta·키·NSP/XCI가 없음
+  `atmosphere/contents/<BASE_TITLE_ID>/romfs/<패치파일>` 또는 선택적 `atmosphere/contents/<BASE_TITLE_ID>/exefs/main`이며 별도 패처·delta·키·NSP/XCI가 없음
 - 완료 후 프로젝트 `_work` 아래 `tmp-*`, `tmp_*`, `*.tmp` 후보를 dry-run으로 확인하고, 불필요한 항목만 명시적 allowlist로 정리한 뒤 후보 0건과 `project:validate -- --strict` 결과를 `WORK_LOG.md`에 기록

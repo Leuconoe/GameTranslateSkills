@@ -5,7 +5,8 @@
 ## 전제
 
 - 이 문서의 모든 절차는 **사용자가 합법적으로 보유한 게임의 개인 번역 패치** 제작을 전제로 한다.
-- 배포물은 원본 게임 데이터를 포함하지 않는 **LayeredFS 패치 형태**로만 만든다. 원본 NSP/XCI, 복호화된 RomFS, 게임 키를 산출물이나 배포물에 포함하지 않는다.
+- 배포물은 **LayeredFS 패치 형태**로 만든다. 타이틀별 사용자가 명시적으로 허용하면
+  수정된 전체 RomFS 컨테이너를 포함할 수 있다. 원본 NSP/XCI, 게임 키, 펌웨어는 포함하지 않는다.
 - 게임마다 엔진과 파일 형식은 달라도 **원본 보존, 번역 데이터 관리, 빌드 격리, 실기 검증** 원칙은 동일하게 적용한다.
 
 ## 도구 체인
@@ -87,8 +88,9 @@ Eden 또는 Ryubing을 포터블/격리 프로파일로 실행할 때는 에뮬�
     BUILD_MANIFEST.tsv
     staging/               깨끗한 원본 기반 빌드 작업장
     layeredfs/<TITLE_ID>/romfs/
+    layeredfs/<TITLE_ID>/exefs/main (선택적)
     releases/              단일 정식 <BASE_TITLE_ID>.zip 및 릴리스 기록
-                           ZIP root = <BASE_TITLE_ID>/romfs/<패치파일>
+                           ZIP root = atmosphere/contents/<BASE_TITLE_ID>/romfs/<패치파일>
   50_test/
     TEST_LOG.md
     screenshots/

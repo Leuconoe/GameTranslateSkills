@@ -17,7 +17,8 @@
           "https://git.eden-emu.dev/eden-emu/eden/releases"
         ],
         "allowed_download_hosts": [
-          "git.eden-emu.dev"
+          "git.eden-emu.dev",
+          "stable.eden-emu.dev"
         ]
       },
       {

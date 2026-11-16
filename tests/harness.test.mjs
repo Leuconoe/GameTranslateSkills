@@ -608,7 +608,7 @@ test('NSW build and patch requests route to the dedicated canonical build skill'
   assert.match(orchestrator, /전담 `gt-nsw-build`/);
   assert.match(releaseSkill, /`gt-nsw-build`에 위임/);
   assert.match(buildSkill, /40_build\/releases\/<BASE_TITLE_ID>\.zip/);
-  assert.match(buildSkill, /<BASE_TITLE_ID>\/romfs\/<패치파일>/);
+  assert.match(buildSkill, /atmosphere\/contents\/<BASE_TITLE_ID>\/romfs\/<패치파일>/);
   assert.match(buildSkill, /release:validate:nsw/);
   assert.match(buildSkill, /release_status=released/);
 });
@@ -628,10 +628,10 @@ test('NSW build and patch packaging creates only the canonical Title-ID/romfs ZI
   assert.equal((await fs.stat(zipPath)).isFile(), true);
   assert.match(runNode('validate-nsw-release.mjs', ['--project-root', projectRoot]), /PASS/);
   const receipt = JSON.parse(await fs.readFile(path.join(projectRoot, '40_build', 'releases', 'RELEASE_PACKAGE.json'), 'utf8'));
-  assert.equal(receipt.archive_root, `${titleId}/romfs/`);
+  assert.equal(receipt.archive_root, `atmosphere/contents/${titleId}/romfs/`);
   assert.deepEqual(receipt.entries.map((entry) => entry.path), [
-    `${titleId}/romfs/data/nx/script.dat`,
-    `${titleId}/romfs/font.bin`,
+    `atmosphere/contents/${titleId}/romfs/data/nx/script.dat`,
+    `atmosphere/contents/${titleId}/romfs/font.bin`,
   ]);
   assert.equal((await fs.readdir(path.join(projectRoot, '40_build', 'releases'))).filter((name) => name.endsWith('.zip')).length, 1);
 

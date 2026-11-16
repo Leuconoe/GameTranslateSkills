@@ -5,6 +5,12 @@ description: "Prepare an image-review handoff after technical QA with complete b
 
 # gt-image-review — 이미지 브랜치 I4: 이미지 검수 handoff
 
+프로젝트에 사용자가 승인한 `2회 imagegen 실패 후 직접 조판` 경로가 있으면
+원본, 두 독립 시도의 실패 근거, 조판 후보, glyph/effect 마스크, 폰트·렌더러
+provenance와 보호 영역/네이티브 왕복 결과를 나란히 검수한다. 이 후보는 내장
+imagegen 결과나 schema 3–5 엄격 PASS로 부르지 않는다. 화면 검증이 남았다면
+review-ready와 runtime PASS를 분리해 기록한다.
+
 이미지 검수는 기술 QA 결과와 before/after 비교 자료를 통합 QA에 넘길 수 있도록 정리하는
 단계다. 기본 `image_review_policy=prepare-only`에서는 중단하지 않는다. `user-gate`를
 명시한 프로젝트만 사용자 승인 대기를 활성화한다.

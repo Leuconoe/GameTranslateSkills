@@ -301,7 +301,7 @@ async function main() {
   for (const phrase of ['RELEASE_RUNTIME_QA.json', 'runtime:validate', 'MCP 없이 직접', 'PENDING_RUNTIME']) {
     if (!releaseSkill.includes(phrase)) add(issues, `gt-release: missing final runtime gate ${phrase}`);
   }
-  for (const phrase of ['빌드 생성', '패치 생성', 'release:package:nsw', '<BASE_TITLE_ID>/romfs/<패치파일>', '*.gldelta']) {
+  for (const phrase of ['빌드 생성', '패치 생성', 'release:package:nsw', 'atmosphere/contents/<BASE_TITLE_ID>/romfs/<패치파일>', '*.gldelta']) {
     if (!releaseSkill.includes(phrase)) add(issues, `gt-release: missing canonical NSW package phrase ${phrase}`);
   }
   const nswRelease = contract?.nsw_release_package_contract;
@@ -309,7 +309,7 @@ async function main() {
     skill: 'gt-nsw-build',
     input: '40_build/layeredfs/<BASE_TITLE_ID>/romfs',
     output: '40_build/releases/<BASE_TITLE_ID>.zip',
-    archive_root: '<BASE_TITLE_ID>/romfs/',
+    archive_root: 'atmosphere/contents/<BASE_TITLE_ID>/romfs/',
     packager: 'scripts/create-nsw-release.mjs',
     validator: 'scripts/validate-nsw-release.mjs',
   })) if (nswRelease?.[field] !== expected) add(issues, `contract: nsw_release_package_contract.${field} must equal ${expected}`);
@@ -322,7 +322,7 @@ async function main() {
     '패치 생성',
     '40_build/layeredfs/<BASE_TITLE_ID>/romfs/',
     '40_build/releases/<BASE_TITLE_ID>.zip',
-    '<BASE_TITLE_ID>/romfs/<패치파일>',
+    'atmosphere/contents/<BASE_TITLE_ID>/romfs/<패치파일>',
     'release:package:nsw',
     'release:validate:nsw',
     '--replace',

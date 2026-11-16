@@ -32,9 +32,14 @@ async function main() {
   if (projectId !== titleId) throw new Error(`Project folder Title ID ${projectId} does not match requested ${titleId}`);
 
   const canonicalRomfs = path.join(projectRoot, '40_build', 'layeredfs', titleId, 'romfs');
+  const canonicalExefs = path.join(projectRoot, '40_build', 'layeredfs', titleId, 'exefs');
   const romfsRoot = path.resolve(option(args, 'romfs-root') ?? canonicalRomfs);
+  const exefsRoot = path.resolve(option(args, 'exefs-root') ?? canonicalExefs);
   if (!samePath(romfsRoot, canonicalRomfs)) {
     throw new Error(`NSW release input must be canonical: ${canonicalRomfs}`);
+  }
+  if (!samePath(exefsRoot, canonicalExefs)) {
+    throw new Error(`NSW ExeFS release input must be canonical: ${canonicalExefs}`);
   }
   const releaseRoot = path.join(projectRoot, '40_build', 'releases');
   const outputPath = path.join(releaseRoot, `${titleId}.zip`);
@@ -45,11 +50,12 @@ async function main() {
   await fsp.rm(previousPath, { force: true });
 
   try {
-    await createDeterministicNswZip({ titleId, romfsRoot, outputPath: temporaryPath });
+    await createDeterministicNswZip({ titleId, romfsRoot, exefsRoot, outputPath: temporaryPath });
     const temporaryReceipt = await validateNswRelease({
       titleId,
       zipPath: temporaryPath,
       romfsRoot,
+      exefsRoot,
       allowTemporaryName: true,
     });
 
@@ -79,7 +85,7 @@ async function main() {
       }
     }
 
-    const receipt = await validateNswRelease({ titleId, zipPath: outputPath, romfsRoot });
+    const receipt = await validateNswRelease({ titleId, zipPath: outputPath, romfsRoot, exefsRoot });
     const stats = await fsp.stat(outputPath);
     const manifest = {
       schema_version: 1,
@@ -87,8 +93,12 @@ async function main() {
       format: 'LayeredFS',
       base_title_id: titleId,
       archive_path: `40_build/releases/${titleId}.zip`,
-      archive_root: `${titleId}/romfs/`,
+      archive_root: `atmosphere/contents/${titleId}/romfs/`,
       source_romfs: `40_build/layeredfs/${titleId}/romfs`,
+      ...(receipt.entries.some((entry) => entry.path.startsWith(`atmosphere/contents/${titleId}/exefs/`)) ? {
+        exefs_root: `atmosphere/contents/${titleId}/exefs/`,
+        source_exefs: `40_build/layeredfs/${titleId}/exefs`,
+      } : {}),
       entry_count: receipt.entries.length,
       size_bytes: stats.size,
       sha256: receipt.zipSha256,

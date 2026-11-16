@@ -122,6 +122,7 @@
 ## 7. PowerShell 경로 취급
 
 - 대괄호(`[`, `]`), 아포스트로피, 비ASCII 문자가 들어간 경로는 `-Path` 대신 반드시 `-LiteralPath`(또는 프로젝트 ID 기반으로 해석된 절대 경로)를 사용한다.
+- 자연어·코드 문자열에 typographic apostrophe/quote가 있으면 ASCII 작은따옴표 escape만으로 PowerShell `-c` 인수를 감싸지 말고 non-interpolating here-string 또는 literal scriptfile로 전달하여 셸 파싱이 코드 내용을 바꾸지 않고 Python에 넘기도록 한다.
 - 와일드카드 확장이나 부분 이름 매칭으로 프로젝트를 선택하게 두지 않는다. 게임 폴더명에는 대괄호·특수문자가 흔하므로, 와일드카드 오인은 잘못된 프로젝트를 대상으로 삼을 수 있다.
 - 폴더를 rename한 뒤에는 새 경로 기준의 문서·manifest·보고서만 유효한 것으로 취급하고, 이전 경로를 배치 입력으로 재사용하지 않는다.
 

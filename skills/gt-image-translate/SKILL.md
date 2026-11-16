@@ -19,6 +19,25 @@ STYLE을 따르고 `$GT_HOME/common/image-translation-contract.md`를 적용한�
 `image_scope=N/A`이면 가짜 후보를 만들지 않고 0건 근거와 `image_status=skipped`를 기록한 뒤
 `gt-qa`로 이동한다. `required`인데 분석·text handoff·원본 hash가 없으면 `BLOCKED`다.
 
+### 사용자 지정 2회 시도 후 직접 조판
+
+사용자가 **해당 프로젝트에 명시적으로** `imagegen 2회 시도 후 실패하면 조판`을 지시하면
+`$GT_HOME/common/image-translation-contract.md`의 프로젝트 한정 override를 적용한다.
+기본 best-of-3 정책은 다른 프로젝트에 계속 적용된다. 원본 hash와 정확한 문구·편집
+마스크를 잠근 뒤 같은 원본에 대한 독립 imagegen 편집을 최대 2회 평가한다. 과거에
+독립 호출 2회 이상 실패했다는 파일·hash·판정 근거가 있으면 다시 호출하지 않는다.
+둘 다 불합격이면 원본/reference를 보존하면서 **새 후보 경로**에 직접 조판한다.
+글자와 그 효과만 제거하고 원본 배경·삽화·말풍선·alpha·영역 밖 RGBA를 보호한다.
+폰트 파일/hash, 렌더러/설정, 지운 마스크, 전후 비교, 두 실패 판정, 원문 제거와
+네이티브 import 왕복 결과를 기록한다. 배경·숨은 그림은 원상 pixel-exact 입증 대신
+승인 S 안 재구성의 실제 시각 일관성과 U 밖·보호 G 불변으로 판정하며, 실제 시각 결함이나 보호 영역 훼손 시 품질 HOLD로 미해결 영역을 남긴다.
+
+이 경로는 `origin=agent-typeset`로 기록한다. 조판물을 imagegen 결과나 기존 schema
+3–5 엄격 PASS로 가장하지 않는다. 품질·구조 검증이 끝난 후보만 해당 프로젝트의
+명시적 예외 판정으로 병합한다. 기술적 생성 실패는 기록하되 공급자의 안전 제한이나
+이미 기록된 금지 범위를 회피하려고 재시도·재표현·직접 조판으로 우회하지 않는다.
+실패한 호출을 성공한 출력으로 꾸며 세지 않는다.
+
 ## 실행 경로
 
 | 환경 | 동작 |
@@ -26,12 +45,16 @@ STYLE을 따르고 `$GT_HOME/common/image-translation-contract.md`를 적용한�
 | Codex + 내장 `$imagegen` | `view_image`로 local reference를 확인하고 `image_gen.imagegen`에 `referenced_image_paths`로 전달해 edit |
 | 내장 imagegen 없음 | 계획·분석까지만 하고 `hold-for-imagegen-review`; API/CLI나 로컬 raster 생성기로 폴백하지 않음 |
 | 사용자가 ChatGPT UI 결과를 제공 | `origin=user-supplied`로 검증하며 agent-generated tool call로 가장하지 않음 |
+| 프로젝트별 2회 후 조판 명시 | 안전상 허용된 대상에서만 두 독립 실패 증거를 확인한 뒤 `origin=agent-typeset`로 새 후보 조판·검증 |
 
 내장 호출은 API 키를 요구하지 않는다. 현재 tool surface는 GPT Image 모델과 quality를 노출하지
 않으므로 `model=provider-selected`, `quality=provider-managed`로 기록한다. `gpt-image-2/high`를
 증거 없이 주장하지 말고 결과 합격률로 품질을 통제한다.
 
 ## 절차
+
+아래 번호 절차는 기본 best-of-3 경로다. 위 프로젝트별 override에는 그 절차의
+3–4회 호출·imagegen 전용 생성/receipt 제한 대신 override 조항을 우선 적용한다.
 
 1. 범위·경로·원본/reference hash·stable key·glossary·분위기·스타일·edit region/anchor를
    재확인한다. 기존 canonical candidate에 다른 hash가 있으면 덮어쓰지 않고 `BLOCKED`다.
@@ -125,7 +148,7 @@ STYLE을 따르고 `$GT_HOME/common/image-translation-contract.md`를 적용한�
 
 - [ ] required 대상에 누락·추가·중복이 없음
 - [ ] 모든 agent-generated 대상에 schema 3, 검증된 size-normalization schema 4, 또는 alpha-mask composition schema 5 best-of-3 receipt와 정확히 하나의 합격 선택 후보가 있음
-- [ ] API/CLI/Python raster 생성·원본/reference/기존 candidate 덮어쓰기 0건
+- [ ] 기본 경로에서는 API/CLI/Python raster 생성 0건; 사용자 지정 조판 경로는 명시적 범위·시도·도구 provenance와 원본/reference/기존 candidate 비덮어쓰기를 확인
 - [ ] 원문 흔적·겹쳐쓰기 0건, 정확한 한글과 원본 시각적 정체성 검사 통과
 - [ ] canvas·format·alpha·atlas·anchor·보존 영역 검사와 validator `Issues: 0`
 - [ ] 왕복 결과가 허용 목록과 일치하고 `image_status=translated`가 현재 hash에 귀속됨

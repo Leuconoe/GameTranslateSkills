@@ -7,6 +7,12 @@ import {
   ALPHA_COMPOSITION_ALGORITHM, composeAlphaMask, parseEditRegions,
 } from './lib/image-alpha-mask.mjs';
 import { parseImageManifest } from './lib/image-manifest.mjs';
+import { parsePromptContract, sameImageText } from './lib/image-prompt-contract.mjs';
+import {
+  IMAGE_OVERRIDE_POLICY, loadImageOverride, scopedImageOverride, validateOverrideBinding,
+  validateOverrideInvocation, validateTypesetReceipt, validatePriorInvocationHistory, invocationIdentity,
+  validateFailedPromptContract,
+} from './lib/image-policy-override.mjs';
 import { validateAlphaMaskReceipt } from './lib/image-mask-receipt.mjs';
 import { decodePngRgba, encodePngRgba, resizeRgbaBilinear } from './lib/png-rgba.mjs';
 
@@ -136,26 +142,8 @@ function exactReceiptField(receipt, field, expected, row, issues) {
   if (receipt?.[field] !== expected) issues.push(`line ${row.__line}: receipt ${field} does not match manifest`);
 }
 
-function parsePromptContract(text, row, issues) {
-  const fields = new Map();
-  for (const [index, rawLine] of text.split(/\r?\n/).entries()) {
-    const line = rawLine.trim();
-    if (!line || line.startsWith('#')) continue;
-    const separator = line.indexOf(':');
-    if (separator < 1) continue;
-    const key = line.slice(0, separator).trim();
-    const value = line.slice(separator + 1).trim();
-    if (fields.has(key)) {
-      issues.push(`line ${row.__line}: imagegen prompt duplicates ${key} at prompt line ${index + 1}`);
-      continue;
-    }
-    fields.set(key, value);
-  }
-  return fields;
-}
-
 function requirePromptExact(fields, key, expected, row, issues) {
-  if (fields.get(key) !== expected) {
+  if (!sameImageText(fields.get(key), expected)) {
     issues.push(`line ${row.__line}: imagegen prompt ${key} must equal ${expected}`);
   }
 }
@@ -176,18 +164,29 @@ function isSamePhysicalFile(left, right) {
     && left.stat.dev === right.stat.dev && left.stat.ino === right.stat.ino;
 }
 
-async function validateAgentAttempts(receipt, row, projectRoot, projectRealRoot, protectedEntries, issues) {
-  exactReceiptField(receipt, 'execution_surface', 'chatgpt-built-in', row, issues);
-  exactReceiptField(receipt, 'candidate_policy', 'best-of-3-fail-closed', row, issues);
-  exactReceiptField(receipt, 'minimum_candidates', 3, row, issues);
+async function validateAgentAttempts(receipt, row, projectRoot, projectRealRoot, protectedEntries, issues, override = null, typesetFallback = false) {
+  exactReceiptField(receipt, 'execution_surface', typesetFallback ? 'project-local-typeset' : 'chatgpt-built-in', row, issues);
+  exactReceiptField(receipt, 'candidate_policy', override ? IMAGE_OVERRIDE_POLICY : 'best-of-3-fail-closed', row, issues);
+  exactReceiptField(receipt, 'minimum_candidates', override ? 1 : 3, row, issues);
+  if (override) {
+    exactReceiptField(receipt, 'maximum_attempts', 2, row, issues);
+    validateOverrideBinding(receipt, override, row, issues);
+    validatePriorInvocationHistory(receipt, override, row, issues);
+  }
 
   if (!Array.isArray(receipt.attempts)) {
     issues.push(`line ${row.__line}: receipt attempts must be an array`);
     return null;
   }
-  if (receipt.attempts.length < 3 || receipt.attempts.length > 4) {
-    issues.push(`line ${row.__line}: receipt must contain 3 or 4 independent imagegen attempts`);
+  const minAttempts = typesetFallback ? 2 : (override ? 1 : 3);
+  const maxAttempts = override ? 2 : 4;
+  if (receipt.attempts.length < minAttempts || receipt.attempts.length > maxAttempts) {
+    issues.push(`line ${row.__line}: receipt must contain ${override ? minAttempts + ' to ' + maxAttempts : '3 or 4'} independent imagegen attempts`);
   }
+  const invocationIds = new Set();
+  const usePreservedPrompt = Boolean(typesetFallback && override && receipt.failed_prompt_contract
+    && await validateFailedPromptContract(receipt, row, override,
+      overrideEvidenceContext(projectRoot, projectRealRoot, row, protectedEntries, issues), issues));
 
   const seenAttempts = new Set();
   const seenOutputPaths = new Set();
@@ -216,42 +215,67 @@ async function validateAgentAttempts(receipt, row, projectRoot, projectRealRoot,
     if (attempt.attempt !== index + 1) {
       issues.push(`line ${row.__line}: ${label}.attempt must follow contiguous 1-based order`);
     }
+    const failedGeneration = Boolean(override && attempt.generation_status === 'failed');
+    if (override) {
+      const identity = invocationIdentity(attempt);
+      if (invocationIds.has(identity)) issues.push(`line ${row.__line}: imagegen invocation identities must be distinct`);
+      invocationIds.add(identity);
+      await validateOverrideInvocation(attempt, row,
+        overrideEvidenceContext(projectRoot, projectRealRoot, row, protectedEntries, issues), issues);
+      if (typesetFallback && !usePreservedPrompt) {
+        const prompt = await fileEvidence(projectRoot, projectRealRoot, attempt.prompt_path, 'failed attempt prompt', row, issues);
+        compareDeclaredHash(prompt, attempt.prompt_sha256, 'failed attempt prompt SHA', row, issues);
+        if (prompt) {
+          const fields = parsePromptContract(prompt.buffer.toString('utf8'), row, issues);
+          for (const [key, expected] of Object.entries({
+            tool: 'image_gen.imagegen', execution_surface: 'chatgpt-built-in',
+            reference_sha256: row.reference_sha256, source_text: receipt.typesetting?.source_text,
+            korean_text: receipt.typesetting?.korean_text,
+          })) requirePromptExact(fields, key, expected, row, issues);
+        }
+      }
+    }
     for (const [field, expected] of Object.entries({
       tool: 'image_gen.imagegen',
       operation: 'edit',
       reference_path: row.reference_path,
       reference_sha256: row.reference_sha256,
-      prompt_path: row.prompt_path,
-      prompt_sha256: row.prompt_sha256,
-      generation_status: 'completed',
+      prompt_path: typesetFallback ? attempt.prompt_path : row.prompt_path,
+      prompt_sha256: typesetFallback ? attempt.prompt_sha256 : row.prompt_sha256,
+      generation_status: failedGeneration ? 'failed' : 'completed',
     })) {
       if (attempt[field] !== expected) issues.push(`line ${row.__line}: ${label}.${field} must equal ${expected}`);
     }
 
-    const outputPath = attempt.output_path;
-    if (typeof outputPath !== 'string' || !outputPath.startsWith(`${imageRoot}for_translation/`)) {
-      issues.push(`line ${row.__line}: ${label}.output_path must be under ${imageRoot}for_translation/`);
-    }
-    const outputPathKey = process.platform === 'win32' ? String(outputPath).toLowerCase() : String(outputPath);
-    if (seenOutputPaths.has(outputPathKey)) issues.push(`line ${row.__line}: receipt attempt output paths must be unique`);
-    seenOutputPaths.add(outputPathKey);
-    const output = await fileEvidence(projectRoot, projectRealRoot, outputPath, `${label}.output_path`, row, issues);
-    compareDeclaredHash(output, attempt.output_sha256, `${label}.output_sha256`, row, issues);
-    if (/^[0-9a-f]{64}$/i.test(attempt.output_sha256 ?? '')) {
-      const outputHash = attempt.output_sha256.toLowerCase();
-      if (seenOutputHashes.has(outputHash)) issues.push(`line ${row.__line}: independent imagegen attempts must have distinct output hashes`);
-      seenOutputHashes.add(outputHash);
-    }
-    if (output) {
-      if (protectedEntries.some((entry) => isSamePhysicalFile(output, entry))) {
-        issues.push(`line ${row.__line}: ${label}.output_path must not overwrite or hard-link source/reference/probe/receipt evidence`);
+    if (failedGeneration) {
+      if (attempt.output_path !== 'N/A' || attempt.output_sha256 !== 'N/A'
+          || attempt.selection_status !== 'rejected') issues.push(`line ${row.__line}: failed generation must have N/A output and rejected status`);
+    } else {
+      const outputPath = attempt.output_path;
+      if (typeof outputPath !== 'string' || !outputPath.startsWith(`${imageRoot}for_translation/`)) {
+        issues.push(`line ${row.__line}: ${label}.output_path must be under ${imageRoot}for_translation/`);
       }
-      if (outputEntries.some((entry) => isSamePhysicalFile(output, entry))) {
-        issues.push(`line ${row.__line}: independent imagegen attempts must be physically distinct files`);
+      const outputPathKey = process.platform === 'win32' ? String(outputPath).toLowerCase() : String(outputPath);
+      if (seenOutputPaths.has(outputPathKey)) issues.push(`line ${row.__line}: receipt attempt output paths must be unique`);
+      seenOutputPaths.add(outputPathKey);
+      const output = await fileEvidence(projectRoot, projectRealRoot, outputPath, `${label}.output_path`, row, issues);
+      compareDeclaredHash(output, attempt.output_sha256, `${label}.output_sha256`, row, issues);
+      if (/^[0-9a-f]{64}$/i.test(attempt.output_sha256 ?? '')) {
+        const outputHash = attempt.output_sha256.toLowerCase();
+        if (seenOutputHashes.has(outputHash)) issues.push(`line ${row.__line}: independent imagegen attempts must have distinct output hashes`);
+        seenOutputHashes.add(outputHash);
       }
-      outputEntries.push(output);
-    }
+      if (output) {
+        if (protectedEntries.some((entry) => isSamePhysicalFile(output, entry))) {
+          issues.push(`line ${row.__line}: ${label}.output_path must not overwrite or hard-link source/reference/probe/receipt evidence`);
+        }
+        if (outputEntries.some((entry) => isSamePhysicalFile(output, entry))) {
+          issues.push(`line ${row.__line}: independent imagegen attempts must be physically distinct files`);
+        }
+        outputEntries.push(output);
+      }
 
+    }
     const invalidQa = qaFields.filter((field) => !['pass', 'reject'].includes(attempt[field]));
     for (const field of invalidQa) issues.push(`line ${row.__line}: ${label}.${field} must be pass or reject`);
     const allPass = qaFields.every((field) => attempt[field] === 'pass');
@@ -277,23 +301,30 @@ async function validateAgentAttempts(receipt, row, projectRoot, projectRealRoot,
     }
   }
 
-  if (selectedCount !== 1) issues.push(`line ${row.__line}: receipt must select exactly one imagegen attempt`);
-  if (!Number.isInteger(receipt.selected_attempt) || !seenAttempts.has(receipt.selected_attempt)) {
-    issues.push(`line ${row.__line}: receipt selected_attempt must name an existing attempt`);
-  }
-  if (selectedAttempt) {
-    if (selectedAttempt.attempt !== receipt.selected_attempt) issues.push(`line ${row.__line}: receipt selected_attempt does not match selection_status=selected`);
-    let expectedPath = row.candidate_path;
-    let expectedHash = row.candidate_sha256;
-    if (receipt.schema_version === 4) {
-      expectedPath = receipt.normalization?.input_path;
-      expectedHash = receipt.normalization?.input_sha256;
-    } else if (receipt.schema_version === 5) {
-      expectedPath = receipt.alpha_composition?.selected_imagegen_output_path;
-      expectedHash = receipt.alpha_composition?.selected_imagegen_output_sha256;
+  if (typesetFallback) {
+    if (selectedCount !== 0 || receipt.selected_attempt !== null
+        || receipt.attempts.some((attempt) => attempt.selection_status !== 'rejected')) {
+      issues.push(`line ${row.__line}: typeset fallback requires exactly two rejected imagegen calls and no imagegen selection`);
     }
-    if (selectedAttempt.output_path !== expectedPath) issues.push(`line ${row.__line}: selected imagegen output_path must equal the recorded raw candidate path`);
-    if (selectedAttempt.output_sha256 !== expectedHash) issues.push(`line ${row.__line}: selected imagegen output_sha256 must equal the recorded raw candidate hash`);
+  } else {
+    if (selectedCount !== 1) issues.push(`line ${row.__line}: receipt must select exactly one imagegen attempt`);
+    if (!Number.isInteger(receipt.selected_attempt) || !seenAttempts.has(receipt.selected_attempt)) {
+      issues.push(`line ${row.__line}: receipt selected_attempt must name an existing attempt`);
+    }
+    if (selectedAttempt) {
+      if (selectedAttempt.attempt !== receipt.selected_attempt) issues.push(`line ${row.__line}: receipt selected_attempt does not match selection_status=selected`);
+      let expectedPath = row.candidate_path;
+      let expectedHash = row.candidate_sha256;
+      if (receipt.schema_version === 4) {
+        expectedPath = receipt.normalization?.input_path;
+        expectedHash = receipt.normalization?.input_sha256;
+      } else if (receipt.schema_version === 5) {
+        expectedPath = receipt.alpha_composition?.selected_imagegen_output_path;
+        expectedHash = receipt.alpha_composition?.selected_imagegen_output_sha256;
+      }
+      if (selectedAttempt.output_path !== expectedPath) issues.push(`line ${row.__line}: selected imagegen output_path must equal the recorded raw candidate path`);
+      if (selectedAttempt.output_sha256 !== expectedHash) issues.push(`line ${row.__line}: selected imagegen output_sha256 must equal the recorded raw candidate hash`);
+    }
   }
   return selectedAttempt;
 }
@@ -644,10 +675,24 @@ async function validateAlphaComposition(receipt, row, projectRoot, projectRealRo
   }
 }
 
-async function validateRow(row, projectRoot, projectRealRoot, issues) {
+function overrideEvidenceContext(projectRoot, projectRealRoot, row, protectedEntries, issues) {
+  return {
+    async evidence(relative, declaredSha, label) {
+      const entry = await fileEvidence(projectRoot, projectRealRoot, relative, label, row, issues);
+      compareDeclaredHash(entry, declaredSha, label + ' SHA', row, issues);
+      if (entry && (entry.stat.nlink > 1 || protectedEntries.some((item) => isSamePhysicalFile(entry, item)))) {
+        issues.push(`line ${row.__line}: ${label} must not alias protected source/candidate/provenance evidence`);
+      }
+      return entry;
+    },
+  };
+}
+
+async function validateRow(row, projectRoot, projectRealRoot, issues, policy = null) {
+  const override = scopedImageOverride(policy, row);
   if (!row.stable_key || /[\t\r\n]/.test(row.stable_key)) issues.push(`line ${row.__line}: stable_key is empty or invalid`);
   for (const [field, prefix] of Object.entries(requiredPrefixes)) {
-    if (field === 'prompt_path' && row.origin === 'user-supplied') continue;
+    if (field === 'prompt_path' && ['user-supplied', 'agent-typeset'].includes(row.origin)) continue;
     if (!row[field].startsWith(prefix)) issues.push(`line ${row.__line}: ${field} must be under ${prefix}`);
   }
 
@@ -753,8 +798,9 @@ async function validateRow(row, projectRoot, projectRealRoot, issues) {
       requirePromptExact(fields, 'execution_surface', 'chatgpt-built-in', row, issues);
       requirePromptExact(fields, 'model', row.model, row, issues);
       requirePromptExact(fields, 'quality', row.quality, row, issues);
-      requirePromptExact(fields, 'candidate_policy', 'best-of-3-fail-closed', row, issues);
-      requirePromptExact(fields, 'minimum_candidates', '3', row, issues);
+      requirePromptExact(fields, 'candidate_policy', override ? IMAGE_OVERRIDE_POLICY : 'best-of-3-fail-closed', row, issues);
+      requirePromptExact(fields, 'minimum_candidates', override ? '1' : '3', row, issues);
+      if (override) requirePromptExact(fields, 'maximum_attempts', '2', row, issues);
       requirePromptExact(fields, 'reference_sha256', row.reference_sha256, row, issues);
       requirePromptExact(fields, 'remove_source_text', 'complete', row, issues);
       requirePromptExact(fields, 'no_overlay', 'true', row, issues);
@@ -768,9 +814,15 @@ async function validateRow(row, projectRoot, projectRealRoot, issues) {
         'preserve_atmosphere', 'preserve_style', 'preserve_typography', 'preserve_color',
         'preserve_outline_shadow', 'preserve_material_lighting', 'preserve_spacing_baseline',
       ]) requirePromptDescription(fields, key, row, issues);
-      for (const key of ['source_text', 'korean_text']) {
-        if (!(fields.get(key)?.trim())) issues.push(`line ${row.__line}: imagegen prompt ${key} must not be empty`);
-      }
+      // parsePromptContract validates string/ordered-region text shapes before these gates.
+    }
+  } else if (row.origin === 'agent-typeset') {
+    if (!override) issues.push(`line ${row.__line}: typeset requires exact project override scope/pin`);
+    if (row.generator !== 'typeset' || row.generation_mode !== 'typeset'
+        || row.model !== 'N/A' || row.quality !== 'N/A' || !row.tool.trim()
+        || row.tool === 'image_gen.imagegen' || row.tool === 'user'
+        || row.prompt_path !== 'N/A' || row.prompt_sha256 !== 'N/A') {
+      issues.push(`line ${row.__line}: typeset requires honest technique/tool and N/A model/quality/prompt`);
     }
   } else if (row.origin === 'user-supplied') {
     if (row.generator !== 'user-supplied' || row.generation_mode !== 'external') {
@@ -793,7 +845,9 @@ async function validateRow(row, projectRoot, projectRealRoot, issues) {
     }
   }
   if (receipt) {
-    const expectedSchema = row.origin === 'agent-generated' && receipt.alpha_composition
+    if (receipt.typesetting && row.origin !== 'agent-typeset') issues.push(`line ${row.__line}: typeset must not impersonate imagegen/user-supplied provenance`);
+    if (receipt.policy_override || receipt.candidate_policy === IMAGE_OVERRIDE_POLICY) validateOverrideBinding(receipt, override, row, issues);
+    const expectedSchema = row.origin === 'agent-typeset' ? 6 : row.origin === 'agent-generated' && receipt.alpha_composition
       ? 5 : (row.origin === 'agent-generated' && receipt.normalization ? 4 : (row.origin === 'agent-generated' ? 3 : 2));
     exactReceiptField(receipt, 'schema_version', expectedSchema, row, issues);
     exactReceiptField(receipt, 'stable_key', row.stable_key, row, issues);
@@ -822,8 +876,9 @@ async function validateRow(row, projectRoot, projectRealRoot, issues) {
         row,
         projectRoot,
         projectRealRoot,
-        [source, reference, sourceRgba, candidateRgba, receiptEvidence, promptEvidence].filter(Boolean),
+        [source, reference, sourceRgba, candidateRgba, receiptEvidence, promptEvidence, ...(policy?.evidence ?? [])].filter(Boolean),
         issues,
+        override,
       );
       if (receipt.schema_version === 4) {
         await validateSizeNormalization(
@@ -848,6 +903,12 @@ async function validateRow(row, projectRoot, projectRealRoot, issues) {
           issues,
         );
       }
+    } else if (row.origin === 'agent-typeset') {
+      const protectedEntries = [source, reference, candidate, sourceRgba, candidateRgba, receiptEvidence, ...(policy?.evidence ?? [])].filter(Boolean);
+      const context = overrideEvidenceContext(projectRoot, projectRealRoot, row, protectedEntries, issues);
+      await validateAgentAttempts(receipt, row, projectRoot, projectRealRoot, protectedEntries, issues, override, true);
+      await validateTypesetReceipt(receipt, row, override,
+        { source, candidate, sourceRgba, candidateRgba }, context, issues);
     }
   }
 
@@ -920,6 +981,7 @@ async function main() {
   if (!isWithinRoot(projectRealRoot, manifestRealPath)) throw new Error('manifest resolves outside project root');
   const rows = parseImageManifest(await fs.readFile(manifestPath, 'utf8'), manifestPath);
   const issues = [];
+  const policy = await loadImageOverride(projectRoot, projectRealRoot, { fileEvidence, compareDeclaredHash }, issues);
   const seenStableKeys = new Set();
   const seenSourcePaths = new Set();
   const seenCandidatePaths = new Set();
@@ -932,7 +994,7 @@ async function main() {
       if (seen.has(key)) issues.push(`line ${row.__line}: duplicate ${field} ${row[field]}`);
       seen.add(key);
     }
-    await validateRow(row, projectRoot, projectRealRoot, issues);
+    await validateRow(row, projectRoot, projectRealRoot, issues, policy);
   }
   console.log(`Manifest: ${manifestPath}`);
   console.log(`Image rows: ${rows.length}`);

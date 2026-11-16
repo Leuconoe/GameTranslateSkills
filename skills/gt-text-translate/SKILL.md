@@ -18,6 +18,23 @@ description: "Text branch translation after text analysis: batch-translate extra
 - 상세 규칙 로드: `$GT_HOME/common/glossary-rules.md` (배치 구성·용어집·검증 규칙의 원본)
 - `PROJECT.md`의 유효 배치 크기와 `30_translation/text/glossary.tsv` 경로 선언
 
+## 명시된 일괄 작업과 확정 표기의 빠른 처리
+
+- 사용자가 전체 TXT의 일괄·병렬 번역을 명시하면 `PROJECT.md`에 그 override를 기록하고
+  `common/preflight-checks.md` §6의 원문 동결·전량 비중첩 고정 배정을 적용한다.
+  이 경우 기본 소규모 배치·직렬 규정 대신 명시된 전체 작업 정책을 따르며, 모델 입력
+  페이지마다 재예약·윤문·검수·canonical 병합을 반복하지 않는다.
+- 순수 숫자·문장부호·기호·제어 토큰과 확정 용어집의 명확한 이름표는
+  `glossary-rules.md` §8의 빠른 처리 범위·문맥 예외·출처 기록을 따른다.
+  동일 이름의 수백 binding을 모두 수작업 재독하는 절차를 만들지 않는다.
+- 기존 KO가 있는 의미 검수에서는 `common/preflight-checks.md` §6의 실제 재독·
+  read-range receipt·희소 수정 정책을 사용한다. 공유 문맥은 한 번 로드하고 수정·보류만
+  모델이 출력하며, 코드의 유지 행 복사는 실제 대조가 확인된 ID에만 허용한다.
+  변경 없는 행의 검증 캐시와 changed-only 검사 뒤 전량 최종 integrity gate를 유지한다.
+- 사용자가 im-not-ai 윤문을 요청하면 설치된 `humanize-korean`을 확인하고
+  `glossary-rules.md` §7의 통합 윤문 절차를 적용한다. 전체 초안이 확정되기 전에
+  내부 페이지마다 별도 윤문 run을 반복하지 않는다.
+
 ## 절차
 
 0. **배치·경로 사전 점검**: 공통 기본 배치는 편집 대상 80행이다. 40행 등 다른 크기는

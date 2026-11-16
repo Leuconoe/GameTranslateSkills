@@ -18,6 +18,15 @@ description: "Run technical and visual QA after image translation: validate no-A
   schema 5 receipt·모든 color/mask 시도 output·decoded RGBA probe
 
 `hold-for-imagegen-review`, 누락·추가·중복 후보, 원본 hash 변경은 `BLOCKED`다.
+
+사용자가 프로젝트별 `2회 imagegen 실패 후 직접 조판`을 명시한 경우에는
+`gt-image-translate`와 공통 계약의 override를 적용한다. 기존 독립 실패 2회도
+증거가 있으면 재시도 없이 인정한다. `agent-typeset` 후보는 imagegen schema 3–5
+검증 PASS와 분리해 원본·폰트·마스크·렌더러 provenance, 원문 제거, 보호 영역
+RGBA exact, 원본 느낌, alpha/canvas/atlas, 네이티브 왕복과 실제 화면을 검수한다.
+한 항목이라도 입증되지 않으면 합격 또는 release-ready로 승격하지 않는다.
+PROJECT의 image_generation_override 경로·SHA와 exact key/source SHA scope가 검증된 경우에만
+validator의 1~2회 imagegen 또는 별도 schema 6 typeset 분기를 사용한다. 기본 min3는 유지한다.
 `image_scope=N/A`이면 가짜 행을 만들지 않고 `image_status=skipped`로 기록한다.
 
 ## 절차

@@ -140,7 +140,28 @@ Eden 또는 Ryubing을 포터블/격리 프로파일로 실행할 때는 에뮬�
 | `release_folder` | 타이틀 루트 기준 릴리스 폴더의 **실제 상대 경로** (대기 폴더 하위면 대기 폴더 포함) |
 | `project_path` | 릴리스 폴더 기준 프로젝트 상대 경로 (`_work/<베이스 Title ID>`) |
 | `engine_or_format` | 확인된 엔진·포맷. 미확인이면 `unknown` |
-| `status` | 진행 상태 (`registered` 등, 상태값 규약은 build-test.md §7 참조) |
+| `status` | `<상태>; <상세>` 형식. 상태값은 아래 표를 따른다 |
+
+### status 상태값과 폴더 구역
+
+`status`의 첫 단어(`;` 또는 `:` 앞)는 아래 값 중 하나이며, `release_folder`의 구역과 맞아야 한다.
+
+| 상태 | 쓰는 곳 | 의미 |
+|---|---|---|
+| `registered` / `waiting` / `blocked` | `_waitng`·`_hold` | 등록만 했거나 대기·차단 중 |
+| 자유 진행 문구 (예: `Text qa_ready ...`) | `_working` | 진행 중. `complete`·`removed`는 쓰지 않는다 |
+| `complete` | `_complete` | 작업 종료. 릴리스·QA 판정은 `_work/<TID>/FINAL_HANDOFF.md`에 둔다 |
+| `removed` | (폴더 없음) | 삭제됨. 행은 지우지 않고 `removed; <날짜> <사유> (prev: <이전 상태>)`로 이력을 남긴다 |
+
+### 레지스트리 동기화 규칙
+
+- 타이틀 폴더를 **이동·이름 변경·삭제**하거나 구역(`_waitng`→`_working`→`_complete`)을 옮기는 작업은
+  같은 작업 안에서 해당 행의 `release_folder`·`status`를 갱신해야 끝난 것으로 본다.
+- 갱신 후 `npm run registry:check -- --titles-root "<titles root>"`를 실행해 `0 error(s)`를 확인한다.
+  점검 항목: Title ID 형식·중복, 폴더 실존, 구역과 상태값 일치, `removed`인데 폴더가 남은 경우,
+  레지스트리에 없는 타이틀 폴더(`_work/<TID>` 또는 폴더명 Title ID 기준).
+- 레지스트리는 여러 세션이 함께 쓴다. 쓰기 직전에 다시 읽어 바뀌지 않았는지 확인하고(해시 또는 mtime),
+  자기 행만 바꿔 임시 파일 + 원자적 교체로 저장한다. 다른 세션의 `_working` 행 문구는 고치지 않는다.
 
 ### 대기 폴더 (`_waitng` / `_hold` / `_complete`) 규약
 

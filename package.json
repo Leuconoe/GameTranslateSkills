@@ -22,6 +22,7 @@
     "workspace:cleanup": "node scripts/workspace-cleanup.mjs",
     "font:validate": "node scripts/validate-font-atlas.mjs",
     "image:compose-alpha": "node scripts/compose-imagegen-alpha.mjs",
+    "image:codex": "node scripts/codex-imagegen.mjs",
     "image:normalize-size": "node scripts/normalize-imagegen-size.mjs",
     "image:validate": "node scripts/validate-image-translation.mjs",
     "runtime:validate": "node scripts/validate-release-runtime.mjs",
@@ -30,7 +31,7 @@
     "release:package:steam": "node scripts/create-steam-release.mjs",
     "release:validate:steam": "node scripts/validate-steam-release.mjs",
     "skills:validate": "node scripts/validate-skill-bundle.mjs",
-    "test": "node --test tests/harness.test.mjs tests/image-policy-override.test.mjs tests/game-registry.test.mjs tests/nsw-release-exefs.test.mjs tests/nsw-release-zip64.test.mjs",
+    "test": "node --test tests/harness.test.mjs tests/image-policy-override.test.mjs tests/game-registry.test.mjs tests/nsw-release-exefs.test.mjs tests/nsw-release-zip64.test.mjs tests/codex-imagegen.test.mjs",
     "test:image-policy": "node --test tests/image-policy-override.test.mjs"
   }
 }

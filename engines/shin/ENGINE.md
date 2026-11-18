@@ -27,6 +27,16 @@ Shin 계열 ADV 엔진의 Switch 빌드. 참고 도구 저장소: `DCNick3/shin`
   메모리 여유를 확인하기 전에는 KS X 1001 + manifest에 실제로 나오는 글자로 한정한다.
 - 추가 글리프는 공통 배율·베이스라인 오프셋 하나로 맞추고 전각 셀 가운데에 둔다(글자마다 따로 조정하지 않는다).
 
+## 이미지 컨테이너 (LZLR · TXPL · NVN .tex)
+
+- `SHARED/UI/*.tlz/.ddz`, `WINDOW/*.biz`, `CROSS/**/*.tex`, `SS.ddz` 등은 **LZLR** 압축(32비트 워드 LZ, 거리 10비트)이다.
+  `tools/lzlr.py`의 인코더는 게임 인코더와 같은 탐욕 매칭이라 무수정 재압축이 **바이트 동일**하다(실측 31/31 파일).
+- 풀어낸 `.tlz/.txl`은 **TXPL** 풀: 페이지 표 + 스프라이트 표(구형 12 B 또는 `PLT2` 20 B). SHARED 페이지는 32비트 BGRA DDS,
+  CROSS 페이지는 NVN `.tex`(256 B 헤더, 형식 37=RGBA8 / 77=BC7, Tegra block-linear).
+- `tools/nvtex.py`: block-linear 해제·재배치, BC7은 바뀐 4x4 블록만 다시 인코딩한다(나머지 블록 바이트 보존, 무수정 재기록 동일).
+  BC7 디코드/인코드에 `texture2ddecoder`·`etcpak`이 필요하다.
+- 교체 후에는 LZLR로 다시 압축해 원래 경로에 둔다. 스프라이트 표·페이지 수·크기는 바꾸지 않는다.
+
 ## ExeFS 고정 슬롯 문자열
 
 - 이름 등 일부 문자열이 `.ro`(rodata)에 고정 바이트 슬롯으로 **연달아 붙어** 있으면 슬롯을 넓힐 수 없다.

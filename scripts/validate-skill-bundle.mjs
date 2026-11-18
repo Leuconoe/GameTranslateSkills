@@ -301,14 +301,15 @@ async function main() {
   for (const phrase of ['RELEASE_RUNTIME_QA.json', 'runtime:validate', 'MCP 없이 직접', 'PENDING_RUNTIME']) {
     if (!releaseSkill.includes(phrase)) add(issues, `gt-release: missing final runtime gate ${phrase}`);
   }
-  for (const phrase of ['빌드 생성', '패치 생성', 'release:package:nsw', 'atmosphere/contents/<BASE_TITLE_ID>/romfs/<패치파일>', '*.gldelta']) {
+  for (const phrase of ['빌드 생성', '패치 생성', 'release:package:nsw', 'atmosphere/contents/<BASE_TITLE_ID>/romfs/<패치파일>', '*.gldelta', '<타이틀 루트>/_release/<한국어 제목> - <BASE_TITLE_ID>.zip', '_release/screenshots/', '_release/superseded/']) {
     if (!releaseSkill.includes(phrase)) add(issues, `gt-release: missing canonical NSW package phrase ${phrase}`);
   }
   const nswRelease = contract?.nsw_release_package_contract;
   for (const [field, expected] of Object.entries({
     skill: 'gt-nsw-build',
     input: '40_build/layeredfs/<BASE_TITLE_ID>/romfs',
-    output: '40_build/releases/<BASE_TITLE_ID>.zip',
+    output: '<TITLE_ROOT>/_release/<한국어 제목> - <BASE_TITLE_ID>.zip',
+    release_dir: '<TITLE_ROOT>/_release/',
     archive_root: 'atmosphere/contents/<BASE_TITLE_ID>/romfs/',
     packager: 'scripts/create-nsw-release.mjs',
     validator: 'scripts/validate-nsw-release.mjs',
@@ -321,7 +322,9 @@ async function main() {
     '빌드 생성',
     '패치 생성',
     '40_build/layeredfs/<BASE_TITLE_ID>/romfs/',
-    '40_build/releases/<BASE_TITLE_ID>.zip',
+    '<타이틀 루트>/_release/<한국어 제목> - <BASE_TITLE_ID>.zip',
+    '--korean-title',
+    '--legacy-name',
     'atmosphere/contents/<BASE_TITLE_ID>/romfs/<패치파일>',
     'release:package:nsw',
     'release:validate:nsw',
@@ -373,7 +376,7 @@ async function main() {
       if (!runtimeValidator.includes(phrase)) add(issues, `runtime validator: missing final QA phrase ${phrase}`);
     }
     const releasePackager = await read(path.join(repositoryRoot, 'scripts', 'create-nsw-release.mjs'));
-    for (const phrase of ['40_build', 'layeredfs', 'releases', '--replace', 'validateNswRelease']) {
+    for (const phrase of ['40_build', 'layeredfs', 'ensureReleaseRoot', 'korean-title', 'legacy-name', 'supersedeRelease', '--replace', 'validateNswRelease']) {
       if (!releasePackager.includes(phrase)) add(issues, `NSW release packager: missing canonical phrase ${phrase}`);
     }
     const releaseValidator = await read(path.join(repositoryRoot, 'scripts', 'validate-nsw-release.mjs'));

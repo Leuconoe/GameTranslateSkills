@@ -6,12 +6,12 @@
 |---|---|
 | 입력 overlay | `40_build/overlay/` |
 | 재배포 원장 | `40_build/PATCH_MANIFEST.tsv` |
-| 출력 | `40_build/releases/<project-id>.zip` |
+| 출력 | `<설치 루트>/_release/<한국어 제목> - <project-id>.zip` |
 | ZIP patch root | `patch/` |
 | ZIP metadata | 루트 `PATCH_MANIFEST.tsv` |
-| version/hash 원장 | `40_build/releases/RELEASE_PACKAGE.json`, `SHA256SUMS.txt` |
+| version/hash 원장 | `_release/RELEASE_PACKAGE.json`, `SHA256SUMS.txt` (교체된 ZIP은 `_release/superseded/`) |
 
-Steam App ID가 123456이면 파일명은 정확히 `steam-123456.zip`이다. 버전·날짜·candidate를
+Steam App ID가 123456이고 `PROJECT.md`의 `- Korean title:`이 `예시 게임`이면 파일명은 정확히 `예시 게임 - steam-123456.zip`이다. 한국어 제목이 없으면 패키징하지 않는다(`--korean-title`로 지정, 예전 `steam-123456.zip`은 `--legacy-name`일 때만). 릴리스 폴더는 설치 루트의 `_release/`(`_work/` 옆)이며 `screenshots/`(대표 캡처 `NN_<what>.png`, `50_test`에서 복사)와 `superseded/`를 둔다. 예전 `_work/<project-id>/60_release/`·`40_build/releases/`는 검증기가 경고와 함께 읽기만 한다. 버전·날짜·candidate를
 파일명이나 하위 폴더에 붙이지 않고 `RELEASE_PACKAGE.json`과 release notes에 기록한다.
 
 ```powershell
@@ -51,6 +51,7 @@ overlay 파일뿐이다. 대표 패턴은 프로젝트가 작성한 번역 map, 
 
 ## 4. RELEASE_NOTES.md 필수 내용
 
+- 게임 출시일 (배포일 기준 24개월 미경과면 `*` — `skills/gt-release/SKILL.md` 규칙)
 - 패치 버전과 canonical ZIP SHA-256
 - 번역 text/image/font/plugin 범위와 보류 항목
 - 검증한 Steam build ID, executable hash, loader/plugin version

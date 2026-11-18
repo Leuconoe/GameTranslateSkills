@@ -8,7 +8,8 @@ import { flag, parseArgs, requiredOption } from './lib/args.mjs';
 import { inspectProjectRoot } from './lib/project-identity.mjs';
 import { validateProjectBoundary } from './lib/project-boundary.mjs';
 import { validateArtifactLayout } from './lib/project-artifacts.mjs';
-import { validateSteamRelease } from './lib/steam-release-zip.mjs';
+import { steamReleaseFileName, validateSteamRelease } from './lib/steam-release-zip.mjs';
+import { RELEASE_DIR, releaseRootOfProject, resolveNswReleaseNaming } from './lib/nsw-release-zip.mjs';
 
 const execFileAsync = promisify(execFile);
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -20,7 +21,7 @@ const requiredDirectories = [
   '30_translation/image_translation/reference', '30_translation/image_translation/prompts',
   '30_translation/image_translation/receipts', '30_translation/image_translation/probes',
   '30_translation/image_translation/reports', '40_build/overlay', '40_build/staging',
-  '40_build/releases', '50_test/screenshots', '50_test/logs', '50_test/release-runtime',
+  '50_test/screenshots', '50_test/logs', '50_test/release-runtime',
   '90_tools/scripts', '90_tools/environment', '90_tools/cleanup',
 ];
 const requiredFiles = [
@@ -97,7 +98,7 @@ async function main() {
   if (projectPolicies.final_qa_runtime !== 'official-distribution-release') issues.push('PROJECT.md final_qa_runtime must be official-distribution-release');
   if (projectPolicies.final_qa_mcp_allowed !== 'false') issues.push('PROJECT.md final_qa_mcp_allowed must be false');
   if (projectPolicies.release_runtime_receipt !== '50_test/RELEASE_RUNTIME_QA.json') issues.push('PROJECT.md release_runtime_receipt must use the canonical path');
-  if (!projectPolicies.release_contract?.includes(`40_build/releases/${identity.projectId}.zip`) || !projectPolicies.release_contract.includes('patch/')) {
+  if (!projectPolicies.release_contract?.includes(`${RELEASE_DIR}/`) || !projectPolicies.release_contract.includes(` - ${identity.projectId}.zip`) || !projectPolicies.release_contract.includes('patch/')) {
     issues.push('PROJECT.md release_contract must name the canonical Steam/PC ZIP and patch/ root');
   }
 
@@ -130,14 +131,19 @@ async function main() {
   const artifacts = await validateArtifactLayout(projectRoot);
   for (const issue of artifacts.issues) issues.push(`artifact ${issue.path}: ${issue.problem}`);
 
-  const zipPath = path.join(projectRoot, '40_build', 'releases', `${identity.projectId}.zip`);
-  if (await isType(zipPath, 'file')) {
+  let koreanTitle = null;
+  try {
+    ({ gameName: koreanTitle } = await resolveNswReleaseNaming(projectRoot, { labelFolder: false }));
+  } catch (error) { issues.push(`release naming: ${error.message}`); }
+  const zipPath = path.join(releaseRootOfProject(projectRoot), steamReleaseFileName(koreanTitle, identity.projectId));
+  if (koreanTitle && await isType(zipPath, 'file')) {
     try {
       await validateSteamRelease({
         projectId: identity.projectId,
         zipPath,
         overlayRoot: path.join(projectRoot, '40_build', 'overlay'),
         manifestPath: path.join(projectRoot, '40_build', 'PATCH_MANIFEST.tsv'),
+        koreanTitle,
       });
     } catch (error) { issues.push(`release package: ${error.message}`); }
   }

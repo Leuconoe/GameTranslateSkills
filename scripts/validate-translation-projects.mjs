@@ -33,7 +33,6 @@ const requiredDirectories = [
   ['30_translation', 'image_translation', 'reports'],
   ['40_build', 'layeredfs'],
   ['40_build', 'staging'],
-  ['40_build', 'releases'],
   ['50_test', 'screenshots'],
   ['50_test', 'logs'],
   ['50_test', 'eden'],

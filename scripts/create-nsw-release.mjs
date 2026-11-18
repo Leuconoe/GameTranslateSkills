@@ -3,12 +3,15 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { flag, option, parseArgs, requiredOption } from './lib/args.mjs';
 import {
+  RELEASE_DIR,
   createDeterministicNswZip,
+  ensureReleaseRoot,
   normalizeTitleId,
   nswReleaseFileName,
   parseNswReleaseFileName,
   resolveNswReleaseNaming,
   sha256File,
+  supersedeRelease,
   validateNswRelease,
 } from './lib/nsw-release-zip.mjs';
 
@@ -53,17 +56,16 @@ async function main() {
   if (!samePath(exefsRoot, canonicalExefs)) {
     throw new Error(`NSW ExeFS release input must be canonical: ${canonicalExefs}`);
   }
-  // Default "<ID>.zip"; titled only when the user asked for it (flag, --game-name, or PROJECT.md field).
+  // Default "<한국어 제목> - <ID>.zip" (fails closed without a Korean title); "<ID>.zip" only with --legacy-name.
   const { gameName } = await resolveNswReleaseNaming(projectRoot, {
-    titled: flag(args, 'titled-name'),
-    gameName: option(args, 'game-name') ?? null,
+    koreanTitle: option(args, 'korean-title') ?? null,
+    legacyName: flag(args, 'legacy-name'),
   });
   const fileName = nswReleaseFileName(gameName, titleId);
-  const releaseRoot = path.join(projectRoot, '40_build', 'releases');
+  const releaseRoot = await ensureReleaseRoot(projectRoot);
   const outputPath = path.join(releaseRoot, fileName);
   const temporaryPath = path.join(releaseRoot, `tmp-package-${titleId}.zip.tmp`);
   const previousPath = path.join(releaseRoot, `tmp-previous-${titleId}.zip.tmp`);
-  await fsp.mkdir(releaseRoot, { recursive: true });
   await fsp.rm(temporaryPath, { force: true });
   await fsp.rm(previousPath, { force: true });
 
@@ -111,9 +113,9 @@ async function main() {
         await fsp.rename(previousPath, outputPath);
         throw error;
       }
-      await fsp.rm(previousPath);
+      await supersedeRelease(previousPath, releaseRoot, fileName);
     }
-    for (const leftover of leftovers) await fsp.rm(leftover);
+    for (const leftover of leftovers) await supersedeRelease(leftover, releaseRoot);
 
     const receipt = await validateNswRelease({ titleId, zipPath: outputPath, romfsRoot, exefsRoot, gameName });
     const stats = await fsp.stat(outputPath);
@@ -122,9 +124,10 @@ async function main() {
       platform: 'nsw',
       format: 'LayeredFS',
       base_title_id: titleId,
-      release_filename: gameName ? 'titled' : 'id',
-      game_name: gameName,
-      archive_path: `40_build/releases/${fileName}`,
+      release_filename: gameName ? 'korean-title' : 'legacy-id',
+      korean_title: gameName,
+      project_root: `_work/${titleId}`,
+      archive_path: `${RELEASE_DIR}/${fileName}`,
       archive_root: `atmosphere/contents/${titleId}/romfs/`,
       source_romfs: `40_build/layeredfs/${titleId}/romfs`,
       ...(receipt.entries.some((entry) => entry.path.startsWith(`atmosphere/contents/${titleId}/exefs/`)) ? {

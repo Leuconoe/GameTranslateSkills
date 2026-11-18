@@ -133,20 +133,21 @@ game-translate 스킬로 <게임명> 한글화를 시작해줘. 플랫폼은 nsw
 
 ```powershell
 # 프로젝트 생성 (타이틀 루트 = NSP/XCI가 직접 있는 폴더, 작업 시작 전 _titles\_working\으로 이동)
-npm run project:new -- --titles-root '<작업루트>\_titles' --game-folder '_working\<타이틀 폴더>' --game-name '<게임명>' --title-id '<16자리 Title ID>'
+npm run project:new -- --titles-root '<작업루트>\_titles' --game-folder '_working\<타이틀 폴더>' --game-name '<게임명>' --korean-title '<한국어 제목>' --title-id '<16자리 Title ID>'
 # 작업 전 하네스 초기화 / 같은 작업 재실행 전 재사용 조회 (REUSE면 다시 만들지 않음)
 npm run project:artifacts -- --project-root '<타이틀 루트>\_work\<TITLE_ID>' --init
 npm run project:artifacts -- --project-root '<타이틀 루트>\_work\<TITLE_ID>' --reuse-check --producer '<도구>' --reproduce-command '<명령>'
-# 빌드 생성·패치 생성 → 40_build\releases\<TITLE_ID>.zip
+# 빌드 생성·패치 생성 → <타이틀 루트>\_release\<한국어 제목> - <TITLE_ID>.zip
 npm run release:package:nsw -- --project-root '<타이틀 루트>\_work\<TITLE_ID>'
 npm run release:validate:nsw -- --project-root '<타이틀 루트>\_work\<TITLE_ID>'
 ```
 
-릴리스 ZIP 이름은 기본 `<TITLE_ID>.zip`이다. 게임 제목이 들어간 이름이 필요하면 에이전트에게
-요청한다. 에이전트는 `PROJECT.md`에 `- release_filename: titled`(와 필요하면 `- Game name: \`<제목>\``)를
-기록해 이후 빌드에도 `<게임 제목> - <TITLE_ID>.zip`을 유지한다. 한 번만 바꾸려면
-`release:package:nsw`/`release:validate:nsw`에 `--game-name '<제목>'`(또는 `--titled-name`)을 넘긴다.
-내용이 같은 기존 ZIP은 새 이름으로 바뀌고, 내용이 다르면 `--replace` 없이는 교체하지 않는다.
+릴리스 산출물은 타이틀 루트의 `_release\`(`_work\` 옆)에 둔다(ZIP, `RELEASE_NOTES.md`, `INSTALL.md`, `SHA256SUMS.txt`,
+`RELEASE_PACKAGE.json`, `screenshots\`, `superseded\`). ZIP 이름은 기본 `<한국어 제목> - <BASE_TITLE_ID>.zip`이다(예: `지뢰계 마법소녀 사쿠라 - 01006D202294E000.zip`). 한국어 제목은 `--korean-title` → 타이틀 루트의 빈 한국어 라벨 폴더(`<타이틀 루트>/<한국어 제목>/`, `_work` 옆) → `PROJECT.md`의 `- Korean title:` 순서로 정하고, 어느 것도 없으면 패키징하지 않는다(fail closed). `[Title ID]` 표기·Windows 금지 문자(`\ / : * ? " < > |`)·제어 문자는 지우고 `~ ∬ ,` 같은 나머지 문자는 그대로 둔다. Title ID 접미사는 필수이며 검증기가 프로젝트 Title ID와 대조한다. 예전 `<BASE_TITLE_ID>.zip`은 `--legacy-name`을 명시할 때만 쓴다.
+내용이 같은 기존 ZIP은 새 이름으로 바뀌고, 내용이 다르면 `--replace` 없이는 교체하지 않으며, 교체된 ZIP은
+`_release\superseded\`로 옮겨 보존한다. 예전 `_work\<TITLE_ID>\60_release\`·`_work\<TITLE_ID>\40_build\releases\`는
+검증기가 경고와 함께 읽기만 하고, 다음 릴리스 때 `_release\`로 옮긴다. `_release\screenshots\`에는 `50_test` 증거에서
+복사한 대표 캡처 4~6장(`NN_<what>.png`: 타이틀, 첫 한국어 대사, 메뉴/옵션, 저장·불러오기, 한국어화 로고)을 둔다.
 
 ### Steam/PC 명령 요약
 

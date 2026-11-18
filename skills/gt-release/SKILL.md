@@ -38,10 +38,20 @@ description: "Release a QA-verified Korean game patch using the platform adapter
 - 사용자가 NSW에서 `빌드 생성` 또는 `패치 생성`이라고 하면 전담 `gt-nsw-build`로
   라우팅한다. 이 스킬은 그 결과를 받아 정식 릴리스 게이트를 계속 수행한다.
   진단 폴더·버전/candidate 하위 폴더·delta 적용기 패키지를 대신 만들지 않는다.
-- NSW의 exact 결과는 `40_build/releases/<BASE_TITLE_ID>.zip` 하나이며 내부 entry는
+- NSW의 exact 결과는 `<타이틀 루트>/_release/<한국어 제목> - <BASE_TITLE_ID>.zip` 하나이며 내부 entry는
   `atmosphere/contents/<BASE_TITLE_ID>/romfs/<패치파일>` 및 선택적 `atmosphere/contents/<BASE_TITLE_ID>/exefs/main`이다. 입력은
   `40_build/layeredfs/<BASE_TITLE_ID>/romfs/`와 선택적 `exefs/main`이다. `romfs/` 단독 root,
   `<UPDATE_TITLE_ID>.zip`, `*.gldelta`, `apply_patch.py`, NSP/XCI/키가 있으면 실패한다.
+- **릴리스 폴더**: `<타이틀 루트>/_release/` — `_work/` 옆, 프로젝트 루트 기준 `../../_release`, 프로젝트 경계 밖의 유일한 쓰기 허용 위치. ZIP, `RELEASE_NOTES.md`, `INSTALL.md`(있으면),
+  `SHA256SUMS.txt`, `RELEASE_PACKAGE.json`을 그 바로 아래에 두고 버전·candidate 하위 폴더는 만들지 않는다.
+  교체된 이전 ZIP은 지우지 않고 `_release/superseded/`로 옮겨 이전 이름을 유지한다(생성기가 `--replace` 때 자동 수행).
+  예전 위치(`_work/<ID>/60_release/`, `_work/<ID>/40_build/releases/`)는 legacy로, 검증기가 `_release/`를 먼저 찾고 없을 때만 경고와 함께 읽는다. legacy 프로젝트는 다음 릴리스 때 `_release/`로 옮긴다. `RELEASE_PACKAGE.json`의 `archive_path`는 타이틀 루트 기준 `_release/<파일명>`이다.
+- **파일명(기본값)**: `release:package:nsw`는 추가 플래그 없이 `<한국어 제목> - <BASE_TITLE_ID>.zip`을 만든다
+  (예: `지뢰계 마법소녀 사쿠라 - 01006D202294E000.zip`). 한국어 제목은 `--korean-title` → 타이틀 루트의 빈
+  한국어 라벨 폴더(`<타이틀 루트>/<한국어 제목>/`) → `PROJECT.md`의 `- Korean title:` 순서로 정하고, 모두 없으면
+  fail closed로 중단한다. Windows 금지 문자(`\ / : * ? " < > |`)와 `[Title ID]` 표기는 지우고 `~ ∬ ,` 등은 유지한다.
+  Title ID 접미사는 필수이며 검증기가 프로젝트 Title ID와 대조한다. `<BASE_TITLE_ID>.zip`은 `--legacy-name`일 때만 쓴다.
+  Steam/PC도 같은 규칙으로 `<설치 루트>/_release/<한국어 제목> - <project-id>.zip`이다(제목은 `PROJECT.md`/`--korean-title`).
 
 ## 절차
 
@@ -56,6 +66,7 @@ description: "Release a QA-verified Korean game patch using the platform adapter
      npm run release:package:nsw -- --project-root "<타이틀 루트>/_work/<BASE_TITLE_ID>" --replace
    npm run release:validate:nsw -- --project-root "<타이틀 루트>/_work/<BASE_TITLE_ID>"
    ```
+   - 한국어 제목을 자동으로 정할 수 없으면 두 명령에 `--korean-title "<한국어 제목>"`을 함께 넘긴다.
    - Steam/PC는 `platforms/steam/release.md`의 공용 패키저로 `40_build/overlay/`와
      `PATCH_MANIFEST.tsv`를 검증해 `patch/` root의 canonical ZIP을 만든다.
 
@@ -66,18 +77,37 @@ description: "Release a QA-verified Korean game patch using the platform adapter
 2. **설치 가이드 작성**: `INSTALL.md` — 대상 게임 버전/리전, 설치 경로, 적용 방법,
    제거 방법, 알려진 제한사항. 플랫폼별 설치법(에뮬레이터 모드 폴더/실기 적용)을
    사용자 눈높이로.
-3. **릴리스 노트**: `RELEASE_NOTES.md`(패치 노트) — 사용자용 한국어 문서. canonical ZIP 옆에 두고
-   타이틀 기록(PROJECT/WORK_LOG/TEST_LOG/HANDOFF/manifest/merge_log)에 있는 사실만 쓴다. 근거가 없으면
-   `확인 필요`로 표시한다. 다음 6개 절을 이 순서로 둔다.
-   1. **게임 명칭**: 영문 / 원제 / 한국어 제목, 타이틀 ID(업데이트 TID 포함), 플랫폼.
-   2. **패치 버전**: `vX.Y.Z (날짜, 상태)`, canonical ZIP 이름·전체 SHA-256·항목 수, romfs/exefs 구성.
-   3. **원본 게임 버전**: 기본판/필수 업데이트 버전. `exefs/main`을 포함하면 빌드 ID와
-      "다른 버전에는 적용되지 않음"을 명시한다.
-   4. **한국어 사용 방법**: 설치 위치와 언어 설정(기기 언어를 일본어로, 첫 실행 언어 선택에서 「한국어」,
-      게임 내 언어 옵션 등). 실제 런타임 시험에서 쓴 방식을 근거로 적는다.
-   5. **변경점**: 번역 범위(텍스트 %/이미지 % 또는 `image_scope=N/A`와 근거), 폰트, 이미지(조판/imagegen/
-      원본 유지 수), 미번역·보류 항목과 알려진 제한, 시험 환경(에뮬레이터·펌웨어), 크레딧.
-   6. **Change log**: 현재 버전을 맨 위에 두고 내부 빌드 리비전을 날짜순으로 한 줄씩 적는다.
+3. **릴리스 노트**: `RELEASE_NOTES.md`(패치 노트) — 사용자용 한국어 문서를 **간소하게** 쓴다. canonical
+   ZIP 옆에 두고 타이틀 기록(PROJECT/WORK_LOG/TEST_LOG/HANDOFF)에 있는 사실만 쓴다. 해시·빌드 경로·
+   번역 통계·시험 환경 같은 내부 정보는 넣지 않는다(이런 근거는 `_work` 기록에 둔다). 형식은 고정이다.
+
+   ```markdown
+   # <한국어 제목> 한국어 패치
+
+   1. 게임명 - <한국어 제목>
+   2. 게임 출시일 - 2025-03-27*     (24개월 미경과면 날짜 바로 뒤에 `*`)
+   3. 패치 버전 - v0.0.1            (첫 배포는 v0.0.1, 이후 배포마다 올린다)
+   4. 게임 지원 버전 - v1.0.0       (필요한 업데이트/DLC 포함 여부: 예 "v1.0.2 (업데이트 1.0.2 설치 필요)", "v1.0.0, DLC 포함")
+   5. 언어 선택 방법 - <예: 설정 불필요 / 첫 실행 언어 선택에서 「한국어」 / 기기 언어를 일본어로 변경>
+   6. 체인지로그
+      - v0.0.1 - 초도 배포
+      - v0.0.2 - 크래시 버그 픽스  (새 버전을 아래에 한 줄씩 추가)
+   7. 주의사항
+      - 없음  (예: RomFS와 ExeFS를 같이 사용함, saltyNX가 필요함, 업데이트 x.y.z 설치 필요)
+   ```
+
+   게임 출시일은 `gt-analyze`가 `PROJECT.md`에 기록한 `출시일`을 `YYYY-MM-DD`로 옮긴다. 이번
+   번역 배포일(이 릴리스 노트를 확정하는 날짜)이 `출시일 + 24개월`(달력 월 기준)보다 이르면 날짜 바로
+   뒤에 `*`를 붙인다. 예: 출시 2025-03-27 → 2027-03-27 이전 배포면 `2025-03-27*`, 그날 이후면 `2025-03-27`.
+   새 버전을 배포할 때마다 그 배포일로 다시 판정한다. 출시일이 `unknown`이면 `미확인`으로 쓰고 `*`를
+   붙이지 않으며, 릴리스 전에 다시 조사한다.
+   언어 선택 방법은 실제 런타임 시험에서 쓴 방식을 근거로 적는다. 이전의 상세 노트를 대체할 때는
+   지우지 말고 `_release/superseded/`로 옮긴다.
+3a. **릴리스 스크린샷**: `_release/screenshots/`에 대표 런타임 캡처 4~6장을 둔다. `50_test` 증거
+   (예: `50_test/eden/captures_*`)에서 **복사**하며 이동하지 않는다. 최종 빌드 캡처만 고르고, 넣기 전에 직접 열어
+   검은 화면·로딩 화면이 아닌지 확인한다. 고르는 장면: 타이틀 화면, 첫 한국어 대사, 메인 메뉴/옵션,
+   저장·불러오기 또는 다른 핵심 UI, (있으면) 한국어화한 이미지(로고 등). 파일명은 `NN_<what>.png`
+   (예: `01_title.png`, `02_dialogue.png`, `03_menu.png`, `04_saveload.png`, `05_logo.png`).
 4. **최종 검증**: 패키지를 깨끗한 mod 환경에 풀어 적용한 뒤, 플랫폼 allowlist의 공식
    사이트 배포용 릴리즈 에뮬레이터를 MCP 없이 직접 실행해 타이틀 화면과 인게임·한글·폰트·
    저장/불러오기·조건부 이미지를 시험한다. 현재 package/build/mod/binary/log/캡처 hash로
@@ -105,6 +135,11 @@ description: "Release a QA-verified Korean game patch using the platform adapter
 | `<adapter release path>/<canonical>.zip` | 배포 패키지 (+ SHA-256). NSW: `atmosphere/contents/<BASE_TITLE_ID>/romfs/`와 선택적 `atmosphere/contents/<BASE_TITLE_ID>/exefs/main`; Steam/PC: `patch/` + root `PATCH_MANIFEST.tsv` |
 | `<adapter release path>/INSTALL.md` | 설치 가이드 |
 | `<adapter release path>/RELEASE_NOTES.md` | 릴리스 노트 |
+| `<adapter release path>/SHA256SUMS.txt`, `RELEASE_PACKAGE.json` | 해시·entry 원장 (생성기가 기록) |
+| `<adapter release path>/screenshots/NN_<what>.png` | 대표 런타임 캡처 (`50_test`에서 복사) |
+| `<adapter release path>/superseded/` | 교체된 이전 ZIP (이전 이름 유지) |
+
+NSW·Steam/PC의 `<adapter release path>`는 타이틀(설치) 루트의 `_release/`다(`_work/` 옆).
 
 ## 완료 기준
 
@@ -115,6 +150,8 @@ description: "Release a QA-verified Korean game patch using the platform adapter
 - [ ] `npm run runtime:validate` 및 플랫폼 구조 검증(NSW `project:validate -- --strict`,
   Steam/PC `project:validate:steam -- --strict`) 통과; MCP-only 결과나 `PENDING_RUNTIME`으로 릴리스하지 않음
 - [ ] INSTALL.md / RELEASE_NOTES.md 완비, 해시 기록
+- [ ] RELEASE_NOTES.md의 게임 출시일이 `PROJECT.md`와 일치하고, 배포일 기준 24개월 미경과 시 `*`가 붙음
+- [ ] `_release/screenshots/`에 최종 빌드 대표 캡처(`NN_<what>.png`)를 복사했고 검은/로딩 화면이 없음
 - [ ] Handoff 기반 cleanup plan·지시서가 생성되고 보존 anchor와 승인 allowlist가 검증됨
 - [ ] 승인된 정리를 적용했다면 plan SHA-256·아카이브 경로·전수 재검토·사용자 상세 보고가 기록됨
 - [ ] 이후 별도 승인으로 휴지통 이동했다면 trash-plan SHA-256·backend·원래 아카이브 경로·`TRASH_RECEIPT.json`·플랫폼 구조 검증 결과가 기록됨

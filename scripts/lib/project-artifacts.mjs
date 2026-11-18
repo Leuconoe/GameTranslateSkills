@@ -67,7 +67,7 @@ function repeatedWorkProblems(rows, candidate) {
   }
   return problems;
 }
-const canonicalProjectDirectories = new Set(['00_source', '10_extract', '20_reference', '30_translation', '40_build', '50_test', '90_tools']);
+const canonicalProjectDirectories = new Set(['00_source', '10_extract', '20_reference', '30_translation', '40_build', '50_test', '60_release', '90_tools']);
 const canonicalTestDirectories = new Set(['screenshots', 'logs', 'eden', 'release-runtime', 'artifacts']);
 const canonicalTestFiles = new Set(['TEST_LOG.md', 'RELEASE_RUNTIME_QA.json']);
 const canonicalToolDirectories = new Set(['scripts', 'environment', 'cleanup', 'work', 'cleanup-archive']);

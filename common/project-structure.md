@@ -35,6 +35,8 @@
 ## 2. 표준 폴더 구조
 
 ```text
+<타이틀 루트>/_release/    릴리스 폴더(프로젝트 밖, `_work/` 옆): `<한국어 제목> - <ID>.zip` / RELEASE_NOTES.md /
+                           INSTALL.md / SHA256SUMS.txt / RELEASE_PACKAGE.json / screenshots/NN_<what>.png / superseded/
 _work/<프로젝트 ID>/
   PROJECT.md               타이틀·버전·엔진·정책
   WORK_LOG.md              명령·오류·검증의 단일 작업 로그
@@ -49,7 +51,7 @@ _work/<프로젝트 ID>/
                            text(glossary, manifest, batches, reports) / image_translation
     exports/source/        번역 입력용 export (`translation-source`)
     exports/translated/    번역 완료 export (`translation-output`)
-  40_build/                staging / 패치 트리 / releases / BUILD_MANIFEST.tsv
+  40_build/                staging / 패치 트리 / BUILD_MANIFEST.tsv
   50_test/                 TEST_LOG.md / screenshots / logs / emucap(선택적 원장·증거)
                            eden/SESSION.json / ARTIFACT_MANIFEST.tsv (양쪽 MCP 공유, 각각 1개)
                            RELEASE_RUNTIME_QA.json / release-runtime/ACTIVE_MOD_MANIFEST.tsv

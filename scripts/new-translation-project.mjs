@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { flag, option, parseArgs, requiredOption } from './lib/args.mjs';
 import { artifactIndexHeader, artifactLayoutDirectories } from './lib/project-artifacts.mjs';
+import { ensureReleaseRoot } from './lib/nsw-release-zip.mjs';
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const sourcePackageExtensions = new Set(['.nsp', '.xci']);
@@ -108,12 +109,13 @@ async function findWorkFolders(root, depth = 0, results = []) {
 }
 
 function usage() {
-  console.log(`Usage: npm run project:new -- (--game-folder <relative-path> | --source-package <path>) --title-id <16-hex> --game-name <name> [options]
+  console.log(`Usage: npm run project:new -- (--game-folder <relative-path> | --source-package <path>) --title-id <16-hex> --game-name <name> --korean-title <한국어 제목> [options]
 
 Options:
   --titles-root <path>  Titles container (default: existing <repository>/_titles or <repository>/_title)
   --game-folder <path>  Exact title folder that directly contains an NSP/XCI package
   --source-package <path>  Exact NSP/XCI path; its parent becomes the title folder
+  --korean-title <name>  Korean title recorded in PROJECT.md; names the release ZIP "<한국어 제목> - <ID>.zip"
   --help                Show this help`);
 }
 
@@ -134,6 +136,8 @@ async function main() {
   }
   const titleIdInput = requiredOption(args, 'title-id');
   const gameName = requiredOption(args, 'game-name');
+  const koreanTitle = String(requiredOption(args, 'korean-title')).trim();
+  if (!koreanTitle || /[\t\r\n`|]/.test(koreanTitle)) throw new Error('--korean-title must be a non-empty single-line title without ` or |');
   if (!/^[0-9A-Fa-f]{16}$/.test(titleIdInput)) {
     throw new Error('--title-id must contain exactly 16 hexadecimal characters');
   }
@@ -232,7 +236,6 @@ async function main() {
     ['30_translation', 'image_translation', 'reports'],
     ['40_build', 'layeredfs', id, 'romfs'],
     ['40_build', 'staging'],
-    ['40_build', 'releases'],
     ['50_test', 'screenshots'],
     ['50_test', 'logs'],
     ['50_test', 'eden'],
@@ -243,10 +246,12 @@ async function main() {
     ...artifactLayoutDirectories,
   ];
   for (const folder of folders) await fs.mkdir(path.join(project, ...folder), { recursive: true });
+  await ensureReleaseRoot(project);
 
   await writeIfMissing(path.join(project, 'PROJECT.md'), `# ${gameName}
 
 - Game name: \`${gameName}\`
+- Korean title: \`${koreanTitle}\`
 - Base Title ID: \`${id}\`
 - Title root: \`${path.relative(titlesRoot, gameRoot) || '.'}\` (the folder containing the source NSP/XCI)
 - Update Title ID: unknown
@@ -281,13 +286,13 @@ async function main() {
 - final_qa_mcp_allowed: false
 - release_runtime_receipt: 50_test/RELEASE_RUNTIME_QA.json
 - target_language_slot: pending
-- release_contract: NSW-LayeredFS — \`40_build/releases/${id}.zip\`, ZIP root \`atmosphere/contents/${id}/romfs/\`
-- release_filename: id — default \`${id}.zip\`; set \`titled\` only when the user asks for \`<Game name> - ${id}.zip\`
+- release_contract: NSW-LayeredFS — \`<title root>/_release/<한국어 제목> - ${id}.zip\`, ZIP root \`atmosphere/contents/${id}/romfs/\`
+- release_filename: Korean title — \`<한국어 제목> - ${id}.zip\` from the title root's empty Korean label folder, else \`Korean title\` above; \`${id}.zip\` only with \`--legacy-name\`
 - Temporary artifacts: project-local only under this \`_work\` root; use \`tmp-<stage>-<purpose>\` or \`*.tmp\` for disposable files
 - Artifact layout: export·번역 중간물·테스트 산출물/스크립트는 \`$GT_HOME/common/artifact-layout-contract.md\`의 managed root에 두고 \`90_tools/PROJECT_ARTIFACT_MANIFEST.tsv\`에 lifecycle·producer·hash를 등록
 - Canonical MCP QA state: \`50_test/eden/SESSION.json\` and \`50_test/eden/ARTIFACT_MANIFEST.tsv\`; despite the historical folder name this is the one shared title ledger for Eden-MCP/Ryubing-MCP, and routine QA reuses it instead of creating session/copy files
 - Final QA: separately run an allowlisted official-site distribution release directly without MCP and validate \`50_test/RELEASE_RUNTIME_QA.json\`; MCP smoke evidence never qualifies as final PASS
-- Canonical NSW package: a user request for \`빌드 생성\` or \`패치 생성\` runs \`npm run release:package:nsw -- --project-root "<this project>" --replace\`; it packages only \`40_build/layeredfs/${id}/romfs/\` into \`40_build/releases/${id}.zip\` (or \`<Game name> - ${id}.zip\` when release_filename is titled) with ZIP entries rooted at \`atmosphere/contents/${id}/romfs/\`
+- Canonical NSW package: a user request for \`빌드 생성\` or \`패치 생성\` runs \`npm run release:package:nsw -- --project-root "<this project>" --replace\`; it packages only \`40_build/layeredfs/${id}/romfs/\` into \`<title root>/_release/<한국어 제목> - ${id}.zip\` with ZIP entries rooted at \`atmosphere/contents/${id}/romfs/\`
 - Status: registered; extraction not started
 
 ## Stage status

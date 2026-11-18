@@ -38,6 +38,7 @@ npm run project:new:steam -- `
   --install-root 'D:\SteamLibrary\steamapps\common\Example Game' `
   --game-executable 'ExampleGame.exe' `
   --game-name 'Example Game' `
+  --korean-title '예시 게임' `
   --app-id '123456' `
   --steam-manifest 'D:\SteamLibrary\steamapps\appmanifest_123456.acf'
 ```
@@ -49,6 +50,8 @@ project-specific allowlist가 추가되기 전까지 `BLOCKED`다.
 ```text
 <게임 설치 폴더>/
   <게임>.exe                       설치 원본(수정 금지)
+  _release/                       릴리스 폴더(`_work/` 옆): <한국어 제목> - <project-id>.zip, RELEASE_NOTES.md,
+                                  SHA256SUMS.txt, RELEASE_PACKAGE.json, screenshots/NN_<what>.png, superseded/
   _work/<steam-APP_ID|pc-slug>/
     PROJECT.md
     WORK_LOG.md
@@ -63,7 +66,6 @@ project-specific allowlist가 추가되기 전까지 `BLOCKED`다.
       BUILD_MANIFEST.tsv
       staging/
       overlay/                      설치 루트 기준 변경분만 배치
-      releases/<project-id>.zip
     50_test/
       RELEASE_RUNTIME_QA.json
       release-runtime/ACTIVE_MOD_MANIFEST.tsv
@@ -100,7 +102,7 @@ project-specific allowlist가 추가되기 전까지 `BLOCKED`다.
 ## 6. 배포 패키징 규격
 
 - 상세 계약: [release.md](release.md)
-- canonical 파일: `40_build/releases/<project-id>.zip`
+- canonical 파일: `<설치 루트>/_release/<한국어 제목> - <project-id>.zip` (한국어 제목은 `PROJECT.md`의 `- Korean title:` 또는 `--korean-title`; 없으면 fail closed, 예전 `<project-id>.zip`은 `--legacy-name`일 때만)
 - ZIP root: `patch/`; 루트에 검증된 `PATCH_MANIFEST.tsv`도 포함한다.
 - 설치 파일 전체, 원본 game assembly/assets/archive, 실행 파일, installer, 비승인 폰트·서드파티
   binary는 포함하지 않는다.

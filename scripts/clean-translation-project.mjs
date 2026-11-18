@@ -137,6 +137,7 @@ async function readManifestReferences(projectRoot, allEntries) {
     if (/^40_build\//i.test(relative) && /(?:MANIFEST|REPORT)/i.test(base) && /\.(?:md|tsv|json)$/i.test(base)) return true;
     if (/^50_test\/(?:TEST_LOG\.md|RELEASE_RUNTIME_QA\.json)$/i.test(relative)) return true;
     if (/^50_test\/release-runtime\//i.test(relative) && /(?:MANIFEST|REPORT)/i.test(base) && /\.(?:md|tsv|json)$/i.test(base)) return true;
+    if (/^60_release\/[^/]+\.(?:md|json|txt)$/i.test(relative)) return true;
     return relative === artifactIndexRelative.replaceAll('\\', '/');
   });
   for (const file of files) {

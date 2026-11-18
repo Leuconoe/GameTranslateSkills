@@ -267,10 +267,10 @@ exact 파일만 승인 후보로 삼는다. 미등록 managed-root 파일은 자
 진단 후보 생성으로 해석하지 않는다. 플랫폼 어댑터의 canonical 배포 패키지를 생성하는
 요청으로 라우팅한다. NSW에서는 전담 `gt-nsw-build`와 `platforms/nsw/release.md`를 적용하여
 `40_build/layeredfs/<BASE_TITLE_ID>/romfs/`와 선택적 `exefs/main`의 검증된 패치 파일을 입력하고,
-`40_build/releases/<BASE_TITLE_ID>.zip` 안에
+`<타이틀 루트>/_release/<한국어 제목> - <BASE_TITLE_ID>.zip`(`_work/` 옆 `_release/`, 대표 캡처는 `_release/screenshots/`) 안에
 `atmosphere/contents/<BASE_TITLE_ID>/romfs/<패치파일>` 및 선택적 `atmosphere/contents/<BASE_TITLE_ID>/exefs/main` 구조를 만든다. ZIP은 SD 카드 루트에 풀어 덮어쓴다. 별도 Python 적용기, `*.gldelta`,
-버전/candidate 하위 폴더, Title ID 없는 게임명 ZIP은 허용하지 않는다(게임 제목이 붙은
-`<게임 제목> - <BASE_TITLE_ID>.zip`은 사용자가 요청한 경우에만 쓴다). 릴리스 완료 게이트가 아직
+버전/candidate 하위 폴더, Title ID 없는 게임명 ZIP은 허용하지 않는다(기본 이름은
+`<한국어 제목> - <BASE_TITLE_ID>.zip`, 한국어 제목을 정할 수 없으면 fail closed). 릴리스 완료 게이트가 아직
 충족되지 않았다면 같은 canonical 형식의 `review_candidate`로 만들 수 있지만 경로·이름·
 ZIP root 계약은 완화하지 않고 `release_status`도 `released`로 올리지 않는다. 정식 릴리스
 요청이면 `gt-nsw-build`가 검증한 canonical ZIP을 `gt-release`로 인계해 나머지 QA·문서·
@@ -278,7 +278,7 @@ ZIP root 계약은 완화하지 않고 `release_status`도 `released`로 올리�
 
 Steam/PC에서 같은 표현은 `platforms/steam/release.md`의 canonical package 생성으로
 라우팅한다. 입력은 재배포 원장이 검증한 `40_build/overlay/`, 출력은
-`40_build/releases/<project-id>.zip`, ZIP root는 `patch/`다. 다음 공용 명령을 사용하며 원본
+`<설치 루트>/_release/<한국어 제목> - <project-id>.zip`, ZIP root는 `patch/`다. 다음 공용 명령을 사용하며 원본
 게임 assembly/asset/archive/executable은 패키징하지 않는다.
 
 ```text

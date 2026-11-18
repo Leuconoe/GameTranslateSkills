@@ -60,6 +60,11 @@ Eden 또는 Ryubing을 포터블/격리 프로파일로 실행할 때는 에뮬�
 프로젝트의 식별자는 **베이스 Title ID**다. 모든 생성물은 다음 경로에만 둔다.
 
 ```text
+<titles 루트>/<게임 릴리스 폴더>/_release/   릴리스 폴더(프로젝트 밖, `_work/` 옆). 프로젝트 경계 밖의 유일한 쓰기 허용 위치
+  <한국어 제목> - <베이스 Title ID>.zip  단일 정식 ZIP (ZIP root = atmosphere/contents/<베이스 Title ID>/romfs/<패치파일>)
+  RELEASE_NOTES.md / INSTALL.md / SHA256SUMS.txt / RELEASE_PACKAGE.json (archive_path = `_release/<파일명>`)
+  screenshots/            50_test 증거에서 복사한 대표 캡처 NN_<what>.png
+  superseded/             교체된 이전 ZIP(이전 이름 유지)
 <titles 루트>/<게임 릴리스 폴더>/_work/<베이스 Title ID>/
   PROJECT.md               타이틀·버전·엔진·원본 파일명·정책 기록
   WORK_LOG.md              모든 명령·오류·검증 결과의 작업 로그
@@ -89,8 +94,6 @@ Eden 또는 Ryubing을 포터블/격리 프로파일로 실행할 때는 에뮬�
     staging/               깨끗한 원본 기반 빌드 작업장
     layeredfs/<TITLE_ID>/romfs/
     layeredfs/<TITLE_ID>/exefs/main (선택적)
-    releases/              단일 정식 <BASE_TITLE_ID>.zip(요청 시 <게임 제목> - <BASE_TITLE_ID>.zip) 및 릴리스 기록
-                           ZIP root = atmosphere/contents/<BASE_TITLE_ID>/romfs/<패치파일>
   50_test/
     TEST_LOG.md
     screenshots/
@@ -150,7 +153,7 @@ Eden 또는 Ryubing을 포터블/격리 프로파일로 실행할 때는 에뮬�
 |---|---|---|
 | `registered` / `waiting` / `blocked` | `_waitng`·`_hold` | 등록만 했거나 대기·차단 중 |
 | 자유 진행 문구 (예: `Text qa_ready ...`) | `_working` | 진행 중. `complete`·`removed`는 쓰지 않는다 |
-| `complete` | `_complete` | 작업 종료. 릴리스·QA 판정은 `_work/<TID>/FINAL_HANDOFF.md`에 둔다 |
+| `complete` | `_complete`·`_archive` | 작업 종료(`_archive`는 이전 회차 완료분 보관). 릴리스·QA 판정은 `_work/<TID>/FINAL_HANDOFF.md`에 둔다 |
 | `removed` | (폴더 없음) | 삭제됨. 행은 지우지 않고 `removed; <날짜> <사유> (prev: <이전 상태>)`로 이력을 남긴다 |
 
 ### 레지스트리 동기화 규칙
@@ -187,7 +190,7 @@ Eden 또는 Ryubing을 포터블/격리 프로파일로 실행할 때는 에뮬�
 3. 워크스페이스 루트에서 스캐폴드 스크립트로 프로젝트를 생성한다.
 
 ```text
-npm run project:new -- --game-folder "<실제 NSP/XCI 보유 폴더 (예: _waitng/<폴더명>)>" --title-id "<16자리 베이스 Title ID>" --game-name "<게임명>" --titles-root "$GT_WORKSPACE/_title"
+npm run project:new -- --game-folder "<실제 NSP/XCI 보유 폴더 (예: _waitng/<폴더명>)>" --title-id "<16자리 베이스 Title ID>" --game-name "<게임명>" --korean-title "<한국어 제목>" --titles-root "$GT_WORKSPACE/_title"
 ```
 
 명령은 `package.json`이 있는 플러그인 루트에서 실행한다. `--game-folder`에는 대기 폴더를

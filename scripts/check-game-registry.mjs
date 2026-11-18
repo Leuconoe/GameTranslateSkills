@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-export const ZONES = { _complete: ['complete'], _waitng: ['waiting', 'registered', 'blocked'], _hold: ['waiting', 'registered', 'blocked'], _working: null };
+export const ZONES = { _complete: ['complete'], _archive: ['complete'], _waitng: ['waiting', 'registered', 'blocked'], _hold: ['waiting', 'registered', 'blocked'], _working: null };
 const TERMINAL = new Set(['complete', 'removed']);
 const REQUIRED = ['game_name', 'base_title_id', 'update_title_id', 'release_folder', 'project_path', 'engine_or_format', 'status'];
 const TID = /0[0-9A-F]{15}/gi;

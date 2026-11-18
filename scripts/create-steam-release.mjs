@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { flag, parseArgs, requiredOption } from './lib/args.mjs';
+import { flag, option, parseArgs, requiredOption } from './lib/args.mjs';
 import { inspectProjectRoot } from './lib/project-identity.mjs';
-import { createDeterministicSteamZip, validateSteamRelease } from './lib/steam-release-zip.mjs';
-import { sha256File } from './lib/nsw-release-zip.mjs';
+import { createDeterministicSteamZip, steamReleaseFileName, validateSteamRelease } from './lib/steam-release-zip.mjs';
+import { RELEASE_DIR, ensureReleaseRoot, resolveNswReleaseNaming, sha256File, supersedeRelease } from './lib/nsw-release-zip.mjs';
 
 async function atomicText(target, content) {
   const temporary = path.join(path.dirname(target), `tmp-${path.basename(target)}.tmp`);
@@ -21,11 +21,17 @@ async function main() {
   const { projectId } = identity;
   const overlayRoot = path.join(projectRoot, '40_build', 'overlay');
   const manifestPath = path.join(projectRoot, '40_build', 'PATCH_MANIFEST.tsv');
-  const releaseRoot = path.join(projectRoot, '40_build', 'releases');
-  const outputPath = path.join(releaseRoot, `${projectId}.zip`);
+  // "<한국어 제목> - <project-id>.zip" from PROJECT.md "- Korean title:" or --korean-title (fails closed); --legacy-name keeps "<project-id>.zip".
+  const { gameName: koreanTitle } = await resolveNswReleaseNaming(projectRoot, {
+    koreanTitle: option(args, 'korean-title') ?? null,
+    legacyName: flag(args, 'legacy-name'),
+    labelFolder: false,
+  });
+  const fileName = steamReleaseFileName(koreanTitle, projectId);
+  const releaseRoot = await ensureReleaseRoot(projectRoot);
+  const outputPath = path.join(releaseRoot, fileName);
   const temporaryPath = path.join(releaseRoot, `tmp-package-${projectId}.zip.tmp`);
   const previousPath = path.join(releaseRoot, `tmp-previous-${projectId}.zip.tmp`);
-  await fs.mkdir(releaseRoot, { recursive: true });
   await fs.rm(temporaryPath, { force: true });
   await fs.rm(previousPath, { force: true });
   let reused = false;
@@ -44,17 +50,20 @@ async function main() {
         await fs.rename(previousPath, outputPath);
         throw error;
       }
-      await fs.rm(previousPath);
+      await supersedeRelease(previousPath, releaseRoot, fileName);
     } else await fs.rename(temporaryPath, outputPath);
 
-    const receipt = await validateSteamRelease({ projectId, zipPath: outputPath, overlayRoot, manifestPath });
+    const receipt = await validateSteamRelease({ projectId, zipPath: outputPath, overlayRoot, manifestPath, koreanTitle });
     const stats = await fs.stat(outputPath);
     const packageManifest = {
       schema_version: 1,
       platform: identity.platform,
       format: 'install-root-overlay',
       project_id: projectId,
-      archive_path: `40_build/releases/${projectId}.zip`,
+      release_filename: koreanTitle ? 'korean-title' : 'legacy-id',
+      korean_title: koreanTitle,
+      project_root: `_work/${projectId}`,
+      archive_path: `${RELEASE_DIR}/${fileName}`,
       archive_root: 'patch/',
       source_overlay: '40_build/overlay',
       patch_manifest: '40_build/PATCH_MANIFEST.tsv',
@@ -65,7 +74,7 @@ async function main() {
       reused,
       entries: receipt.entries,
     };
-    await atomicText(path.join(releaseRoot, 'SHA256SUMS.txt'), `${receipt.zipSha256}  ${projectId}.zip\n`);
+    await atomicText(path.join(releaseRoot, 'SHA256SUMS.txt'), `${receipt.zipSha256}  ${fileName}\n`);
     await atomicText(path.join(releaseRoot, 'RELEASE_PACKAGE.json'), `${JSON.stringify(packageManifest, null, 2)}\n`);
     process.stdout.write(`PASS\t${outputPath}\t${receipt.zipSha256}\tentries=${receipt.entries.length}\treused=${reused}\n`);
   } finally {

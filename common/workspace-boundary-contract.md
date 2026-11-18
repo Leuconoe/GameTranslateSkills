@@ -4,6 +4,13 @@
 `<TITLE_ROOT>/_work/<PROJECT_ID>/` 안에서만 이루어진다. 저장소, `$GT_TOOLS`, OS 임시 폴더, 공용 MCP
 폴더, 타이틀 루트 직속 위치나 다른 `_work` 프로젝트는 출력 경로가 아니다.
 
+**유일한 예외는 릴리스 폴더 `<TITLE_ROOT>/_release/`다**(`_work/` 옆, 프로젝트 루트 기준 `../../_release`).
+`release:package:nsw`/`release:package:steam`만 이곳에 canonical ZIP(기본 `<한국어 제목> - <PROJECT_ID>.zip`)·
+`RELEASE_NOTES.md`·`INSTALL.md`·`SHA256SUMS.txt`·`RELEASE_PACKAGE.json`·`screenshots/`·`superseded/`를 쓴다.
+`_release/`나 그 하위가 link/junction이면 실패하고, `release` 외 stage의 출력은 여기로 쓸 수 없다. 대표 캡처는
+`50_test` 증거에서 복사(이동 금지)해 `screenshots/NN_<what>.png`로 둔다. 예전 프로젝트 내부 위치
+`_work/<PROJECT_ID>/60_release/`·`_work/<PROJECT_ID>/40_build/releases/`는 읽기 전용 legacy다.
+
 ## 기능별 write root
 
 | stage | 허용 출력 root |
@@ -46,6 +53,7 @@ npm run project:boundary -- --project-root "<타이틀 루트>/_work/<PROJECT_ID
 | 구역 | 경로 | 넣는 것 |
 |---|---|---|
 | 타이틀 작업 | `_titles/<상태 폴더>/<타이틀 루트>/_work/<PROJECT_ID>/` (상태 폴더는 아래 **타이틀 상태 폴더** 참고) | 위 기능별 write root 산출물. 런타임 캡처는 `50_test/` 아래 |
+| 타이틀 릴리스 | `_titles/<상태 폴더>/<타이틀 루트>/_release/` | canonical `<한국어 제목> - <PROJECT_ID>.zip`, RELEASE_NOTES·SHA256SUMS·RELEASE_PACKAGE, `screenshots/`, `superseded/` |
 | 공용 도구 | `_tools/` | 여러 타이틀이 함께 쓰는 도구·에뮬레이터·MCP 세션. 게임 산출물은 두지 않음 |
 | 업로드본 | `_upload/<게임명> [<Title ID>]/` | 사용자가 요청한 배포 ZIP 사본·README·대표 스크린샷 |
 | 보관 | `_tools/_archive/<YYYYMMDD>/` | 끝난 정리·감사 기록, 타이틀을 특정할 수 없는 과거 자료 |
@@ -83,6 +91,7 @@ Steam/PC처럼 설치 폴더 자체가 타이틀 루트인 경우는 옮기지 �
 | `_working` | **지금 작업 중인 타이틀** |
 | `_hold` | 사용자 보류·외부 원인 차단으로 멈춘 타이틀 |
 | `_complete` | 릴리스까지 끝난 타이틀 |
+| `_archive` | 이전 작업 회차에서 완료된 타이틀(사용자 지시로 `_complete`에서 옮겨 보관) |
 
 - **작업을 시작하거나 재개할 때** 타이틀 루트가 `_working` 밖에 있으면, 파일을 쓰기 전에 루트 전체를
   `_titles/_working/`으로 옮긴 뒤 작업한다. 프로젝트 생성(`project:new`)도 이동한 뒤
@@ -106,7 +115,7 @@ Steam/PC처럼 설치 폴더 자체가 타이틀 루트인 경우는 옮기지 �
 
 ## 기존 구조 감사
 
-NSW 검증기는 타이틀 루트의 원본 NSP/XCI·`_work`·기존 `HANDOFF.md` 외 항목을 엄격히
+NSW 검증기는 타이틀 루트의 원본 NSP/XCI·`_work`·`_release`(real directory)·빈 한국어 라벨 폴더·기존 `HANDOFF.md` 외 항목을 엄격히
 검사한다. Steam/PC 설치 루트는 배포처가 관리하는 게임 파일을 허용하되 그 경로를 output으로
 사용하지 않는다. 모든 플랫폼에서 `_work`의 미분류 파일, 프로젝트 root의 비표준 단계 폴더,
 프로젝트 내부 link를 fail-closed로

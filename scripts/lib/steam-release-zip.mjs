@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { createDeterministicZip, inspectDeterministicZip, sha256File } from './nsw-release-zip.mjs';
+import { createDeterministicZip, inspectDeterministicZip, sanitizeReleaseGameName, sha256File } from './nsw-release-zip.mjs';
 import { normalizeProjectId, projectPlatformFromId } from './project-identity.mjs';
 
 export const steamPatchManifestHeader = [
@@ -146,12 +146,22 @@ export async function createDeterministicSteamZip({ projectId, overlayRoot, mani
   return createDeterministicZip({ files, outputPath });
 }
 
-export async function validateSteamRelease({ projectId, zipPath, overlayRoot, manifestPath, allowTemporaryName = false }) {
+// "<한국어 제목> - <project-id>.zip"; koreanTitle null → legacy "<project-id>.zip" (--legacy-name only).
+export function steamReleaseFileName(koreanTitle, projectId) {
+  const id = normalizeSteamProjectId(projectId);
+  if (koreanTitle == null) return `${id}.zip`;
+  const name = sanitizeReleaseGameName(koreanTitle);
+  if (!name) throw new Error(`Steam/PC release Korean title is empty after sanitizing: ${JSON.stringify(koreanTitle)}`);
+  return `${name} - ${id}.zip`;
+}
+
+export async function validateSteamRelease({ projectId, zipPath, overlayRoot, manifestPath, allowTemporaryName = false, koreanTitle = null }) {
   const id = normalizeSteamProjectId(projectId);
   const resolvedZip = path.resolve(zipPath);
-  if (!allowTemporaryName && path.basename(resolvedZip) !== `${id}.zip`) throw new Error(`Steam/PC release filename must be exactly ${id}.zip`);
-  if (!allowTemporaryName && path.basename(path.dirname(resolvedZip)).toLowerCase() !== 'releases') {
-    throw new Error('Steam/PC release ZIP must be directly under 40_build/releases');
+  const expectedName = steamReleaseFileName(koreanTitle, id);
+  if (!allowTemporaryName && path.basename(resolvedZip) !== expectedName) throw new Error(`Steam/PC release filename must be exactly ${expectedName}`);
+  if (!allowTemporaryName && !['_release', '60_release', 'releases'].includes(path.basename(path.dirname(resolvedZip)).toLowerCase())) {
+    throw new Error('Steam/PC release ZIP must be directly under <install root>/_release (legacy: 60_release, 40_build/releases)');
   }
   const inventory = await inventorySteamPatch({ overlayRoot, manifestPath });
   const inspected = await inspectDeterministicZip(resolvedZip);

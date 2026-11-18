@@ -77,15 +77,19 @@ qa_ready ≠ review_ready ≠ user-approved ≠ PASS (runtime) ≠ released
 
 NSW에서 사용자의 `빌드 생성` 또는 `패치 생성` 요청은 전담 `gt-nsw-build`의 canonical
 package 생성을 뜻한다. 입력은 `40_build/layeredfs/<BASE_TITLE_ID>/romfs/`, 출력은
-`40_build/releases/<BASE_TITLE_ID>.zip`, ZIP root는
+`<타이틀 루트>/_release/<한국어 제목> - <BASE_TITLE_ID>.zip`, ZIP root는
 `atmosphere/contents/<BASE_TITLE_ID>/romfs/<패치파일>`와 선택적
 `atmosphere/contents/<BASE_TITLE_ID>/exefs/main`으로 고정한다. SD 카드 루트에
 한 번에 풀어 설치한다. 자체 delta/적용기 패키지는 이 단계의
-산출물이 아니다. `gt-release`는 검증된 canonical ZIP을 인계받아 정식 릴리스의 runtime,
+산출물이 아니다. 릴리스 폴더는 프로젝트 밖 타이틀 루트의 `_release/`(`_work/` 옆)이며, 프로젝트 경계 밖으로 쓰는 유일한
+허용 위치다. ZIP(기본 이름 `<한국어 제목> - <BASE_TITLE_ID>.zip`)·`RELEASE_NOTES.md`·`INSTALL.md`·`SHA256SUMS.txt`·
+`RELEASE_PACKAGE.json`·`screenshots/`(대표 캡처 `NN_<what>.png`, `50_test`에서 복사)·`superseded/`만 둔다
+(예전 `_work/<ID>/60_release/`·`_work/<ID>/40_build/releases/`는 읽기 전용 legacy).
+`gt-release`는 검증된 canonical ZIP을 인계받아 정식 릴리스의 runtime,
 문서, 상태 게이트를 수행한다.
 
 Steam/PC의 canonical 입력은 `40_build/overlay/`와 재배포 원장
-`40_build/PATCH_MANIFEST.tsv`, 출력은 `40_build/releases/<project-id>.zip`, ZIP root는
+`40_build/PATCH_MANIFEST.tsv`, 출력은 `<설치 루트>/_release/<한국어 제목> - <project-id>.zip`, ZIP root는
 `patch/`다. `release:package:steam`과 `release:validate:steam`이 원본 게임
 executable/assembly/asset/archive/installer와 미승인 서드파티 파일을 fail-closed로 거부한다.
 

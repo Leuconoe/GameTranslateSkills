@@ -607,68 +607,97 @@ test('NSW build and patch requests route to the dedicated canonical build skill'
   }
   assert.match(orchestrator, /전담 `gt-nsw-build`/);
   assert.match(releaseSkill, /`gt-nsw-build`에 위임/);
-  assert.match(buildSkill, /40_build\/releases\/<BASE_TITLE_ID>\.zip/);
+  assert.match(buildSkill, /<타이틀 루트>\/_release\/<한국어 제목> - <BASE_TITLE_ID>\.zip/);
+  assert.match(releaseSkill, /_release\/screenshots\//);
   assert.match(buildSkill, /atmosphere\/contents\/<BASE_TITLE_ID>\/romfs\/<패치파일>/);
   assert.match(buildSkill, /release:validate:nsw/);
   assert.match(buildSkill, /release_status=released/);
 });
 
-test('NSW build and patch packaging creates only the canonical Title-ID/romfs ZIP', async () => {
+test('NSW build and patch packaging creates only the canonical Korean-title/Title-ID ZIP in <title root>/_release', async () => {
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'game-translate-nsw-release-'));
   const titleId = '0123456789ABCDEF';
-  const projectRoot = path.join(tempRoot, titleId);
+  const titleRoot = path.join(tempRoot, `Sample Game [${titleId}][JP]`);
+  const projectRoot = path.join(titleRoot, '_work', titleId);
   const romfsRoot = path.join(projectRoot, '40_build', 'layeredfs', titleId, 'romfs');
   await fs.mkdir(path.join(romfsRoot, 'data', 'nx'), { recursive: true });
   await fs.writeFile(path.join(romfsRoot, 'data', 'nx', 'script.dat'), 'translated-script');
   await fs.writeFile(path.join(romfsRoot, 'font.bin'), Buffer.from([0, 1, 2, 3, 4]));
+  const releaseRoot = path.join(titleRoot, '_release');
+  const zips = async () => (await fs.readdir(releaseRoot)).filter((name) => name.endsWith('.zip'));
 
-  // Default name is "<ID>.zip" and needs no game title.
-  const releaseRoot = path.join(projectRoot, '40_build', 'releases');
-  const output = runNode('create-nsw-release.mjs', ['--project-root', projectRoot]);
-  const zipPath = path.join(releaseRoot, `${titleId}.zip`);
-  assert.match(output, new RegExp(`PASS\\t.*${titleId}\\.zip`));
+  // The Korean title name is the default and fails closed when no Korean title is known.
+  assert.match(runNodeFailureOutput('create-nsw-release.mjs', ['--project-root', projectRoot]), /Korean release title is unknown/);
+  assert.match(runNodeFailureOutput('validate-nsw-release.mjs', ['--project-root', projectRoot]), /Korean release title is unknown/);
+
+  // PROJECT.md fallback; Windows-invalid characters and the bracketed Title ID are removed.
+  await fs.writeFile(path.join(projectRoot, 'PROJECT.md'), `# Sample\n\n- Korean title: \`샘플: 게임? [${titleId}]\`\n`);
+  const releaseName = `샘플 게임 - ${titleId}.zip`;
+  const zipPath = path.join(releaseRoot, releaseName);
+  assert.match(runNode('create-nsw-release.mjs', ['--project-root', projectRoot]), /PASS\t.*샘플 게임 - 0123456789ABCDEF\.zip\t.*reused=false/);
   assert.equal((await fs.stat(zipPath)).isFile(), true);
   assert.match(runNode('validate-nsw-release.mjs', ['--project-root', projectRoot]), /PASS/);
   const receipt = JSON.parse(await fs.readFile(path.join(releaseRoot, 'RELEASE_PACKAGE.json'), 'utf8'));
-  assert.equal(receipt.release_filename, 'id');
-  assert.equal(receipt.archive_path, `40_build/releases/${titleId}.zip`);
+  assert.equal(receipt.release_filename, 'korean-title');
+  assert.equal(receipt.korean_title, '샘플 게임');
+  assert.equal(receipt.archive_path, `_release/${releaseName}`);
+  assert.equal(receipt.project_root, `_work/${titleId}`);
+  assert.equal((await fs.stat(path.join(releaseRoot, 'screenshots'))).isDirectory(), true);
+  assert.equal((await fs.readdir(projectRoot)).includes('60_release'), false);
   assert.equal(receipt.archive_root, `atmosphere/contents/${titleId}/romfs/`);
   assert.deepEqual(receipt.entries.map((entry) => entry.path), [
     `atmosphere/contents/${titleId}/romfs/data/nx/script.dat`,
     `atmosphere/contents/${titleId}/romfs/font.bin`,
   ]);
-  assert.equal((await fs.readdir(path.join(projectRoot, '40_build', 'releases'))).filter((name) => name.endsWith('.zip')).length, 1);
+  assert.match(await fs.readFile(path.join(releaseRoot, 'SHA256SUMS.txt'), 'utf8'), new RegExp(`  ${releaseName}\\n$`));
+  assert.deepEqual(await zips(), [releaseName]);
 
+  // Replacing keeps the previous package under superseded/ with its old name.
   assert.match(runNode('create-nsw-release.mjs', ['--project-root', projectRoot]), /reused=true/);
+  const firstHash = sha256(await fs.readFile(zipPath));
   await fs.writeFile(path.join(romfsRoot, 'font.bin'), Buffer.from([9, 8, 7]));
   assert.match(runNodeFailureOutput('create-nsw-release.mjs', ['--project-root', projectRoot]), /already exists with different bytes/);
   assert.match(runNode('create-nsw-release.mjs', ['--project-root', projectRoot, '--replace']), /reused=false/);
   assert.match(runNode('validate-nsw-release.mjs', ['--project-root', projectRoot]), /PASS/);
+  assert.equal(sha256(await fs.readFile(path.join(releaseRoot, 'superseded', releaseName))), firstHash);
+  assert.deepEqual(await zips(), [releaseName]);
 
-  const wrongPath = path.join(projectRoot, '40_build', 'releases', 'v0.1.0-first-candidate', `${titleId}.zip`);
+  // The empty Korean label folder beside _work/ wins over PROJECT.md; identical bytes are renamed, not duplicated.
+  await fs.mkdir(path.join(titleRoot, '쿠키~런, 2'));
+  const labelName = `쿠키~런, 2 - ${titleId}.zip`;
+  assert.match(runNode('create-nsw-release.mjs', ['--project-root', projectRoot]), /reused=true/);
+  assert.deepEqual(await zips(), [labelName]);
+  assert.match(runNode('validate-nsw-release.mjs', ['--project-root', projectRoot]), /PASS/);
+  await fs.mkdir(path.join(titleRoot, '다른 제목'));
+  assert.match(runNodeFailureOutput('create-nsw-release.mjs', ['--project-root', projectRoot]), /Several Korean label folders/);
+  assert.match(runNode('create-nsw-release.mjs', ['--project-root', projectRoot, '--korean-title', '쿠키~런, 2']), /reused=true/);
+  await fs.rmdir(path.join(titleRoot, '다른 제목'));
+
+  // The TID suffix must match, and version/candidate subfolders are rejected.
+  const wrongPath = path.join(releaseRoot, 'v0.1.0-first-candidate', labelName);
   await fs.mkdir(path.dirname(wrongPath), { recursive: true });
-  await fs.copyFile(zipPath, wrongPath);
+  await fs.copyFile(path.join(releaseRoot, labelName), wrongPath);
   assert.match(runNodeFailureOutput('validate-nsw-release.mjs', [
     '--title-id', titleId,
     '--zip', wrongPath,
     '--romfs-root', romfsRoot,
-  ]), /directly under 40_build\/releases/);
+  ]), /directly under <title root>\/_release/);
+  assert.match(runNodeFailureOutput('validate-nsw-release.mjs', [
+    '--title-id', 'FEDCBA9876543210',
+    '--zip', path.join(releaseRoot, labelName),
+    '--romfs-root', romfsRoot,
+  ]), /filename must be "<한국어 제목> - FEDCBA9876543210\.zip"/);
   await fs.rm(path.dirname(wrongPath), { recursive: true });
 
-  // Titled name is opt-in. Without a known title the request fails; with PROJECT.md opting in, the
-  // identical "<ID>.zip" is renamed (not duplicated) to "<title> - <ID>.zip".
-  await fs.writeFile(path.join(projectRoot, 'PROJECT.md'), '- release_filename: titled\n');
-  assert.match(runNodeFailureOutput('create-nsw-release.mjs', ['--project-root', projectRoot]), /game name is unknown/);
-  await fs.writeFile(path.join(projectRoot, 'PROJECT.md'), '# Sample: Game [0123456789ABCDEF] — Korean localization\n\n- release_filename: titled\n');
-  const releaseName = `Sample Game - ${titleId}.zip`;
-  assert.match(runNode('create-nsw-release.mjs', ['--project-root', projectRoot]),
-    new RegExp(`PASS\\t.*${releaseName.replace(/[.]/g, '\\.')}\\t.*reused=true`));
-  assert.deepEqual((await fs.readdir(releaseRoot)).filter((name) => name.endsWith('.zip')), [releaseName]);
-  assert.match(runNode('validate-nsw-release.mjs', ['--project-root', projectRoot]), /PASS/);
-  const titled = JSON.parse(await fs.readFile(path.join(releaseRoot, 'RELEASE_PACKAGE.json'), 'utf8'));
-  assert.equal(titled.release_filename, 'titled');
-  assert.equal(titled.game_name, 'Sample Game');
-  assert.match(await fs.readFile(path.join(releaseRoot, 'SHA256SUMS.txt'), 'utf8'), new RegExp(`  ${releaseName}\\n$`));
+  // Legacy projects: _work/<ID>/40_build/releases/<ID>.zip is still read, with a warning, when _release has no ZIP.
+  const legacyRoot = path.join(projectRoot, '40_build', 'releases');
+  await fs.mkdir(legacyRoot, { recursive: true });
+  await fs.copyFile(path.join(releaseRoot, labelName), path.join(legacyRoot, `${titleId}.zip`));
+  await fs.rename(path.join(releaseRoot, labelName), path.join(tempRoot, 'parked.zip'));
+  assert.match(runNode('validate-nsw-release.mjs', ['--project-root', projectRoot]), new RegExp(`PASS\\t.*releases.${titleId}\\.zip`));
+  await fs.rename(path.join(tempRoot, 'parked.zip'), path.join(releaseRoot, labelName));
+  // --legacy-name is the explicit opt-out to "<ID>.zip".
+  assert.match(runNode('create-nsw-release.mjs', ['--project-root', projectRoot, '--legacy-name']), new RegExp(`PASS\\t.*[\\\\/]_release[\\\\/]${titleId}\\.zip\\t.*reused=true`));
 
   await fs.writeFile(path.join(romfsRoot, 'patch.gldelta'), 'forbidden');
   assert.match(runNodeFailureOutput('create-nsw-release.mjs', ['--project-root', projectRoot, '--replace']), /Forbidden non-LayeredFS release payload/);
@@ -688,6 +717,7 @@ test('Steam adapter scaffolds, validates, and creates a deterministic manifest-g
     '--install-root', installRoot,
     '--game-executable', 'FixtureGame.exe',
     '--game-name', 'Fixture Game',
+    '--korean-title', '픽스처 게임',
     '--app-id', '123456',
     '--steam-manifest', manifestPath,
   ]).trim();
@@ -711,9 +741,9 @@ test('Steam adapter scaffolds, validates, and creates a deterministic manifest-g
   ].join('\n');
   await fs.writeFile(path.join(projectRoot, '40_build', 'PATCH_MANIFEST.tsv'), patchManifest);
   const packageOutput = runNode('create-steam-release.mjs', ['--project-root', projectRoot]);
-  assert.match(packageOutput, /PASS\t.*steam-123456\.zip/);
+  assert.match(packageOutput, /PASS\t.*Fixture Game[\\/]_release[\\/]픽스처 게임 - steam-123456\.zip/);
   assert.match(runNode('validate-steam-release.mjs', ['--project-root', projectRoot]), /PASS/);
-  const packageReceipt = JSON.parse(await fs.readFile(path.join(projectRoot, '40_build', 'releases', 'RELEASE_PACKAGE.json'), 'utf8'));
+  const packageReceipt = JSON.parse(await fs.readFile(path.join(installRoot, '_release', 'RELEASE_PACKAGE.json'), 'utf8'));
   assert.equal(packageReceipt.archive_root, 'patch/');
   assert.deepEqual(packageReceipt.entries.map((entry) => entry.path), [
     'PATCH_MANIFEST.tsv',
@@ -748,6 +778,7 @@ test('Steam native runtime schema validates the current appmanifest, game binary
     '--install-root', installRoot,
     '--game-executable', 'RuntimeGame.exe',
     '--game-name', 'Runtime Game',
+    '--korean-title', '런타임 게임',
     '--app-id', '654321',
     '--steam-manifest', manifestPath,
   ]).trim();
@@ -1632,6 +1663,7 @@ test('project scaffold emits branch policies and validates', async () => {
     '--game-folder', 'FixtureGame',
     '--title-id', '0123456789ABCDEF',
     '--game-name', 'Fixture Game',
+    '--korean-title', '픽스처 게임',
   ]).trim();
   const projectText = await fs.readFile(path.join(projectPath, 'PROJECT.md'), 'utf8');
   assert.match(projectText, /text_review_policy: prepare-only/);
@@ -1643,7 +1675,14 @@ test('project scaffold emits branch policies and validates', async () => {
   assert.match(projectText, /mcp_session_scope: one-per-title/);
   assert.match(projectText, /final_qa_runtime: official-distribution-release/);
   assert.match(projectText, /final_qa_mcp_allowed: false/);
-  assert.match(projectText, /release_contract: NSW-LayeredFS/);
+  assert.match(projectText, /release_contract: NSW-LayeredFS — `<title root>\/_release\/<한국어 제목> - 0123456789ABCDEF\.zip`/);
+  assert.match(projectText, /^- Korean title: `픽스처 게임`$/m);
+  assert.equal((await fs.stat(path.join(gameFolder, '_release', 'screenshots'))).isDirectory(), true);
+  // <title root>/_release/ is the only sanctioned output outside the project; other stages may not write there.
+  assert.match(runNode('validate-project-boundary.mjs', ['--project-root', projectPath, '--stage', 'release', '--assert-output', path.join(gameFolder, '_release', 'x.zip')]), /Issues: 0/);
+  assert.match(runNodeFailureOutput('validate-project-boundary.mjs', ['--project-root', projectPath, '--stage', 'release', '--assert-output', '50_test/x.zip']), /must stay under/);
+  assert.match(runNodeFailureOutput('validate-project-boundary.mjs', ['--project-root', projectPath, '--stage', 'build', '--assert-output', path.join(gameFolder, '_release', 'x.zip')]), /escapes the exact title project workspace/);
+  assert.match(runNodeFailureOutput('validate-project-boundary.mjs', ['--project-root', projectPath, '--stage', 'release', '--assert-output', path.join(gameFolder, 'elsewhere', 'x.zip')]), /Release output must stay under/);
   assert.match(projectText, /Canonical NSW package:.*빌드 생성.*패치 생성/);
   assert.equal((await fs.stat(path.join(projectPath, 'HANDOFF.md'))).isFile(), true);
   for (const directory of ['prompts', 'receipts', 'probes']) {

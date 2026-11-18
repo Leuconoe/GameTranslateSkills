@@ -50,10 +50,41 @@ export function normalizeTitleId(value) {
   return titleId;
 }
 
-// Release ZIPs are named "<BASE_TITLE_ID>.zip" by default. "<game title> - <BASE_TITLE_ID>.zip" is opt-in
-// (user request: --titled-name/--game-name or PROJECT.md "- release_filename: titled"). The title is made filesystem-safe:
-// bracketed Title IDs are dropped (the ID is already in the suffix), Windows-invalid characters and
-// control characters become spaces, whitespace collapses, and trailing dots/spaces are trimmed.
+// Canonical release directory: <title root>/_release/, the sibling of _work/ (project root = <title root>/_work/<ID>).
+// It holds the ZIP, RELEASE_NOTES.md, INSTALL.md, SHA256SUMS.txt, RELEASE_PACKAGE.json, screenshots/ and superseded/.
+// Earlier locations inside the project (_work/<ID>/60_release/, _work/<ID>/40_build/releases/) are read-only fallbacks.
+export const RELEASE_DIR = '_release';
+export const LEGACY_RELEASE_DIRS = ['60_release', path.join('40_build', 'releases')];
+const RELEASE_PARENT_NAMES = new Set([RELEASE_DIR, '60_release', 'releases']);
+
+export function titleRootOfProject(projectRoot) {
+  const resolved = path.resolve(projectRoot);
+  const workRoot = path.dirname(resolved);
+  if (path.basename(workRoot).toLowerCase() !== '_work') {
+    throw new Error(`Project root must be <title root>/_work/<ID> to locate <title root>/${RELEASE_DIR}: ${resolved}`);
+  }
+  return path.dirname(workRoot);
+}
+
+export function releaseRootOfProject(projectRoot) {
+  return path.join(titleRootOfProject(projectRoot), RELEASE_DIR);
+}
+
+// Creates <title root>/_release/ (and screenshots/) for writing; a link/junction there is refused.
+export async function ensureReleaseRoot(projectRoot) {
+  const releaseRoot = releaseRootOfProject(projectRoot);
+  for (const target of [releaseRoot, path.join(releaseRoot, 'screenshots')]) {
+    const stats = await fsp.lstat(target).catch((error) => { if (error?.code === 'ENOENT') return null; throw error; });
+    if (stats && (stats.isSymbolicLink() || !stats.isDirectory())) throw new Error(`Release directory must be a real directory, not a link/junction: ${target}`);
+    if (!stats) await fsp.mkdir(target);
+  }
+  return releaseRoot;
+}
+const HANGUL = /[ᄀ-ᇿ㄰-㆏가-힣]/;
+
+// Release ZIPs are named "<한국어 제목> - <BASE_TITLE_ID>.zip" by default; "<BASE_TITLE_ID>.zip" only with --legacy-name.
+// The title is made filesystem-safe: bracketed Title IDs are dropped (the ID is already in the suffix), Windows-invalid
+// characters and control characters become spaces, whitespace collapses, and trailing dots/spaces are trimmed.
 export function sanitizeReleaseGameName(value) {
   return String(value ?? '')
     .normalize('NFC')
@@ -79,37 +110,50 @@ export function parseNswReleaseFileName(fileName, titleId) {
   return name && sanitizeReleaseGameName(name) === name ? name : null;
 }
 
-// Game title for the release filename: explicit option, then PROJECT.md "- Game name:" field,
-// then the first level-1 heading (an em-dash subtitle such as "— Korean localization" is dropped).
-export async function resolveNswGameName(projectRoot, explicit = null) {
+// Korean title for the release filename, first match wins:
+// 1. explicit --korean-title;
+// 2. the title root's empty Korean label folder (<title root>/<한국어 제목>/ beside _work/; NSW layout only);
+// 3. PROJECT.md "- Korean title: <제목>" (also "korean_title: <제목>" or a "| korean_title | <제목> |" table row).
+export async function resolveKoreanReleaseTitle(projectRoot, { explicit = null, labelFolder = true } = {}) {
   if (explicit != null) return sanitizeReleaseGameName(explicit) || null;
-  let text;
-  try {
-    text = await fsp.readFile(path.join(projectRoot, 'PROJECT.md'), 'utf8');
-  } catch (error) {
-    if (error?.code === 'ENOENT') return null;
-    throw error;
+  const workDir = path.dirname(path.resolve(projectRoot));
+  if (labelFolder && path.basename(workDir).toLowerCase() === '_work') {
+    const titleRoot = path.dirname(workDir);
+    const labels = [];
+    for (const entry of await fsp.readdir(titleRoot, { withFileTypes: true }).catch(() => [])) {
+      if (!entry.isDirectory() || entry.name.startsWith('_') || !HANGUL.test(entry.name)) continue;
+      if ((await fsp.readdir(path.join(titleRoot, entry.name))).length === 0) labels.push(entry.name);
+    }
+    if (labels.length > 1) throw new Error(`Several Korean label folders in ${titleRoot} (${labels.join(', ')}); pass --korean-title`);
+    if (labels.length === 1) return sanitizeReleaseGameName(labels[0]) || null;
   }
-  const field = text.match(/^- Game name:\s*`?([^`\r\n]+?)`?\s*$/m);
-  if (field) return sanitizeReleaseGameName(field[1]) || null;
-  const heading = text.match(/^# (.+)$/m);
-  return heading ? sanitizeReleaseGameName(heading[1].split(' — ')[0]) || null : null;
-}
-
-// Naming mode for one packaging/validation run. Default { gameName: null } → "<ID>.zip".
-// Titled only on explicit request: --titled-name, --game-name, or PROJECT.md "- release_filename: titled".
-export async function resolveNswReleaseNaming(projectRoot, { titled = false, gameName = null } = {}) {
   let text = '';
   try {
     text = await fsp.readFile(path.join(projectRoot, 'PROJECT.md'), 'utf8');
   } catch (error) {
     if (error?.code !== 'ENOENT') throw error;
   }
-  const mode = text.match(/^- release_filename:\s*`?([A-Za-z-]+)`?/m)?.[1]?.toLowerCase();
-  if (!titled && gameName == null && mode !== 'titled') return { gameName: null };
-  const resolved = await resolveNswGameName(projectRoot, gameName);
+  const field = text.match(/^(?:- |\| )?(?:Korean title|korean_title|한국어 제목)\s*[:|]\s*`?([^`\r\n|]+?)`?\s*\|?\s*$/mi);
+  return field ? sanitizeReleaseGameName(field[1]) || null : null;
+}
+
+// Replaced packages are kept, never deleted: <release dir>/superseded/<old name> (SHA-256 prefix added on a name clash).
+export async function supersedeRelease(source, releaseRoot, name = path.basename(source)) {
+  const directory = path.join(releaseRoot, 'superseded');
+  await fsp.mkdir(directory, { recursive: true });
+  let target = path.join(directory, name);
+  if (fs.existsSync(target)) target = path.join(directory, `${(await sha256File(source)).slice(0, 12)}-${name}`);
+  await fsp.rename(source, target);
+  return target;
+}
+
+// Naming for one packaging/validation run: { gameName: <Korean title> } → "<한국어 제목> - <ID>.zip" (default, fail closed
+// when no Korean title is known); { gameName: null } → "<ID>.zip" only with the explicit --legacy-name opt-out.
+export async function resolveNswReleaseNaming(projectRoot, { koreanTitle = null, legacyName = false, labelFolder = true } = {}) {
+  if (legacyName) return { gameName: null };
+  const resolved = await resolveKoreanReleaseTitle(projectRoot, { explicit: koreanTitle, labelFolder });
   if (!resolved) {
-    throw new Error('Titled NSW release requested but the game name is unknown: pass --game-name or add "- Game name: `<title>`" to PROJECT.md');
+    throw new Error('Korean release title is unknown: create the empty Korean label folder beside _work/, add "- Korean title: `<한국어 제목>`" to PROJECT.md, or pass --korean-title "<한국어 제목>"');
   }
   return { gameName: resolved };
 }
@@ -498,8 +542,8 @@ export async function validateNswRelease({ titleId, zipPath, romfsRoot = null, e
       throw new Error(`NSW release filename must be exactly ${expectedName}: ${fileName}`);
     }
   }
-  if (!allowTemporaryName && path.basename(path.dirname(resolvedZip)).toLowerCase() !== 'releases') {
-    throw new Error('NSW release ZIP must be directly under 40_build/releases (version/candidate subfolders are forbidden)');
+  if (!allowTemporaryName && !RELEASE_PARENT_NAMES.has(path.basename(path.dirname(resolvedZip)).toLowerCase())) {
+    throw new Error('NSW release ZIP must be directly under <title root>/_release (legacy: 60_release, 40_build/releases); version/candidate subfolders are forbidden');
   }
   const { entries } = await parseCentralDirectory(resolvedZip);
   if (entries.length === 0) throw new Error('NSW release ZIP contains no patch files');

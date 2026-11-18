@@ -4,8 +4,11 @@ import { inspectProjectRoot, projectPlatformFromId, projectRootShapeDescription 
 
 const sourceExtensions = new Set(['.nsp', '.xci']);
 const projectFiles = new Set(['PROJECT.md', 'WORK_LOG.md', 'HANDOFF.md']);
-const projectDirectories = new Set(['00_source', '10_extract', '20_reference', '30_translation', '40_build', '50_test', '90_tools']);
+// 60_release is a legacy (read-only) in-project release folder; new releases go to <title root>/_release/.
+const projectDirectories = new Set(['00_source', '10_extract', '20_reference', '30_translation', '40_build', '50_test', '60_release', '90_tools']);
 const titleFiles = new Set(['HANDOFF.md']);
+// The one sanctioned write location outside the project root: <title root>/_release/ (sibling of _work/).
+const RELEASE_DIR = '_release';
 const stageRoots = new Map([
   ['source', ['00_source/']],
   ['extract', ['10_extract/', '90_tools/work/extract/']],
@@ -13,6 +16,7 @@ const stageRoots = new Map([
   ['translation', ['30_translation/', '90_tools/work/translation/']],
   ['build', ['40_build/', '90_tools/work/build/']],
   ['test', ['50_test/', '90_tools/scripts/test/', '90_tools/work/test/']],
+  ['release', [`../../${RELEASE_DIR}/`]],
   ['tools', ['90_tools/']],
 ]);
 
@@ -100,7 +104,11 @@ export async function validateProjectBoundary(projectRoot, { stage = null, outpu
     }
     for (const entry of titleEntries) {
       if (entry.name === '_work') continue;
+      if (entry.name === RELEASE_DIR && entry.isDirectory() && !entry.isSymbolicLink()) continue;
       if (entry.isFile() && (sourceExtensions.has(path.extname(entry.name).toLowerCase()) || titleFiles.has(entry.name))) continue;
+      // The empty Korean label folder (<title root>/<한국어 제목>/) names the release ZIP.
+      if (entry.isDirectory() && /[가-힣]/.test(entry.name)
+        && (await directEntries(path.join(titleRoot, entry.name))).length === 0) continue;
       issues.push({ path: path.join(titleRoot, entry.name), problem: 'Generated/unclassified item is outside the title project workspace' });
     }
   } else if (!titleEntries.some((entry) => entry.isFile() && path.extname(entry.name).toLowerCase() === '.exe')
@@ -117,17 +125,35 @@ export async function validateProjectBoundary(projectRoot, { stage = null, outpu
     if (entry.isFile() && projectFiles.has(entry.name)) continue;
     issues.push({ path: entry.name, problem: 'Project-root item is outside the canonical functional roots' });
   }
+  const releaseRoot = path.join(titleRoot, RELEASE_DIR);
+  const releaseStats = await fs.lstat(releaseRoot).catch(() => null);
+  if (releaseStats && (releaseStats.isSymbolicLink() || !releaseStats.isDirectory())) {
+    issues.push({ path: releaseRoot, problem: 'Title release folder must be a real directory, never a link/reparse path' });
+  }
   if (scanLinks) {
     for (const linkedPath of await collectLinks(resolvedProject)) {
       issues.push({ path: linkedPath, problem: 'Link/reparse point is forbidden inside the project workspace boundary' });
+    }
+    if (releaseStats?.isDirectory() && !releaseStats.isSymbolicLink()) {
+      for (const linkedPath of await collectLinks(releaseRoot)) {
+        issues.push({ path: linkedPath, problem: 'Link/reparse point is forbidden inside the title release folder' });
+      }
     }
   }
   if (stage !== null && !stageRoots.has(stage)) issues.push({ path: '-', problem: `Unsupported functional stage: ${stage}` });
   for (const rawOutput of outputs) {
     const absolute = path.isAbsolute(rawOutput) ? path.resolve(rawOutput) : path.resolve(resolvedProject, rawOutput);
     const relative = normalizedRelative(resolvedProject, absolute);
+    if (isContained(releaseRoot, absolute) && (stage === null || stage === 'release')) {
+      // <title root>/_release/ is the only sanctioned output outside the project root.
+      const linkedAncestor = await assertNoLinkedAncestor(titleRoot, absolute);
+      if (linkedAncestor) issues.push({ path: rawOutput, problem: `Output path crosses a link/reparse ancestor: ${linkedAncestor}` });
+      continue;
+    }
     if (!isContained(resolvedProject, absolute)) {
-      issues.push({ path: rawOutput, problem: 'Output path escapes the exact title project workspace' });
+      issues.push({ path: rawOutput, problem: stage === 'release'
+        ? `Release output must stay under ${releaseRoot}`
+        : 'Output path escapes the exact title project workspace' });
       continue;
     }
     const linkedAncestor = await assertNoLinkedAncestor(resolvedProject, absolute);

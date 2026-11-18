@@ -4,7 +4,7 @@ import path from 'node:path';
 import { artifactIndexHeader, artifactLayoutDirectories } from './lib/project-artifacts.mjs';
 import { flag, option, parseArgs, requiredOption } from './lib/args.mjs';
 import { normalizeProjectId } from './lib/project-identity.mjs';
-import { sha256File } from './lib/nsw-release-zip.mjs';
+import { ensureReleaseRoot, sha256File } from './lib/nsw-release-zip.mjs';
 import { steamPatchManifestHeader } from './lib/steam-release-zip.mjs';
 
 const imageGenerationManifestHeader = [
@@ -48,7 +48,7 @@ function parseSteamManifest(text) {
 }
 
 function usage() {
-  console.log(`Usage: npm run project:new:steam -- --install-root <game-folder> --game-executable <relative.exe> --game-name <name> [identity]
+  console.log(`Usage: npm run project:new:steam -- --install-root <game-folder> --game-executable <relative.exe> --game-name <name> --korean-title <한국어 제목> [identity]
 
 Identity:
   Steam: --app-id <digits> --steam-manifest <appmanifest_APPID.acf>
@@ -63,12 +63,14 @@ async function main() {
   const installRoot = path.resolve(requiredOption(args, 'install-root'));
   await regularDirectory(installRoot, '--install-root');
   const gameName = requiredOption(args, 'game-name');
+  const koreanTitle = String(requiredOption(args, 'korean-title')).trim();
+  if (!koreanTitle || /[`|]/.test(koreanTitle)) throw new Error('--korean-title must be non-empty and must not contain ` or |');
   const executableRelative = requiredOption(args, 'game-executable').replaceAll('\\', '/');
   if (path.isAbsolute(executableRelative) || executableRelative.split('/').some((part) => !part || part === '.' || part === '..')) {
     throw new Error('--game-executable must be an install-root-relative path');
   }
   const executablePath = path.resolve(installRoot, ...executableRelative.split('/'));
-  for (const [label, value] of [['--install-root', installRoot], ['--game-name', gameName], ['--game-executable', executableRelative]]) {
+  for (const [label, value] of [['--install-root', installRoot], ['--game-name', gameName], ['--korean-title', koreanTitle], ['--game-executable', executableRelative]]) {
     if (/[\t\r\n]/.test(value)) throw new Error(`${label} must not contain tabs or line breaks`);
   }
   if (!isWithin(installRoot, executablePath) || path.extname(executablePath).toLowerCase() !== '.exe') {
@@ -128,7 +130,6 @@ async function main() {
     ['30_translation', 'image_translation', 'reports'],
     ['40_build', 'overlay'],
     ['40_build', 'staging'],
-    ['40_build', 'releases'],
     ['50_test', 'screenshots'],
     ['50_test', 'logs'],
     ['50_test', 'release-runtime'],
@@ -138,11 +139,13 @@ async function main() {
     ...artifactLayoutDirectories,
   ];
   for (const folder of folders) await fs.mkdir(path.join(projectRoot, ...folder), { recursive: true });
+  await ensureReleaseRoot(projectRoot);
 
   const manifestDisplay = manifestPath ?? 'N/A';
   await writeIfMissing(path.join(projectRoot, 'PROJECT.md'), `# ${gameName}
 
 - platform: steam
+- Korean title: ${koreanTitle}
 - distribution: ${distribution}
 - project_id: ${projectId}
 - steam_app_id: ${appId ?? 'N/A'}
@@ -175,7 +178,7 @@ async function main() {
 - final_qa_mcp_allowed: false
 - release_runtime_receipt: 50_test/RELEASE_RUNTIME_QA.json
 - target_language_slot: pending
-- release_contract: Steam-PC overlay — \`40_build/releases/${projectId}.zip\`, ZIP root \`patch/\`
+- release_contract: Steam-PC overlay — \`<install root>/_release/<한국어 제목> - ${projectId}.zip\`, ZIP root \`patch/\`
 
 ## Safety boundary
 

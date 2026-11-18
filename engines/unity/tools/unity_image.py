@@ -24,6 +24,7 @@ Config `30_translation/image_translation/image_config.json` (all keys optional):
   primary_root: _work/TID of the title whose boxes are primary; set on a sibling title that shares the spec.
 tex_id = <fk>|<assets_file>|<base name>|<w>x<h>[#n]  (base name = sactx prefix and -hash suffix stripped)
 Spec columns: key status mode tex_id box also tex_id_p2 ja ko font fill bands tbox size sx thr align notes [ref scale]
+  [dilate] (badge/page: erase-mask growth in px, default 1; raise it for a surviving glow/anti-aliased rim)
   status typeset (primary box + `also` copies; secondary uses `tex_id_p2` via LOCATE), typeset_p1 (primary only),
   typeset_p2 (secondary only, explicit box); other statuses are inventory only.
   mode sticker|rect|badge|page (erase + typeset `ko`), logo (`ko` = PNG fitted to the box content alpha bbox),
@@ -447,6 +448,13 @@ def recomp(sub, J, K, smin=0.3, smax=1.0):
     return dict(fill=f's={s:.4f}', bands=f'at={ox},{oy} core_rmse={err ** 0.5:.1f}', cleared=int(unk.sum()))
 
 
+def badge_mask(sub, bgc, thr, dilate=1):
+    """badge/page erase mask: pixels differing from the plate colour by > thr, grown by `dilate` px
+    (spec column `dilate`, default 1 = 3x3; raise it when a soft glow/anti-aliased rim of the source survives)"""
+    m = (np.abs(sub.astype(int) - bgc).max(axis=2) > thr).astype(np.uint8)
+    return cv2.dilate(m, np.ones((2 * dilate + 1, 2 * dilate + 1), np.uint8)).astype(bool)
+
+
 def apply_row(a, r, box, it, fonts):
     x, y, w, h = box
     mode = r['mode']
@@ -484,8 +492,7 @@ def apply_row(a, r, box, it, fonts):
     elif mode in ('badge', 'page'):
         bd = np.concatenate([sub[0], sub[-1], sub[:, 0], sub[:, -1]]).astype(int)
         bgc = np.median(bd, axis=0)
-        mask = np.abs(sub.astype(int) - bgc).max(axis=2) > int(r.get('thr') or 48)
-        mask = cv2.dilate(mask.astype(np.uint8), np.ones((3, 3), np.uint8)).astype(bool)
+        mask = badge_mask(sub, bgc, int(r.get('thr') or 48), int(r.get('dilate') or 1))
         fill, bands = fit_bands(sub, mask)
         if mode == 'page' or (np.abs(sub.astype(int) - bgc).max(axis=2) < 24)[~mask].mean() > 0.97:
             sub[mask] = bgc.astype(np.uint8)
@@ -880,6 +887,12 @@ def selftest():
     out4, ch4 = splice(lin4, orig, new, info4, enc=fake)
     assert ch4 == [(1, 3)] and bytes(out4) == fake(new[::-1], None)
     assert sum(x != y for x, y in zip(out4, lin4)) <= 16
+    # badge mask dilate: default grows 1 px (3x3), dilate=3 grows 3 px; a rim pixel below thr is reached only by dilate
+    pl = np.full((21, 21, 4), 200, np.uint8)
+    pl[10, 10] = (0, 0, 0, 255)
+    bg = np.array([200, 200, 200, 200])
+    assert badge_mask(pl, bg, 48).sum() == 9 and badge_mask(pl, bg, 48, 3).sum() == 49
+    assert not badge_mask(pl, bg, 48)[10, 13] and badge_mask(pl, bg, 48, 3)[10, 13]
     # patch / logo modes
     cv = np.zeros((20, 20, 4), np.uint8)
     cv[5:15, 5:15] = (9, 9, 9, 255)

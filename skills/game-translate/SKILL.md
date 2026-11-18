@@ -32,6 +32,7 @@ description: "Orchestrate a fail-closed Korean game-localization workflow across
   | 타이틀 현황 한 줄 요약 (번역 행·재개 지점·최신 빌드·Eden 판정·릴리스 ZIP hash8) | `npm run project:status -- --titles-root <_titles> [--zone _working]` |
   | 추출 RomFS와 nstool 목록 대조 (키 내용 출력 안 함) | `npm run nsw:romfs-verify -- --extract <dir> --listing <fstree.txt>` 또는 `--nca <nca> --keys <prod.keys>` |
   | 파일 SHA-256 캐시 (path+size+mtime) | `scripts/lib/hash-cache.mjs` / `hash_cache.py` (릴리스 패키징·검증·`eden_tools publish`가 자동 사용) |
+  | 한국어 TTF 글리프 추가 (원본 glyf 바이트 보존·공통 배율) / 비트맵 글리프 렌더 (공통 배율·베이스라인) | `python -I scripts/fonts/ttf_append.py build|verify` / `scripts/fonts/glyph_render.py render`; 엔진 직렬화는 `engines/<engine>/tools/` (M2: `m2font.py`) |
 - 공용 도구가 없거나 모자라면 타이틀 전용 우회 스크립트를 만들지 않는다. 공용 도구를 고치고 테스트를 붙여 커밋한 뒤 쓴다.
 - 엔진 포맷 도구(아카이브·폰트·이미지 코덱)는 처음에는 타이틀 `90_tools/`에 둘 수 있다. 두 번째 타이틀에서 쓰게 되면
   복사하지 말고 `engines/<engine>/tools/`로 옮겨 공용화한다.

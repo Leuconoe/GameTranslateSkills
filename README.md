@@ -180,7 +180,7 @@ npm run release:package:steam -- --project-root '<게임 설치 폴더>\_work\st
 package.json  크로스플랫폼 npm 명령
 skills/       Codex/Claude Code 공용 스킬 (파이프라인·정리·청결화 — 플랫폼 무관)
 platforms/    플랫폼 어댑터: nsw·steam/pc(완전) / sfc·ps1·ps2(골격) / _template(양식)
-engines/      엔진 모듈: unity / vn-common / lucasystem (플랫폼과 직교)
+engines/      엔진 모듈: unity / vn-common / lucasystem / giga-adv (플랫폼과 직교)
 common/       SAFETY.md(안전 규칙) · preflight-checks.md(사전 경고 게이트) ·
               qa-session-rules.md(MCP 단일 세션 규칙) · release-runtime-contract.md(공식 배포 릴리즈 최종 QA) ·
               emucap-integration.md(선택적 smoke QA) · glossary-rules.md · project-structure.md · pipeline-contract.* ·

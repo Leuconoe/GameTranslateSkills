@@ -50,7 +50,9 @@ description: "Overall analysis entry stage for game localization: extract game f
    명령줄 도구 우선, GUI 도구는 어댑터가 지정한 경우만.
 3. **엔진 식별**: 추출물의 파일 시그니처·폴더 패턴으로 엔진 판별
    (Unity, VN엔진 계열, LucaSystem 등) → 해당 `$GT_HOME/engines/<engine>/ENGINE.md` 로드.
-   식별 근거를 `ANALYSIS.md`에 기록.
+   식별 근거를 `ANALYSIS.md`에 기록. 폴더명·제품명 라벨(예: "Ported RenPy")은 근거가 아니다. 추출물의
+   파일 시그니처·설정 파일로 확정하고, 해당 엔진 문서가 없으면 `engines/<engine>/ENGINE.md`를 새로 만들
+   후보로 `HANDOFF.md`에 남긴다.
 4. **언어 슬롯 분석**: 게임이 지원하는 언어 목록과 텍스트가 언어별로 어떻게 분리되어
    있는지 확인 (플랫폼 어댑터의 언어 슬롯 절차). 교체 대상 슬롯을 결정하고 근거 기록.
 5. **번역 대상 분류**: 추출물에서 다음을 식별하여 `ANALYSIS.md`에 목록화:

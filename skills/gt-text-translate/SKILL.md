@@ -91,7 +91,8 @@ description: "Text branch translation after text analysis: batch-translate extra
    `30_translation/text/glossary.tsv`에
    `원문 │ 번역 │ 유형 │ 근거` 로 등록하고 이후 배치에서 강제 준수. 배치 시작 전
    용어집을 프롬프트에 주입.
-6. **배치별 구조 검증**: 번역 완료 배치마다 즉시 검증 (병합 게이트):
+6. **배치별 구조 검증**: 번역 완료 배치마다 즉시 검증 (병합 게이트). 일괄·이어하기 실행은 예외로,
+   `glossary-rules.md` "일괄 번역 이어하기 하네스"대로 타이틀 끝에 1회만 검증한다:
    - 행 수/ID 일치, 플레이스홀더·태그·개행 보존, 빈 번역 없음, 미번역 원문 잔존 없음
    - 검증 실패 배치는 병합 금지, 해당 배치만 수정 후 재검증
 7. **im-not-ai 기본 윤문**: 전 배치 병합·구조 검증이 끝나면 `humanize_policy`가 `off`가
@@ -99,13 +100,17 @@ description: "Text branch translation after text analysis: batch-translate extra
    문장 흐름을 다듬는다. 윤문 결과도 6단계 구조 검증을 다시 통과해야 병합하며, run·원문·
    최종본·게이트 증거는 `90_tools/work/translation/humanize/<run>/`에 두고
    `PROJECT_ARTIFACT_MANIFEST.tsv`에 `evidence`로 등록한다. 이어서 독립 2차 검수를 한다.
-8. **작업 로그**: 배치별 상태(완료/실패/재실행)를 `30_translation/WORKLOG.md`에 기록.
+8. **작업 로그**: 배치별 상태(완료/실패/재실행)를 `30_translation/WORKLOG.md`에 기록
+   (일괄·이어하기 실행은 파트별 기록 없이 `out/` 파트 파일이 진행 기록이다).
    실패 배치는 원인과 함께 기록하고 재실행 시 실패분만 처리.
 
 ## 일괄 번역 보조 규칙 (실증)
 
+- **이어하기 하네스**: 일괄 번역은 `glossary-rules.md` "일괄 번역 이어하기 하네스"를 따른다. 준비가 끝나면
+  `30_translation/RESUME.md`를 쓰고, 이어하기 실행은 그 파일과 원문 slice만 읽으며, 재개 지점은 `out/` 파트
+  파일에서 구하고, 검사·병합·주입 검증은 타이틀 끝에 1회만 한다.
 - **동일 원문 재사용**: 분기·회상 반복이 많은 작품은 이미 번역한 동일 원문 행을 같은 번역으로 채우는
-  보조 스크립트(dupfill)를 블록마다 먼저 실행하고 남은 행만 번역한다. 산출 파트 파일 이름도
+  보조 스크립트(dupfill)를 실행 시작 시 1회 먼저 돌리고 남은 행만 번역한다(같은 시리즈의 끝난 타이틀 TM 선택). 산출 파트 파일 이름도
   `check`가 읽는 패턴(`P*.tsv`, 예: `PD<first>.tsv`)을 따라야 누락되지 않는다.
 - **병합 후 재검사**: 단일 병합이 끝나면 `status=translated`이므로 같은 `check`는 실패하는 것이 정상이다.
   병합 이후 검증은 실주입·재추출 대조로 한다.

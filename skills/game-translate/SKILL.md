@@ -107,6 +107,8 @@ manifest·번역표·staging을 동시에 쓰지 않는다.
   행을 고치고 `npm run registry:check -- --titles-root <titles root>`가 0 error인지 확인한다
   (상태값 규약: `platforms/nsw/PLATFORM.md` "status 상태값과 폴더 구역").
 - 진행 확인은 에이전트 transcript가 아니라 타이틀 산출물(파트 파일 행 수·갱신 시각)로 한다.
+- 이어하기 번역 에이전트의 브리프에는 `30_translation/RESUME.md` 경로와 담당 구간만 넣는다. 스킬 재독·
+  파트별 검증·WORK_LOG 추가를 지시하지 않는다(`common/glossary-rules.md` "일괄 번역 이어하기 하네스").
 - 서브에이전트 하네스는 새 `.md` 보고서 파일(예: `30_translation/ANALYSIS.md`) 생성을 막을 수 있다. 에이전트는 막히면
   같은 내용을 `WORK_LOG.md`와 완료 보고에 넣고, 코디네이터가 보고를 받아 해당 `.md`를 만든다. 산출물 누락으로 단계를
   멈추지 않는다.

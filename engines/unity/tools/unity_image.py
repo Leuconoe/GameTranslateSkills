@@ -204,8 +204,9 @@ def dump(fk, rx):
 
 # ---------------- locate (secondary title) ----------------
 def premul(im):
-    return np.ascontiguousarray(np.dstack([im[:, :, :3].astype(np.float32) * (im[:, :, 3:4] / 255.0),
-                                           im[:, :, 3:4].astype(np.float32)]))
+    # float32 throughout: cv2.matchTemplate rejects the float64 that `uint8 / 255.0` would promote to.
+    a = im[:, :, 3:4].astype(np.float32)
+    return np.ascontiguousarray(np.dstack([im[:, :, :3].astype(np.float32) * (a / np.float32(255.0)), a]))
 
 
 def locate():

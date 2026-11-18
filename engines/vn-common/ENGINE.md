@@ -3,6 +3,8 @@
 > 출처: 실전 한글화 작업 노하우에서 일반화 이식 (2026-08)
 
 Artemis(PFS/PF8), 독자 PAK, 기타 비주얼노벨 계열 아카이브·스크립트 포맷을 다룰 때의 공통 규칙이다.
+Artemis 전용 내용(pf8 포맷, 마운트 순서, AST 스크립트, 폰트, wordparts 줄바꿈, 리팩 도구)은
+[`engines/artemis/ENGINE.md`](../artemis/ENGINE.md)가 우선한다. 아래 Artemis 절은 태그형 시나리오 변종 기록이다.
 
 ## 도구
 
@@ -10,7 +12,7 @@ Artemis(PFS/PF8), 독자 PAK, 기타 비주얼노벨 계열 아카이브·스크
 |---|---|---|
 | GARbro | `$GT_TOOLS/GARbro/<version>/` | 다수 VN 아카이브 포맷의 탐색·추출. GUI 탐색은 조사용이며, 재현 가능한 추출 단계는 CLI/스크립트로 기록 |
 | msg-tool | `$GT_TOOLS/msg-tool/` | VN 스크립트/메시지 포맷의 텍스트 추출·재주입 CLI |
-| pfs-rs | `$GT_TOOLS/pfs-rs/` | Artemis PFS 아카이브의 추출·리팩 CLI |
+| pfs-rs | `$GT_TOOLS/pfs-rs-v<ver>-win_x64/pfs-rs.exe` | Artemis PFS 아카이브의 추출·검증 CLI (리팩 주의점은 `engines/artemis`) |
 
 - 어떤 도구든 출력은 프로젝트의 `10_extract`, `40_build/staging` 등 명시 경로로만 보낸다.
 - 리팩 도구가 있어도 **플랫폼 패키징 체인과 실기 검증이 없으면 installable build로 승격하지 않는다.**

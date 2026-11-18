@@ -26,6 +26,7 @@ description: "Orchestrate a fail-closed Korean game-localization workflow across
   | 서브에이전트 브리프 | `briefs/<template>.md` + 변수만 전달 (긴 브리프 새로 작성 금지) |
   | 폰트 아틀라스·이미지·레지스트리 검증 | `npm run font:validate` / `image:validate` / `registry:check` |
   | 일괄 번역 export·재개·dupfill(화자·TM)·검사·세그먼트 TM·병합·HELD 반영·RESUME.md | `python -I scripts/bulk/bulk_tool.py <cmd> -p <_work/TID>` (엔진은 `--adapter engines/<engine>/tools/*_adapter.py`) |
+  | Unity/Utage 텍스트(TSV·시나리오 번들)·보조 클래스·TMP 폰트·il2cpp 리터럴 | `engines/unity/tools/` `utage_text.py` / `supp_text.py` / `unity_font.py` / `meta_literals.py`, bulk 어댑터 `unity_adapter.py` |
 - 공용 도구가 없거나 모자라면 타이틀 전용 우회 스크립트를 만들지 않는다. 공용 도구를 고치고 테스트를 붙여 커밋한 뒤 쓴다.
 - 엔진 포맷 도구(아카이브·폰트·이미지 코덱)는 처음에는 타이틀 `90_tools/`에 둘 수 있다. 두 번째 타이틀에서 쓰게 되면
   복사하지 말고 `engines/<engine>/tools/`로 옮겨 공용화한다.

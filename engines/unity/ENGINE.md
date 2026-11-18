@@ -85,3 +85,21 @@ asset reference를 다시 증명한다. 재패킹 후 독립 재추출과 render
 - 부분 문구 교체는 각 교체 영역의 `clear_bbox`와 렌더 clip을 명시하고, 영역이 비어 있거나 캔버스 밖이거나 겹치면 renderer가 즉시 실패하게 한다. 보존 픽셀은 identity region으로 잠그고 clear 영역 밖이 decoded RGBA 기준 원본과 exact인지 독립 diff로 확인한다. pixel exact를 PNG 압축 바이트 동일성과 혼동하지 말고 canvas/mode/헤더/chunk를 별도 검증한다.
 - 구조적 QA PASS(주입·리로드·해시 통과)와 **원본 스타일 일치는 별도 게이트다.** 로고 구성, 서체 계열, 장식, 질감, 여백, active/inactive 관계를 원본/후보/실제 주입 크롭 나란히 비교로 확인하고, 시각 언어가 어긋난 결과는 기술적으로 정상이어도 폐기한다.
 - 원본을 최대한 재사용한다. 비활성 상태는 별도 생성하기보다 원본의 active→inactive 색·alpha 변환에서 파생한다.
+
+## Tools (`engines/unity/tools/`)
+
+Unity 2021.3 IL2CPP + Utage 계열에서 일반화한 공용 도구. 모두 `python -I <file> selftest`로 타이틀 데이터 없이 자가검증한다.
+UnityPy 경로는 `$GT_PYLIB`(기본 `E:\NSW\_tools\python`), TypeTreeGeneratorAPI는 `$GT_TTGEN`, typetree가 제거된
+`data.unity3d`용 DummyDll은 `$GT_UNITY_DUMMYDLL`(기본 `10_extract/decompiled/*/out/DummyDll`).
+
+| 파일 | 용도 |
+|---|---|
+| `unity_adapter.py` | `scripts/bulk/bulk_tool.py --adapter`용 어댑터(SRC_REL=`10_extract/romfs_original`). TSV·시나리오·공유 설정·보충 클래스·IL2CPP 리터럴 행을 키로 주입/재판독. 기존 두 manifest 키 형식(`L<n>:C<c>`, `<pid>\|import<g>:r<r>:c<c>` / `T\|…`, `S\|…`, `G\|…`)을 그대로 읽음. 임의 manifest용 `inject\|verify --manifest` CLI 포함 |
+| `utage_text.py` | 마스터 TSV + Utage 시나리오 번들 추출 규칙. 타이틀별 차이(제외 열/테이블, 최소 열, 셀 수 엄격 검사, Arg 표시 명령)는 `$GT_UTAGE_CFG` JSON으로 덮어씀 |
+| `supp_text.py` | 보충 클래스(ui_prefab, u3d_ui, u3d_i2, textasset, il2cpp_literal) 추출 → `supplement/SUPP_MANIFEST.tsv`, 무수정 raw-identical noop |
+| `meta_literals.py` | `global-metadata.dat` v29 리터럴 추출/주입/검증(인덱스 불변, 새 data blob 추가). 리터럴은 타이틀별 사용처 검토 후 safety TSV(`$GT_UNITY_LITERAL_SAFETY`)의 `safe` id만 주입 |
+| `unity_font.py` | Unity 동적 Font(내장 CID CFF)에 한글을 새 CID로 추가(원본 glyph·metrics exact, 소스별 공통 scale 1개) → build/verify/noop/coverage. TMP SDF·TrueType 기반은 대상 아님 |
+
+```text
+python -I scripts/bulk/bulk_tool.py roundtrip -p <_work/TID> --adapter engines/unity/tools/unity_adapter.py --out <새 디렉터리>
+```

@@ -4,6 +4,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
+import { cachedSha256 } from './hash-cache.mjs';
 import zlib from 'node:zlib';
 
 const TITLE_ID_PATTERN = /^[0-9A-F]{16}$/;
@@ -621,11 +622,7 @@ export async function fat32ReleaseWarning(entries, zipPath) {
 }
 
 export async function sha256File(target) {
-  const hash = crypto.createHash('sha256');
-  await pipeline(fs.createReadStream(target), async (stream) => {
-    for await (const chunk of stream) hash.update(chunk);
-  });
-  return hash.digest('hex').toUpperCase();
+  return (await cachedSha256(target)).toUpperCase(); // path+size+mtime cache (scripts/lib/hash-cache.mjs)
 }
 
 export async function inspectDeterministicZip(zipPath) {

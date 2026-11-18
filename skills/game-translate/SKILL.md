@@ -28,6 +28,10 @@ description: "Orchestrate a fail-closed Korean game-localization workflow across
   | 일괄 번역 export·재개·dupfill(화자·TM)·검사·세그먼트 TM·병합·HELD 반영·RESUME.md | `python -I scripts/bulk/bulk_tool.py <cmd> -p <_work/TID>` (엔진은 `--adapter engines/<engine>/tools/*_adapter.py`) |
   | Unity/Utage 텍스트(TSV·시나리오 번들)·보조 클래스·TMP 폰트·il2cpp 리터럴 | `engines/unity/tools/` `utage_text.py` / `supp_text.py` / `unity_font.py` / `meta_literals.py`, bulk 어댑터 `unity_adapter.py` |
   | M2(PSB/mdf) 아카이브·PSB·텍스트·이미지 | `engines/m2-psb/tools/` `m2arc.py` / `psb.py` / `m2img.py`, bulk 어댑터 `m2_adapter.py` (키는 경로로만 전달) |
+  | 타이틀 존 이동 (재분석 지점 검사·같은 볼륨 이동·레지스트리 경로/상태 갱신·registry:check) | `npm run title:move -- --titles-root <_titles> --tid <TID> --to _complete --status complete` |
+  | 타이틀 현황 한 줄 요약 (번역 행·재개 지점·최신 빌드·Eden 판정·릴리스 ZIP hash8) | `npm run project:status -- --titles-root <_titles> [--zone _working]` |
+  | 추출 RomFS와 nstool 목록 대조 (키 내용 출력 안 함) | `npm run nsw:romfs-verify -- --extract <dir> --listing <fstree.txt>` 또는 `--nca <nca> --keys <prod.keys>` |
+  | 파일 SHA-256 캐시 (path+size+mtime) | `scripts/lib/hash-cache.mjs` / `hash_cache.py` (릴리스 패키징·검증·`eden_tools publish`가 자동 사용) |
 - 공용 도구가 없거나 모자라면 타이틀 전용 우회 스크립트를 만들지 않는다. 공용 도구를 고치고 테스트를 붙여 커밋한 뒤 쓴다.
 - 엔진 포맷 도구(아카이브·폰트·이미지 코덱)는 처음에는 타이틀 `90_tools/`에 둘 수 있다. 두 번째 타이틀에서 쓰게 되면
   복사하지 말고 `engines/<engine>/tools/`로 옮겨 공용화한다.

@@ -16,6 +16,9 @@
     "project:artifacts": "node scripts/artifact-harness.mjs",
     "project:boundary": "node scripts/validate-project-boundary.mjs",
     "registry:check": "node scripts/check-game-registry.mjs",
+    "title:move": "node scripts/title-move.mjs",
+    "project:status": "node scripts/project-status.mjs",
+    "nsw:romfs-verify": "node scripts/nsw-romfs-verify.mjs",
     "project:cleanup": "node scripts/clean-translation-project.mjs",
     "project:clean": "node scripts/clean-translation-project.mjs",
     "project:qa-session": "node scripts/qa-session.mjs",
@@ -32,7 +35,7 @@
     "release:package:steam": "node scripts/create-steam-release.mjs",
     "release:validate:steam": "node scripts/validate-steam-release.mjs",
     "skills:validate": "node scripts/validate-skill-bundle.mjs",
-    "test": "node --test tests/harness.test.mjs tests/image-policy-override.test.mjs tests/game-registry.test.mjs tests/nsw-release-exefs.test.mjs tests/nsw-release-zip64.test.mjs tests/codex-imagegen.test.mjs tests/release-notes.test.mjs tests/python-selftests.test.mjs",
+    "test": "node --test tests/harness.test.mjs tests/image-policy-override.test.mjs tests/game-registry.test.mjs tests/nsw-release-exefs.test.mjs tests/nsw-release-zip64.test.mjs tests/codex-imagegen.test.mjs tests/release-notes.test.mjs tests/python-selftests.test.mjs tests/title-utilities.test.mjs",
     "test:image-policy": "node --test tests/image-policy-override.test.mjs"
   }
 }

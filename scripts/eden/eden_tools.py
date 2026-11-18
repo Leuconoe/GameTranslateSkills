@@ -110,14 +110,20 @@ def _sha(p):
     with open(p, 'rb') as f: return hashlib.file_digest(f, 'sha256').hexdigest()
 
 
-def _tree(root):
-    return {p.relative_to(root).as_posix(): _sha(p) for p in sorted(Path(root).rglob('*')) if p.is_file()}
+def _tree(root, cached=False):
+    # cached: source trees reuse the shared path+size+mtime cache (scripts/lib/hash_cache.py); copies are re-hashed.
+    if cached:
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'lib'))
+        from hash_cache import sha256 as h
+    else:
+        h = _sha
+    return {p.relative_to(root).as_posix(): h(p) for p in sorted(Path(root).rglob('*')) if p.is_file()}
 
 
 def publish(tid, sid, candidate, prefix, tag, retire_dir):
     src = Path(candidate); parts = [x for x in ('romfs', 'exefs') if (src / x).is_dir()]
     assert 'romfs' in parts or 'exefs' in parts, 'candidate needs romfs/ or exefs/'
-    man = {f'{x}/{k}': v for x in parts for k, v in _tree(src / x).items()}
+    man = {f'{x}/{k}': v for x in parts for k, v in _tree(src / x, cached=True).items()}
     th = hashlib.sha256(''.join(f'{k}\t{v}\n' for k, v in sorted(man.items())).encode()).hexdigest()
     name = f'{prefix}_{tag}_{th[:8]}'
     load = SESSIONS / sid / 'user' / 'load' / tid; load.mkdir(parents=True, exist_ok=True)

@@ -11,11 +11,18 @@ const LOCAL_FILE_HEADER = 0x04034b50;
 const CENTRAL_DIRECTORY_HEADER = 0x02014b50;
 const DATA_DESCRIPTOR = 0x08074b50;
 const END_OF_CENTRAL_DIRECTORY = 0x06054b50;
+const ZIP64_END_OF_CENTRAL_DIRECTORY = 0x06064b50;
+const ZIP64_END_LOCATOR = 0x07064b50;
+const ZIP64_EXTRA_ID = 0x0001;
 const UTF8_DATA_DESCRIPTOR_FLAGS = 0x0808;
 const DEFLATE_METHOD = 8;
 const DOS_TIME = 0;
 const DOS_DATE = 0x0021; // 1980-01-01, the earliest DOS timestamp.
 const MAX_UINT32 = 0xffffffff;
+const MAX_UINT16 = 0xffff;
+// APPNOTE 4.5: a size/offset >= 0xFFFFFFFF is stored as 0xFFFFFFFF plus a Zip64 extra field. Archives that never reach
+// this limit stay byte-identical to the pre-Zip64 writer. Tests lower the threshold to force Zip64 without 4 GiB inputs.
+export const ZIP64_THRESHOLD = MAX_UINT32;
 const forbiddenExtensions = new Set(['.nsp', '.xci', '.gldelta', '.keys']);
 const forbiddenBasenames = new Set([
   'apply_patch.py', 'prod.keys', 'title.keys', 'console.keys', 'keys.txt',
@@ -28,20 +35,17 @@ for (let index = 0; index < 256; index += 1) {
   crcTable[index] = value >>> 0;
 }
 
-function updateCrc32(current, buffer) {
-  let value = current;
+// Streaming CRC-32 (finalized form; start at 0). zlib.crc32 (Node 20.15+/22.2+) is native; the table is the fallback.
+function updateCrc32(previous, buffer) {
+  if (zlib.crc32) return zlib.crc32(buffer, previous);
+  let value = (~previous) >>> 0;
   for (const byte of buffer) value = crcTable[(value ^ byte) & 0xff] ^ (value >>> 8);
-  return value >>> 0;
+  return (~value) >>> 0;
 }
 
-function finalCrc32(current) {
-  return (~current) >>> 0;
-}
-
-function assertUint32(value, label) {
-  if (!Number.isSafeInteger(value) || value < 0 || value > MAX_UINT32) {
-    throw new Error(`${label} exceeds the non-Zip64 NSW release limit`);
-  }
+// zlib deflateBound(): worst-case raw-deflate output, so the Zip64 decision can be made before the local header is written.
+function deflateBound(size) {
+  return size + Math.floor(size / 4096) + Math.floor(size / 16384) + Math.floor(size / 33554432) + 13;
 }
 
 export function normalizeTitleId(value) {
@@ -235,55 +239,104 @@ async function writeAt(handle, buffer, state) {
   }
 }
 
-function localHeader(nameBuffer) {
+// Zip64 entries (sizes may reach the limit) carry version-needed 45 and a local 0x0001 extra with both sizes; the sizes
+// follow in the data descriptor (general-purpose bit 3), so the local fields are 0xFFFFFFFF and the extra values are 0.
+function localHeader(nameBuffer, zip64) {
   const header = Buffer.alloc(30);
   header.writeUInt32LE(LOCAL_FILE_HEADER, 0);
-  header.writeUInt16LE(20, 4);
+  header.writeUInt16LE(zip64 ? 45 : 20, 4);
   header.writeUInt16LE(UTF8_DATA_DESCRIPTOR_FLAGS, 6);
   header.writeUInt16LE(DEFLATE_METHOD, 8);
   header.writeUInt16LE(DOS_TIME, 10);
   header.writeUInt16LE(DOS_DATE, 12);
   header.writeUInt16LE(nameBuffer.length, 26);
+  if (zip64) {
+    header.writeUInt32LE(MAX_UINT32, 18);
+    header.writeUInt32LE(MAX_UINT32, 22);
+    header.writeUInt16LE(20, 28);
+  }
   return header;
 }
 
+function localZip64Extra() {
+  const extra = Buffer.alloc(20);
+  extra.writeUInt16LE(ZIP64_EXTRA_ID, 0);
+  extra.writeUInt16LE(16, 2);
+  return extra;
+}
+
 function dataDescriptor(entry) {
-  const descriptor = Buffer.alloc(16);
+  const descriptor = Buffer.alloc(entry.zip64Local ? 24 : 16);
   descriptor.writeUInt32LE(DATA_DESCRIPTOR, 0);
   descriptor.writeUInt32LE(entry.crc32, 4);
-  descriptor.writeUInt32LE(entry.compressedSize, 8);
-  descriptor.writeUInt32LE(entry.uncompressedSize, 12);
+  if (entry.zip64Local) {
+    descriptor.writeBigUInt64LE(BigInt(entry.compressedSize), 8);
+    descriptor.writeBigUInt64LE(BigInt(entry.uncompressedSize), 16);
+  } else {
+    descriptor.writeUInt32LE(entry.compressedSize, 8);
+    descriptor.writeUInt32LE(entry.uncompressedSize, 12);
+  }
   return descriptor;
 }
 
-function centralHeader(entry) {
+function centralHeader(entry, threshold) {
   const nameBuffer = Buffer.from(entry.archivePath, 'utf8');
+  // APPNOTE 4.5.3: only the overflowing fields go into the extra, in the order uncompressed, compressed, offset.
+  const values = [entry.uncompressedSize, entry.compressedSize, entry.localHeaderOffset];
+  const overflow = values.map((value) => value >= threshold);
+  const extraValues = values.filter((_value, index) => overflow[index]);
+  const field32 = (index) => (overflow[index] ? MAX_UINT32 : values[index]);
+  const zip64 = entry.zip64Local || extraValues.length > 0;
+  const extra = Buffer.alloc(extraValues.length ? 4 + extraValues.length * 8 : 0);
+  if (extraValues.length) {
+    extra.writeUInt16LE(ZIP64_EXTRA_ID, 0);
+    extra.writeUInt16LE(extraValues.length * 8, 2);
+    extraValues.forEach((value, index) => extra.writeBigUInt64LE(BigInt(value), 4 + index * 8));
+  }
   const header = Buffer.alloc(46);
   header.writeUInt32LE(CENTRAL_DIRECTORY_HEADER, 0);
-  header.writeUInt16LE(0x0314, 4);
-  header.writeUInt16LE(20, 6);
+  header.writeUInt16LE(zip64 ? 0x032d : 0x0314, 4);
+  header.writeUInt16LE(zip64 ? 45 : 20, 6);
   header.writeUInt16LE(UTF8_DATA_DESCRIPTOR_FLAGS, 8);
   header.writeUInt16LE(DEFLATE_METHOD, 10);
   header.writeUInt16LE(DOS_TIME, 12);
   header.writeUInt16LE(DOS_DATE, 14);
   header.writeUInt32LE(entry.crc32, 16);
-  header.writeUInt32LE(entry.compressedSize, 20);
-  header.writeUInt32LE(entry.uncompressedSize, 24);
+  header.writeUInt32LE(field32(1), 20);
+  header.writeUInt32LE(field32(0), 24);
   header.writeUInt16LE(nameBuffer.length, 28);
+  header.writeUInt16LE(extra.length, 30);
   header.writeUInt32LE(0o100644 * 0x10000, 38);
-  header.writeUInt32LE(entry.localHeaderOffset, 42);
-  return { header, nameBuffer };
+  header.writeUInt32LE(field32(2), 42);
+  return { header, nameBuffer, extra };
 }
 
-function endOfCentralDirectory(entryCount, centralSize, centralOffset) {
-  if (entryCount > 0xffff) throw new Error('NSW release contains too many ZIP entries');
+// Classic EOCD, preceded by the Zip64 EOCD record + locator only when a field overflows (APPNOTE 4.4.1.4).
+function endOfCentralDirectory(entryCount, centralSize, centralOffset, threshold) {
+  const countOverflow = entryCount >= MAX_UINT16;
+  const sizeOverflow = centralSize >= threshold;
+  const offsetOverflow = centralOffset >= threshold;
   const record = Buffer.alloc(22);
   record.writeUInt32LE(END_OF_CENTRAL_DIRECTORY, 0);
-  record.writeUInt16LE(entryCount, 8);
-  record.writeUInt16LE(entryCount, 10);
-  record.writeUInt32LE(centralSize, 12);
-  record.writeUInt32LE(centralOffset, 16);
-  return record;
+  record.writeUInt16LE(countOverflow ? MAX_UINT16 : entryCount, 8);
+  record.writeUInt16LE(countOverflow ? MAX_UINT16 : entryCount, 10);
+  record.writeUInt32LE(sizeOverflow ? MAX_UINT32 : centralSize, 12);
+  record.writeUInt32LE(offsetOverflow ? MAX_UINT32 : centralOffset, 16);
+  if (!countOverflow && !sizeOverflow && !offsetOverflow) return record;
+  const zip64End = Buffer.alloc(56);
+  zip64End.writeUInt32LE(ZIP64_END_OF_CENTRAL_DIRECTORY, 0);
+  zip64End.writeBigUInt64LE(44n, 4);
+  zip64End.writeUInt16LE(0x032d, 12);
+  zip64End.writeUInt16LE(45, 14);
+  zip64End.writeBigUInt64LE(BigInt(entryCount), 24);
+  zip64End.writeBigUInt64LE(BigInt(entryCount), 32);
+  zip64End.writeBigUInt64LE(BigInt(centralSize), 40);
+  zip64End.writeBigUInt64LE(BigInt(centralOffset), 48);
+  const locator = Buffer.alloc(20);
+  locator.writeUInt32LE(ZIP64_END_LOCATOR, 0);
+  locator.writeBigUInt64LE(BigInt(centralOffset + centralSize), 8);
+  locator.writeUInt32LE(1, 16);
+  return Buffer.concat([zip64End, locator, record]);
 }
 
 export async function inventoryExefs(exefsRoot) {
@@ -307,7 +360,7 @@ export async function inventoryExefs(exefsRoot) {
   return files;
 }
 
-export async function createDeterministicNswZip({ titleId, romfsRoot, exefsRoot = null, outputPath }) {
+export async function createDeterministicNswZip({ titleId, romfsRoot, exefsRoot = null, outputPath, zip64Threshold = ZIP64_THRESHOLD }) {
   const id = normalizeTitleId(titleId);
   const contentRoot = `atmosphere/contents/${id}`;
   const romfsFiles = await inventoryRomfs(romfsRoot);
@@ -321,10 +374,13 @@ export async function createDeterministicNswZip({ titleId, romfsRoot, exefsRoot 
       archivePath: `${contentRoot}/exefs/${file.patchPath}`,
     }))],
     outputPath,
+    zip64Threshold,
   });
 }
 
-export async function createDeterministicZip({ files, outputPath }) {
+export async function createDeterministicZip({ files, outputPath, zip64Threshold = ZIP64_THRESHOLD }) {
+  const threshold = zip64Threshold;
+  if (!Number.isSafeInteger(threshold) || threshold < 1 || threshold > ZIP64_THRESHOLD) throw new Error(`Invalid Zip64 threshold: ${threshold}`);
   if (!Array.isArray(files) || files.length === 0) throw new Error('Release ZIP input contains no files');
   const orderedFiles = [...files].sort((left, right) => left.archivePath.localeCompare(right.archivePath, 'en'));
   const seen = new Set();
@@ -347,16 +403,16 @@ export async function createDeterministicZip({ files, outputPath }) {
     for (const file of orderedFiles) {
       const sourceStats = await fsp.lstat(file.absolutePath);
       if (!sourceStats.isFile() || sourceStats.isSymbolicLink()) throw new Error(`Release ZIP source must be a regular file: ${file.absolutePath}`);
-      assertUint32(sourceStats.size, `Release file ${file.archivePath}`);
       const archivePath = file.archivePath;
       const nameBuffer = Buffer.from(archivePath, 'utf8');
       if (nameBuffer.length > 0xffff) throw new Error(`ZIP entry name is too long: ${archivePath}`);
       const localHeaderOffset = state.position;
-      assertUint32(localHeaderOffset, 'ZIP local header offset');
-      await writeAt(handle, localHeader(nameBuffer), state);
+      const zip64Local = deflateBound(sourceStats.size) >= threshold;
+      await writeAt(handle, localHeader(nameBuffer, zip64Local), state);
       await writeAt(handle, nameBuffer, state);
+      if (zip64Local) await writeAt(handle, localZip64Extra(), state);
 
-      let crc = 0xffffffff;
+      let crc = 0;
       let uncompressedSize = 0;
       let compressedSize = 0;
       const sourceSha = crypto.createHash('sha256');
@@ -380,31 +436,29 @@ export async function createDeterministicZip({ files, outputPath }) {
           }
         },
       );
-      assertUint32(uncompressedSize, `Release file ${file.archivePath}`);
-      assertUint32(compressedSize, `Compressed release file ${file.archivePath}`);
+      if (uncompressedSize !== sourceStats.size) throw new Error(`Release file changed while packaging: ${file.archivePath}`);
+      if (!zip64Local && compressedSize >= threshold) throw new Error(`Compressed size exceeded its deflate bound: ${file.archivePath}`);
       const entry = {
         archivePath,
         sourcePath: file.absolutePath,
         sourceSha256: sourceSha.digest('hex').toUpperCase(),
-        crc32: finalCrc32(crc),
+        crc32: crc,
         compressedSize,
         uncompressedSize,
         localHeaderOffset,
+        zip64Local,
       };
       await writeAt(handle, dataDescriptor(entry), state);
       entries.push(entry);
     }
 
     const centralOffset = state.position;
-    assertUint32(centralOffset, 'ZIP central directory offset');
     for (const entry of entries) {
-      const { header, nameBuffer } = centralHeader(entry);
-      await writeAt(handle, header, state);
-      await writeAt(handle, nameBuffer, state);
+      const { header, nameBuffer, extra } = centralHeader(entry, threshold);
+      await writeAt(handle, Buffer.concat([header, nameBuffer, extra]), state);
     }
     const centralSize = state.position - centralOffset;
-    assertUint32(centralSize, 'ZIP central directory size');
-    await writeAt(handle, endOfCentralDirectory(entries.length, centralSize, centralOffset), state);
+    await writeAt(handle, endOfCentralDirectory(entries.length, centralSize, centralOffset, threshold), state);
     await handle.sync();
   } finally {
     await handle.close();
@@ -438,29 +492,73 @@ async function parseCentralDirectory(zipPath) {
       }
     }
     if (endOffset === -1) throw new Error('ZIP end-of-central-directory record is missing');
-    const entryCount = tail.readUInt16LE(endOffset + 10);
-    const centralSize = tail.readUInt32LE(endOffset + 12);
-    const centralOffset = tail.readUInt32LE(endOffset + 16);
+    let entryCount = tail.readUInt16LE(endOffset + 10);
+    let centralSize = tail.readUInt32LE(endOffset + 12);
+    let centralOffset = tail.readUInt32LE(endOffset + 16);
     const commentLength = tail.readUInt16LE(endOffset + 20);
     if (commentLength !== 0) throw new Error('NSW release ZIP comments are forbidden');
+    const hasLocator = endOffset >= 20 && tail.readUInt32LE(endOffset - 20) === ZIP64_END_LOCATOR;
+    if (hasLocator) {
+      const zip64EndOffset = Number(tail.readBigUInt64LE(endOffset - 12));
+      const zip64End = await readExact(handle, 56, zip64EndOffset);
+      if (zip64End.readUInt32LE(0) !== ZIP64_END_OF_CENTRAL_DIRECTORY) throw new Error('Zip64 end-of-central-directory record is missing');
+      const zip64EntryCount = Number(zip64End.readBigUInt64LE(32));
+      const zip64CentralSize = Number(zip64End.readBigUInt64LE(40));
+      const zip64CentralOffset = Number(zip64End.readBigUInt64LE(48));
+      // Classic fields are either the 0xFFFF/0xFFFFFFFF sentinel or must agree with the Zip64 record.
+      if ((entryCount !== MAX_UINT16 && entryCount !== zip64EntryCount)
+        || (centralSize !== MAX_UINT32 && centralSize !== zip64CentralSize)
+        || (centralOffset !== MAX_UINT32 && centralOffset !== zip64CentralOffset)) {
+        throw new Error('ZIP/Zip64 end-of-central-directory records disagree');
+      }
+      if (zip64CentralOffset + zip64CentralSize !== zip64EndOffset) throw new Error('Zip64 central directory is out of place');
+      entryCount = zip64EntryCount;
+      centralSize = zip64CentralSize;
+      centralOffset = zip64CentralOffset;
+    } else if (entryCount === MAX_UINT16 || centralSize === MAX_UINT32 || centralOffset === MAX_UINT32) {
+      throw new Error('ZIP uses Zip64 sentinels without a Zip64 end-of-central-directory locator');
+    }
     if (centralOffset + centralSize > stats.size) throw new Error('ZIP central directory is out of range');
     const central = await readExact(handle, centralSize, centralOffset);
     const entries = [];
     let cursor = 0;
     while (cursor < central.length) {
       if (central.readUInt32LE(cursor) !== CENTRAL_DIRECTORY_HEADER) throw new Error('Invalid ZIP central directory entry');
+      const versionNeeded = central.readUInt16LE(cursor + 6);
       const flags = central.readUInt16LE(cursor + 8);
       const method = central.readUInt16LE(cursor + 10);
       const crc32 = central.readUInt32LE(cursor + 16);
-      const compressedSize = central.readUInt32LE(cursor + 20);
-      const uncompressedSize = central.readUInt32LE(cursor + 24);
+      let compressedSize = central.readUInt32LE(cursor + 20);
+      let uncompressedSize = central.readUInt32LE(cursor + 24);
       const nameLength = central.readUInt16LE(cursor + 28);
       const extraLength = central.readUInt16LE(cursor + 30);
       const commentSize = central.readUInt16LE(cursor + 32);
-      const localHeaderOffset = central.readUInt32LE(cursor + 42);
+      let localHeaderOffset = central.readUInt32LE(cursor + 42);
       const recordLength = 46 + nameLength + extraLength + commentSize;
       if (cursor + recordLength > central.length) throw new Error('Truncated ZIP central directory entry');
       const archivePath = central.subarray(cursor + 46, cursor + 46 + nameLength).toString('utf8');
+      const extra = central.subarray(cursor + 46 + nameLength, cursor + 46 + nameLength + extraLength);
+      let zip64 = null;
+      for (let at = 0; at + 4 <= extra.length;) {
+        const id = extra.readUInt16LE(at);
+        const size = extra.readUInt16LE(at + 2);
+        if (at + 4 + size > extra.length) throw new Error(`Truncated ZIP extra field for ${archivePath}`);
+        if (id === ZIP64_EXTRA_ID) zip64 = extra.subarray(at + 4, at + 4 + size);
+        at += 4 + size;
+      }
+      // APPNOTE 4.5.3: Zip64 values appear only for 0xFFFFFFFF header fields, in the order uncompressed, compressed, offset.
+      let zip64Cursor = 0;
+      const zip64Value = () => {
+        if (!zip64 || zip64Cursor + 8 > zip64.length) throw new Error(`Missing Zip64 extra value for ${archivePath}`);
+        const value = Number(zip64.readBigUInt64LE(zip64Cursor));
+        zip64Cursor += 8;
+        if (!Number.isSafeInteger(value)) throw new Error(`Zip64 value is too large for ${archivePath}`);
+        return value;
+      };
+      if (uncompressedSize === MAX_UINT32) uncompressedSize = zip64Value();
+      if (compressedSize === MAX_UINT32) compressedSize = zip64Value();
+      if (localHeaderOffset === MAX_UINT32) localHeaderOffset = zip64Value();
+      if (zip64 && versionNeeded < 45) throw new Error(`Zip64 entry must need version 4.5: ${archivePath}`);
       entries.push({ archivePath, flags, method, crc32, compressedSize, uncompressedSize, localHeaderOffset });
       cursor += recordLength;
     }
@@ -487,7 +585,7 @@ async function hashZipEntry(zipPath, entry) {
   }
 
   const hash = crypto.createHash('sha256');
-  let crc = 0xffffffff;
+  let crc = 0;
   let size = 0;
   const tracker = new Transform({
     transform(chunk, _encoding, callback) {
@@ -506,7 +604,7 @@ async function hashZipEntry(zipPath, entry) {
     for await (const _chunk of stream) { /* drain */ }
   });
   if (size !== entry.uncompressedSize) throw new Error(`Uncompressed size mismatch for ${entry.archivePath}`);
-  if (finalCrc32(crc) !== entry.crc32) throw new Error(`CRC-32 mismatch for ${entry.archivePath}`);
+  if (crc !== entry.crc32) throw new Error(`CRC-32 mismatch for ${entry.archivePath}`);
   return { sha256: hash.digest('hex').toUpperCase(), size };
 }
 

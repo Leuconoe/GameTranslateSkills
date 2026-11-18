@@ -222,6 +222,14 @@
 
 11. **실행마다 처리량을 남긴다.** State 줄에 `행 수 / 사용 토큰`을 적고, 평균의 절반 아래로 떨어지면 원인을 먼저 찾는다.
     export·파트는 `n<TAB>원문` / `n<TAB>번역`만 쓴다. 성능·토큰 전반은 `common/harness-performance.md`를 따른다.
+12. **슬롯 값만 다른 짧은 UI 행은 템플릿 TM으로 줄인다** (`bulk_tool.py tpl [--short 60]`). 숫자·날짜/요일 `(月)`,
+    용어집(`glossary.tsv`) `category=character` 인명, `batches/bulk/slots.tsv`(`class<TAB>ja<TAB>ko`, 색·아이템 등)
+    값만 다른 행을 한 그룹으로 묶는다.
+    - 첫 실행: 번역된 행이 없는 그룹(2행 이상)마다 대표 1행을 `exports/source/tpl_source.txt`(`n<TAB>원문`)로 낸다.
+      대표 행을 일반 파트(`out/P*.tsv`)에 번역한다. 템플릿 문법 없이 실제 문장으로 옮기고 슬롯 값은 슬롯표 번역을 그대로 쓴다.
+    - 다시 실행: 번역된 대표의 슬롯 값을 대상 행 값으로 바꿔 `out/PT_tpl.tsv`에 채운다. 슬롯 종류별 값 순서가 대표
+      번역에서 원문과 같고 행 검사를 통과해야만 채운다. 실패 건수는 출력에 남고 해당 행은 손번역 대상으로 남는다.
+    - `next`는 PT_tpl 행을 완료로 센다. 끝의 dupfill·check 전에 `tpl`을 한 번 더 실행해 손번역과 겹친 행을 뺀다.
 
 이 규칙은 `common/preflight-checks.md` §6의 원문 동결·비중첩 고정 배정과 함께 쓴다.
 

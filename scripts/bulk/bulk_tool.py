@@ -42,6 +42,7 @@ HANGUL = re.compile(r'[가-힣]')
 TOKEN = re.compile(r'<[^<>]*>|\{\d+\}|%%C|%C|%[-+ 0-9.]*[sdfx]|\$\{[^}]*\}|\[[^\[\]\u3040-\u9fff\uac00-\ud7a3]*\]')
 BR = re.compile(r'\\\\n|\\n')  # escaped form (3 chars) first, then the 2-char engine escape
 PAIRS = ('「」', '『』', '（）', '【】')
+QUOTES = '「」『』“”‘’"'
 ESC = re.compile(r'\\\\|\\.')
 GEN = ('PZ_dupfill.tsv', 'PZ_tm.tsv', 'PS_seg.tsv')
 NAME_KIND = re.compile(r'speaker|name|chara', re.I)
@@ -169,8 +170,17 @@ def check_row(ja, ko, kd='', maxw=0, tok=None):
                 break
     if not set(ESC.findall(BR.sub('', ko))) <= set(ESC.findall(BR.sub('', ja))):
         errs.append('stray backslash escape')
+    # Quote substitution is allowed: 「」『』 may become “” ‘’ "" in Korean. Only the total number of quote marks must match.
+    q = lambda s: sum(s.count(x) for x in QUOTES)  # noqa: E731
+    quotes_swapped = any(x in ko for x in '“”‘’"') and q(ja) == q(ko)
+    if q(ja) != q(ko):
+        errs.append('quote count (「」『』“”‘’")')
     for o, c in PAIRS:
+        if quotes_swapped and o in '「『':
+            continue
         n = lambda s, x: s.count(x) + (s.count('(' if x == '（' else ')') if x in '（）' else 0)  # noqa: E731
+        if o in '「『' and q(ja) != q(ko):
+            continue  # already reported as a quote-count error
         if (n(ja, o), n(ja, c)) != (n(ko, o), n(ko, c)):
             errs.append(f'bracket count {o}{c}')
         elif o != '（' and balanced(ja, o, c) and not balanced(ko, o, c):
@@ -560,6 +570,10 @@ def selftest():
     assert fix_br('a\\nb', 'x\\\\ny') == 'x\\ny' and fix_br('a\\\\nb', 'x\\ny') == 'x\\\\ny'
     assert fix_br('a\\nb\\\\nc', 'x\\\\ny') == 'x\\\\ny'  # mixed source forms: untouched
     assert check_row('「あ」\\n　い%s', '「가」\\n　나%s') == []
+    assert check_row('「あ」と『い』', '"가"와 \'나\'') != []          # apostrophes are not quote substitutes
+    assert check_row('「あ」と『い』', '"가"와 "나"') == []             # quote substitution allowed
+    assert check_row('「あ」と『い』', '“가”와 ‘나’') == []
+    assert check_row('「あ」', '"가') != []                             # a quote mark lost
     assert check_row('あ\\nい', '가 나') and check_row('あ<b>', '가') and check_row('あ', '가あ')
     assert check_row('あ', '가가가가', maxw=6) and not translatable('123') and not translatable('ui_01')
     assert not translatable('한국어') and translatable('OK') and translatable('あ')

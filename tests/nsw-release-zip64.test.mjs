@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { createDeterministicNswZip, sha256File, validateNswRelease } from '../scripts/lib/nsw-release-zip.mjs';
+import { createDeterministicNswZip, fat32ReleaseWarning, sha256File, validateNswRelease } from '../scripts/lib/nsw-release-zip.mjs';
 
 const titleId = '0100983013C9A000';
 
@@ -66,6 +66,13 @@ test('NSW release ZIP stays byte-identical below the Zip64 limit and round-trips
     const tarExe = process.platform === 'win32' ? path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'tar.exe') : 'bsdtar';
     const tar = spawnSync(tarExe, ['-tf', zipPath], { encoding: 'utf8' });
     if (!tar.error && tar.status === 0) assert.deepEqual(tar.stdout.trim().split(/\r?\n/), [...sizes.keys()]);
+
+    // FAT32 warning: only for entries >= 4 GiB, silenced once RELEASE_NOTES.md beside the ZIP mentions exFAT.
+    assert.equal(await fat32ReleaseWarning(receipt.entries, zipPath), null);
+    const huge = [{ path: 'atmosphere/x/image_body.bin', size: 4378765669 }];
+    assert.match(await fat32ReleaseWarning(huge, zipPath), /exFAT/);
+    await fs.writeFile(path.join(path.dirname(zipPath), 'RELEASE_NOTES.md'), '- SD 카드가 exFAT 형식이어야 함\n');
+    assert.equal(await fat32ReleaseWarning(huge, zipPath), null);
 
     // A classic EOCD field that disagrees with the Zip64 record is rejected.
     const tampered = Buffer.from(bytes);

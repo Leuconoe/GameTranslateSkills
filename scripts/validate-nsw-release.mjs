@@ -4,6 +4,7 @@ import path from 'node:path';
 import { flag, option, parseArgs, requiredOption } from './lib/args.mjs';
 import {
   LEGACY_RELEASE_DIRS,
+  fat32ReleaseWarning,
   normalizeTitleId,
   nswReleaseFileName,
   parseNswReleaseFileName,
@@ -67,6 +68,8 @@ async function main() {
     ? path.join(projectRoot, '40_build', 'layeredfs', titleId, 'exefs')
     : null);
   const receipt = await validateNswRelease({ titleId, zipPath, romfsRoot, exefsRoot, gameName });
+  const fat32Warning = await fat32ReleaseWarning(receipt.entries, receipt.zipPath);
+  if (fat32Warning) process.stderr.write(`WARNING\t${fat32Warning}\n`);
   process.stdout.write(`PASS\t${receipt.zipPath}\t${receipt.zipSha256}\tentries=${receipt.entries.length}\n`);
 }
 

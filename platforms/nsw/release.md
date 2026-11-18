@@ -61,6 +61,10 @@
   공용 패키저는 크기·오프셋이 `0xFFFFFFFF` 이상인 entry에만 Zip64 extra(0x0001, version-needed 45)를,
   EOCD 필드가 넘칠 때만 Zip64 EOCD record+locator를 쓴다(APPNOTE 4.5). 4 GiB 미만 ZIP은 이전과 바이트 동일하며,
   검증기는 Zip64 크기·오프셋·EOCD64를 읽어 같은 entry 수·크기·CRC-32·SHA-256 검사를 한다.
+- 콘솔은 ZIP을 읽지 않으므로 Zip64는 압축을 푸는 PC에서만 의미가 있다. 그러나 4 GiB 이상인 LayeredFS 파일은
+  FAT32 SD 카드에 저장할 수 없으므로, 그런 릴리스는 `RELEASE_NOTES.md` 주의사항에 SD 카드가 exFAT여야 함을 적는다
+  (예: `- SD 카드가 exFAT 형식이어야 함 (4GB를 넘는 파일 포함, FAT32 불가)`). 패키저·검증기는 4 GiB 이상 entry가 있는데
+  ZIP 옆 `RELEASE_NOTES.md`에 `exFAT` 언급이 없으면 `WARNING`을 출력한다.
 
 - **최종 패키징은 문서가 아니라 빌드 스크립트의 출력명부터 canonical 규칙과 맞춘다.** 스크립트가 임시 통합명을 만들고 사람이 나중에 이름만 바꾸는 흐름은 매니페스트·README·해시 불일치를 만든다. 스크립트가 처음부터 정해진 이름(기본 `<한국어 제목> - <BASE_TITLE_ID>.zip`)을 원자적으로 생성하게 하고, 릴리스 파일명이 그 이름과 다르면 즉시 실패시킨다. 이름 형식을 바꿀 때 다른 형식의 같은 Title ID ZIP이 있으면 bytes가 같을 때만 새 이름으로 바꿔 재사용하고, 다르면 `--replace` 없이는 교체하지 않는다. 정확한 파일 allowlist·ZIP root·리로드를 검사한 뒤 현재 SHA-256을 모든 릴리스 기록에 동기화한다.
 - **canonical 파일명 규칙은 빌드 불변조건이다.** 빌드·릴리스 검증기는 실제 경로·basename·확장자·대소문자가 규칙과 다르면 실패하고, 임의 접두사/접미사, 중복 확장자, 빌드 뒤 수동 이름 변경, 진단·후보 ZIP의 릴리스 전달을 거부해야 한다.

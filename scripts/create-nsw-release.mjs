@@ -6,6 +6,7 @@ import {
   RELEASE_DIR,
   createDeterministicNswZip,
   ensureReleaseRoot,
+  fat32ReleaseWarning,
   normalizeTitleId,
   nswReleaseFileName,
   parseNswReleaseFileName,
@@ -143,6 +144,8 @@ async function main() {
     };
     await atomicText(path.join(releaseRoot, 'SHA256SUMS.txt'), `${receipt.zipSha256}  ${fileName}\n`);
     await atomicText(path.join(releaseRoot, 'RELEASE_PACKAGE.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+    const fat32Warning = await fat32ReleaseWarning(receipt.entries, outputPath);
+    if (fat32Warning) process.stderr.write(`WARNING\t${fat32Warning}\n`);
     process.stdout.write(`PASS\t${outputPath}\t${receipt.zipSha256}\tentries=${receipt.entries.length}\treused=${reused}\n`);
   } finally {
     await fsp.rm(temporaryPath, { force: true });

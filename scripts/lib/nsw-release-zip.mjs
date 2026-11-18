@@ -608,6 +608,18 @@ async function hashZipEntry(zipPath, entry) {
   return { sha256: hash.digest('hex').toUpperCase(), size };
 }
 
+// The console never reads the ZIP (Zip64 matters only to the extracting PC), but FAT32 cannot store a file >= 4 GiB, so
+// such a release must tell users in RELEASE_NOTES.md (beside the ZIP) that the SD card has to be exFAT.
+export const FAT32_FILE_LIMIT = 2 ** 32;
+export async function fat32ReleaseWarning(entries, zipPath) {
+  const large = entries.filter((entry) => entry.size >= FAT32_FILE_LIMIT);
+  if (large.length === 0) return null;
+  const notesPath = path.join(path.dirname(path.resolve(zipPath)), 'RELEASE_NOTES.md');
+  const notes = await fsp.readFile(notesPath, 'utf8').catch(() => '');
+  if (/exFAT/i.test(notes)) return null;
+  return `${large.length} entry(s) >= 4 GiB (${large.map((entry) => entry.path).join(', ')}) cannot be stored on FAT32; add "SD 카드가 exFAT 형식이어야 함" to 주의사항 in ${notesPath}`;
+}
+
 export async function sha256File(target) {
   const hash = crypto.createHash('sha256');
   await pipeline(fs.createReadStream(target), async (stream) => {

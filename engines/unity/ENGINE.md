@@ -99,6 +99,7 @@ UnityPy 경로는 `$GT_PYLIB`(기본 `E:\NSW\_tools\python`), TypeTreeGeneratorA
 | `supp_text.py` | 보충 클래스(ui_prefab, u3d_ui, u3d_i2, textasset, il2cpp_literal) 추출 → `supplement/SUPP_MANIFEST.tsv`, 무수정 raw-identical noop |
 | `meta_literals.py` | `global-metadata.dat` v29 리터럴 추출/주입/검증(인덱스 불변, 새 data blob 추가). 리터럴은 타이틀별 사용처 검토 후 safety TSV(`$GT_UNITY_LITERAL_SAFETY`)의 `safe` id만 주입 |
 | `unity_font.py` | Unity 동적 Font(내장 CID CFF)에 한글을 새 CID로 추가(원본 glyph·metrics exact, 소스별 공통 scale 1개) → build/verify/noop/coverage. TMP SDF·TrueType 기반은 대상 아님 |
+| `unity_image.py` | Texture2D 라벨 조판·로고/패치 교체(spec `IMAGE_TEXT_INVENTORY.tsv` + `image_config.json`). 형식·크기·m_PlatformBlob 유지, 편집 픽셀이 있는 블록만 재인코딩해 제자리 splice(Switch swizzle 포함) → `--round rN` 독립 overlay build/verify/noop. 같은 spec을 쓰는 자매 타이틀은 `primary_root` + `locate`(template match) |
 
 ```text
 python -I scripts/bulk/bulk_tool.py roundtrip -p <_work/TID> --adapter engines/unity/tools/unity_adapter.py --out <새 디렉터리>

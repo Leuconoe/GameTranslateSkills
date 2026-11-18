@@ -122,6 +122,8 @@ description: "Text branch translation after text analysis: batch-translate extra
 
 - **보류는 좁게**: 실제로 문제가 되는 행(노골적인 성적 묘사·성행위·페티시 중심 내용 등)만 보류한다. 일반적인
   목욕·수영복·메이드 장면, 가벼운 장난, 연애 묘사는 평소대로 번역한다.
+- **인물 연령은 공식 설정으로 판단한다.** 외형·학원 배경만으로 미성년으로 단정하지 않는다. 공식 연령·등급을
+  확인하거나 사용자가 알려 주면 `PROJECT.md`에 근거와 함께 적는다. 연령과 무관하게 노골적인 성적 내용은 위 기준대로 보류한다.
 
 1. `30_translation/text/batches/bulk/HELD_ROWS.tsv`(`first	last	reason`)에 구간과 사유를 기록한다.
    보류 행은 파트·병합에서 제외되고 `status=new`·원문 유지로 남으며(이미 `<KEEP>`로 병합했다면

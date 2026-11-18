@@ -66,6 +66,11 @@ $w  = '<프로젝트>\10_extract'
 & $ns -k "$GT_TOOLS\system\prod.keys" -x '<프로젝트 10_extract 출력 경로>' '<원본 NSP/XCI>'
 ```
 
+- nstool은 PowerShell에서 실행한다. Git Bash(MSYS)는 `-x /1` 같은 가상 경로를 `C:\Program Files\Git\1`로 바꿔 버리고,
+  nstool은 WARNING만 내고 종료 코드 0으로 아무것도 추출하지 않는다. Git Bash를 써야 하면 `MSYS_NO_PATHCONV=1`을 붙이고,
+  어느 쪽이든 출력 파일 수·크기로 빈 추출이 아닌지 확인한다.
+- 중단된 추출은 NCA 끝부분(수십~수백 MB)이 비거나 다른 채로 남을 수 있다. RomFS를 풀기 전에 추출한 NCA의 크기·해시를
+  패키지 엔트리와 대조하고(nstool hash 실패도 같은 신호), 불일치하면 `10_extract/superseded/`로 옮긴 뒤 다시 추출한다.
 - `WORK_LOG.md`에는 도구 경로와 버전, 전체 명령, 종료 코드, 표준 출력·오류 로그 위치, 입력 원본 SHA-256, 추출 파일 수와 출력 경로를 함께 기록한다.
 - CLI 명령이 없거나 키·복호화 조건이 충족되지 않으면 **GUI로 우회하지 않는다.** 명령, 오류, 필요한 조건을 기록하고 `blocked` 상태로 둔 뒤 대체 가능한 CLI 경로를 조사한다.
 - NxFileViewer는 CLI 인자·종료 코드·버전·입출력 경로를 확인할 수 있는 명령줄 모드만 허용한다. GUI 전용 실행이면 다른 CLI 도구를 선택한다. GUI 동작을 CLI 추출 성공으로 간주하지 않는다.
@@ -94,6 +99,10 @@ CLI가 깊은 내부 경로에서 `FileStream::open()` 등 파일 열기 오류�
 & $ns -k "$GT_TOOLS\system\prod.keys" --titlekey <키> --basenca '<베이스 NCA>' -x /1 '<프로젝트 10_extract 출력>' '<업데이트 NCA>'
 ```
 
+- 베이스와 업데이트의 티켓(title key)이 서로 다르면 nstool은 `--basenca`와 함께 티켓을 하나만 받으므로 둘을 동시에
+  복호화하지 못한다. 이때는 공용 도구 `$GT_TOOLS/scripts/nca_bktr_extract.py`를 `$GT_TOOLS/.venv` Python으로
+  실행한다(시스템 Python에는 암호화 모듈이 없다). 이 도구는 키를 출력·저장하지 않고 IndirectStorage를 재구성해
+  유효 RomFS를 추출한다.
 - 서명 경고·종료 코드·입력 해시를 로그에 남기고, 기본판과 적용 파일의 크기·SHA-256 일치를 확인한다.
 - hactool이 해석하지 못한 raw 섹션을 정상 RomFS로 취급하지 않는다. nstool 재현마저 실패할 때만 명령·오류·해시·보존 위치를 기록해 추출 실패를 별도 차단 사유로 남긴다.
 - 이 복구는 **추출 단계만** 해소한다. 이후 컨테이너 포맷의 writer 안전성·런타임 검증까지 증명한 것으로 간주하지 않는다.

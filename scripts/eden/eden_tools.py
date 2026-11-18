@@ -5,6 +5,8 @@
   call    <workdir> <tool> <json|@file> [timeout_s]   enqueue one MCP call, wait, print "<id> <result json (truncated)>"
   step    <workdir> <sid> <capdir> <name> [ops...]    input ops then a screenshot -> <capdir>/<NN>_<name>.png
           ops: A B X Y UP DOWN LEFT RIGHT PLUS MINUS L R ZL ZR | hBTN (hold 1 s) | wNNNN (wait ms) | tX,Y (touch, 1920x1080)
+  session <workdir> <sid> <tid>                 re-register the session after a broker restart (call once before step)
+          step prints SAME_SCREEN when the capture is identical to the previous one: stop repeating that input.
   route   <workdir> <sid> <capdir> <ROUTE.json> [from_name]   replay a recorded route (list of {name, ops}) via step
   record  <ROUTE.json> <name> [ops...]          append one step to the route (record while exploring, replay on re-QA)
   publish <tid> <sid> <candidate_dir> <prefix> <tag> <retire_dir>
@@ -94,6 +96,11 @@ def step(workdir, sid, capdir, name, ops):
     if shot.get('isError') or not shot.get('images'): sys.exit(f'SHOT ERROR {json.dumps(shot)[:800]}')
     c = Path(capdir); c.mkdir(parents=True, exist_ok=True); k = len(list(c.glob('*.png'))) + 1
     dst = c / f'{k:02d}_{name}.png'; shutil.copyfile(shot['images'][0], dst)
+    # Loop guard: identical consecutive screenshots after input usually mean a stuck dialog / ignored input.
+    h = _sha(dst); last = Path(workdir) / 'last_shot.sha256'
+    same = steps and last.exists() and last.read_text() == h
+    last.write_text(h)
+    if same: print(f'SAME_SCREEN {dst} (input had no visible effect; change ops instead of repeating)')
     with open(Path(workdir) / 'OPERATIONS.jsonl', 'a', encoding='utf-8') as f:
         f.write(json.dumps(dict(t=time.strftime('%Y-%m-%dT%H:%M:%S'), capture=str(dst), ops=ops), ensure_ascii=False) + '\n')
     print(dst)
@@ -138,7 +145,11 @@ if __name__ == '__main__':
         arg = a[2] if len(a) > 2 else '{}'
         args = json.loads(Path(arg[1:]).read_text(encoding='utf-8')) if arg.startswith('@') else json.loads(arg)
         n, res = call(a[0], a[1], args, float(a[3]) if len(a) > 3 else 300)
-        sys.stdout.reconfigure(encoding='utf-8'); print(n, json.dumps(res, ensure_ascii=False)[:6000])
+        sys.stdout.reconfigure(encoding='utf-8'); s_ = json.dumps(res, ensure_ascii=False)
+        print(n, s_[:6000] + (f' …[truncated; full: {Path(a[0]) / "r" / (n + ".json")}]' if len(s_) > 6000 else ''))
+    elif cmd == 'session':  # session <workdir> <sid> <tid> : (re)register a session after a broker restart (idempotent)
+        n, res = call(a[0], 'eden_create_session', dict(session_id=a[1], application_id=a[2]))
+        print(n, json.dumps(res, ensure_ascii=False)[:2000])
     elif cmd == 'step': step(a[0], a[1], a[2], a[3], a[4:])
     elif cmd == 'route':  # route <workdir> <sid> <capdir> <ROUTE.json> [from_name]
         steps_ = json.loads(Path(a[3]).read_text(encoding='utf-8'))

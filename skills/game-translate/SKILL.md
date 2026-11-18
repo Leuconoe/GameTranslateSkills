@@ -10,6 +10,23 @@ description: "Orchestrate a fail-closed Korean game-localization workflow across
 전체 컨테이너 LayeredFS 교체는 원본과 동일한 내부 멤버를 허용한다. 단계·상태·정리 규칙은
 `$GT_HOME/common/pipeline-contract.json`과 `pipeline-contract.md`를 기준으로 한다.
 
+## 최상위 규칙: 공용 도구만 쓴다
+
+이 규칙은 아래 모든 절과 단계 스킬보다 우선한다.
+
+- 반복 작업은 GameTranslateSkills 공용 도구로만 한다. 에이전트가 타이틀 안에 같은 기능의 스크립트·브로커를 새로
+  만들거나 다른 타이틀에서 복사해 오지 않는다. 매번 새로 만드는 비용이 가장 큰 토큰 누수였다.
+  | 작업 | 공용 도구 |
+  |---|---|
+  | Codex imagegen 편집 1회 | `npm run image:codex` (`scripts/codex-imagegen.mjs`) |
+  | Eden MCP 브로커·호출·입력+캡처·패치 게시 | `scripts/eden/eden_tools.py` `broker` / `call` / `step` / `publish` (eden-mcp venv python으로 실행) |
+  | 릴리스 패키징·검증 | `npm run release:package:nsw` / `release:validate:nsw` |
+  | 폰트 아틀라스·이미지·레지스트리 검증 | `npm run font:validate` / `image:validate` / `registry:check` |
+- 공용 도구가 없거나 모자라면 타이틀 전용 우회 스크립트를 만들지 않는다. 공용 도구를 고치고 테스트를 붙여 커밋한 뒤 쓴다.
+- 엔진 포맷 도구(아카이브·폰트·이미지 코덱)는 처음에는 타이틀 `90_tools/`에 둘 수 있다. 두 번째 타이틀에서 쓰게 되면
+  복사하지 말고 `engines/<engine>/tools/`로 옮겨 공용화한다.
+- 코디네이터 브리프에는 공용 도구 이름과 명령만 넘긴다. 다른 타이틀의 스크립트 경로를 복사 원본으로 주지 않는다.
+
 ## 0. 환경과 안전
 
 | 변수 | 의미 |

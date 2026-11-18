@@ -101,6 +101,8 @@ description: "Release a QA-verified Korean game patch using the platform adapter
    뒤에 `*`를 붙인다. 예: 출시 2025-03-27 → 2027-03-27 이전 배포면 `2025-03-27*`, 그날 이후면 `2025-03-27`.
    새 버전을 배포할 때마다 그 배포일로 다시 판정한다. 출시일이 `unknown`이면 `미확인`으로 쓰고 `*`를
    붙이지 않으며, 릴리스 전에 다시 조사한다.
+   보류 행(`translated_with_held`)이 남아 있으면 주의사항에 "일부 대사 <n>행은 원문 유지"를 적는다. 파일 경로 같은
+   내부 정보는 노트에 쓰지 않고, `HELD_FOR_USER.tsv` 경로는 `HANDOFF.md`에 둔다.
    언어 선택 방법은 실제 런타임 시험에서 쓴 방식을 근거로 적는다. 이전의 상세 노트를 대체할 때는
    지우지 말고 `_release/superseded/`로 옮긴다.
 3a. **릴리스 스크린샷**: `_release/screenshots/`에 대표 런타임 캡처 4~6장을 둔다. `50_test` 증거

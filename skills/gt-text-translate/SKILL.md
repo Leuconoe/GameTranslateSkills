@@ -120,6 +120,9 @@ description: "Text branch translation after text analysis: batch-translate extra
 에이전트가 내용상 번역하지 않기로 한 행은 다음처럼 처리한다. **보류 행 때문에 작업을 멈추거나 사용자 답을
 기다리지 않는다.** 나머지 행을 끝내고 상태값을 바꾼 뒤 다음 단계·다음 게임으로 진행한다.
 
+- **보류는 좁게**: 실제로 문제가 되는 행(노골적인 성적 묘사·성행위·페티시 중심 내용 등)만 보류한다. 일반적인
+  목욕·수영복·메이드 장면, 가벼운 장난, 연애 묘사는 평소대로 번역한다.
+
 1. `30_translation/text/batches/bulk/HELD_ROWS.tsv`(`first	last	reason`)에 구간과 사유를 기록한다.
    보류 행은 파트·병합에서 제외되고 `status=new`·원문 유지로 남으며(이미 `<KEEP>`로 병합했다면
    notes에 `keep_source`), 나머지 행만으로 병합·실주입 검증을 끝낸다.
@@ -127,9 +130,13 @@ description: "Text branch translation after text analysis: batch-translate extra
      `HELD_ROWS.tsv` 경로와 행 수를 기록한다.
    - `GAME_REGISTRY.tsv` 진행 문구: `Text translated …; HELD <n> rows (user)`처럼 보류 수를 남긴다.
    - 보류 행이 원문 그대로라도 빌드·폰트(원문 글리프 포함)·검수 단계는 계속 진행한다.
-2. 사용자가 직접 처리하겠다고 하면 `export-held`로 `HELD_FOR_USER.tsv`(`n	id	speaker	ja	ko`, ko 비움)를 만든다.
-3. 사용자가 돌려준 파일은 `import-held`로 병합한다. fail-closed: 보류 행·`status=new`·`ja` 원문 일치·
-   `check_row`와 같은 구조 검사를 통과하지 못하면 아무것도 병합하지 않는다. 빈 ko는 원문 유지다.
+2. **사용자 산출물 `30_translation/text/HELD_FOR_USER.tsv`를 항상 만든다**(UTF-8 BOM, TSV). 내부 목록에만
+   두지 않는다. 열: `id	source_file/scene	speaker	ja	prev_line_ja	next_line_ja	reason	ko_user`
+   (`ko_user`는 비워 사용자가 채운다). 보류 행이 0개여도 헤더만 있는 파일을 써서 "없음"과 "안 만듦"이 구분되게 한다.
+   `HANDOFF.md`와 `RESUME.md` 마지막 단계에 이 파일 경로와 행 수를 적는다.
+3. 사용자가 돌려준 파일은 `import-held`로 병합한다. 비어 있지 않은 `ko_user`가 그 행의 번역이며, 다른 행과
+   같은 구조 검사를 거친다. fail-closed: 보류 행·`status=new`·`ja` 원문 일치·`check_row`와 같은 구조 검사를
+   통과하지 못하면 아무것도 병합하지 않는다. 빈 `ko_user` 행은 원문 유지이고 상태는 `translated_with_held`로 남는다.
    병합 로그는 `USER_HELD`, 행 notes에 `user_translated`를 남기고 이어서 실주입 검증을 한다.
 4. 사용자 파일은 형식이 다를 수 있다(헤더·`ja` 열 누락 등). n/id로 원본에 다시 맞추고, **기계적 정리만**
    한다: 끝 태그(`{rt2}` 등) 복원, 직선 따옴표 → 원문과 같은 「」/『』, 용어집 이름 표기 통일,
@@ -144,6 +151,7 @@ description: "Text branch translation after text analysis: batch-translate extra
 | `30_translation/text/glossary.tsv` | 누적 용어집 |
 | `30_translation/STYLE.md` | 말투·문체 규칙 (캐릭터별) |
 | `30_translation/WORKLOG.md` | 배치 작업 로그 |
+| `30_translation/text/HELD_FOR_USER.tsv` | 보류 행 사용자 산출물 (UTF-8 BOM, 0행이어도 헤더만) |
 
 ## 완료 기준
 

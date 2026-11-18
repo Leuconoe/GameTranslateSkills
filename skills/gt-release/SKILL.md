@@ -115,7 +115,10 @@ description: "Release a QA-verified Korean game patch using the platform adapter
    근거 URL은 `PROJECT.md`의 `출시일` 옆에 남긴다.
    패치 안에 4GiB 이상인 파일이 하나라도 있으면 주의사항에 `SD 카드가 exFAT 형식이어야 함 (4GB를 넘는 파일 포함,
    FAT32 불가)`를 적는다. ZIP은 이때 Zip64가 되며, Switch는 ZIP을 직접 읽지 않으므로 문제는 SD 카드 파일
-   시스템뿐이다. 압축률을 높여도 풀린 파일 크기는 그대로라 FAT32 제한은 해결되지 않는다. 릴리스 노트 형식은 이 절을 따르고, 예전 타이틀의 노트를
+   시스템뿐이다. 압축률을 높여도 풀린 파일 크기는 그대로라 FAT32 제한은 해결되지 않는다.
+   NSW ZIP 자체가 4GiB 이상이면 `create-nsw-release.mjs --split`(필요 시 `--split-only`)으로 `_release/split/<ZIP>.001…`
+   분할본을 배포하고, 노트에 합치는 방법(7-Zip·반디집으로 `.001` 열기, 또는 조각을 순서대로 바이트 이어 붙이기)을 적는다.
+   검증기는 단일 ZIP이 없으면 `RELEASE_PACKAGE.json`의 `distribution`으로 조각을 검증한다. 릴리스 노트 형식은 이 절을 따르고, 예전 타이틀의 노트를
    양식으로 복사하지 않는다(항목이 빠진 구형 노트가 있다).
    보류 행(`translated_with_held`)이 남아 있으면 주의사항에 "일부 대사 <n>행은 원문 유지"를 적는다. 파일 경로 같은
    내부 정보는 노트에 쓰지 않고, `HELD_FOR_USER.tsv` 경로는 `HANDOFF.md`에 둔다.

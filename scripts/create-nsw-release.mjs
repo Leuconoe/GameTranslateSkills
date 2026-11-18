@@ -3,15 +3,19 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { flag, option, parseArgs, requiredOption } from './lib/args.mjs';
 import {
+  DEFAULT_SPLIT_PART_SIZE,
   RELEASE_DIR,
+  SPLIT_DIR,
   createDeterministicNswZip,
   ensureReleaseRoot,
   fat32ReleaseWarning,
   normalizeTitleId,
   nswReleaseFileName,
+  parseByteSize,
   parseNswReleaseFileName,
   resolveNswReleaseNaming,
   sha256File,
+  splitRelease,
   supersedeRelease,
   validateNswRelease,
 } from './lib/nsw-release-zip.mjs';
@@ -63,6 +67,10 @@ async function main() {
     legacyName: flag(args, 'legacy-name'),
   });
   const fileName = nswReleaseFileName(gameName, titleId);
+  // --split [--part-size 3990MiB]: also publish _release/split/<zip>.NNN; --split-only then moves the ZIP to superseded/.
+  const splitOnly = flag(args, 'split-only');
+  const split = splitOnly || flag(args, 'split');
+  const partSize = parseByteSize(option(args, 'part-size') ?? DEFAULT_SPLIT_PART_SIZE);
   const releaseRoot = await ensureReleaseRoot(projectRoot);
   const outputPath = path.join(releaseRoot, fileName);
   const temporaryPath = path.join(releaseRoot, `tmp-package-${titleId}.zip.tmp`);
@@ -142,11 +150,27 @@ async function main() {
       reused,
       entries: receipt.entries,
     };
-    await atomicText(path.join(releaseRoot, 'SHA256SUMS.txt'), `${receipt.zipSha256}  ${fileName}\n`);
+    let sums = `${receipt.zipSha256}  ${fileName}\n`;
+    if (split) {
+      const { parts, joinedSha256 } = await splitRelease({ zipPath: outputPath, releaseRoot, zipSha256: receipt.zipSha256, partSize });
+      manifest.distribution = {
+        form: 'split',
+        part_size_bytes: partSize,
+        parts: parts.map((part) => ({ path: `${RELEASE_DIR}/${SPLIT_DIR}/${part.name}`, sha256: part.sha256 })),
+        joined_sha256: joinedSha256,
+      };
+      const partLines = (prefix) => parts.map((part) => `${part.sha256}  ${prefix}${part.name}\n`).join('');
+      const joinedLine = `# joined (7-Zip/Bandizip: open .001, or concatenate the parts in order): ${joinedSha256}  ${fileName}\n`;
+      await atomicText(path.join(releaseRoot, SPLIT_DIR, 'SHA256SUMS.txt'), partLines('') + joinedLine);
+      sums = `${splitOnly ? '' : sums}${partLines(`${SPLIT_DIR}/`)}${joinedLine}`;
+      if (splitOnly) await supersedeRelease(outputPath, releaseRoot); // kept, never deleted
+    }
+    await atomicText(path.join(releaseRoot, 'SHA256SUMS.txt'), sums);
     await atomicText(path.join(releaseRoot, 'RELEASE_PACKAGE.json'), `${JSON.stringify(manifest, null, 2)}\n`);
     const fat32Warning = await fat32ReleaseWarning(receipt.entries, outputPath);
     if (fat32Warning) process.stderr.write(`WARNING\t${fat32Warning}\n`);
-    process.stdout.write(`PASS\t${outputPath}\t${receipt.zipSha256}\tentries=${receipt.entries.length}\treused=${reused}\n`);
+    const splitNote = manifest.distribution ? `\tsplit=${manifest.distribution.parts.length}${splitOnly ? '\tzip=superseded' : ''}` : '';
+    process.stdout.write(`PASS\t${outputPath}\t${receipt.zipSha256}\tentries=${receipt.entries.length}\treused=${reused}${splitNote}\n`);
   } finally {
     await fsp.rm(temporaryPath, { force: true });
     await fsp.rm(previousPath, { force: true });

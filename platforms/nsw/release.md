@@ -65,6 +65,15 @@
   FAT32 SD 카드에 저장할 수 없으므로, 그런 릴리스는 `RELEASE_NOTES.md` 주의사항에 SD 카드가 exFAT여야 함을 적는다
   (예: `- SD 카드가 exFAT 형식이어야 함 (4GB를 넘는 파일 포함, FAT32 불가)`). 패키저·검증기는 4 GiB 이상 entry가 있는데
   ZIP 옆 `RELEASE_NOTES.md`에 `exFAT` 언급이 없으면 `WARNING`을 출력한다.
+- **분할 배포**: ZIP 자체가 4 GiB 이상이면(FAT32·일부 업로드처가 한 파일로 받지 못함) `create-nsw-release.mjs --split
+  [--part-size 3990MiB]`로 정식 ZIP을 만들고 검증한 뒤, ZIP 바이트를 순서대로 잘라 `_release/split/<ZIP 이름>.001, .002, …`를
+  쓴다(이어 붙인 SHA-256 = ZIP SHA-256 확인, `split/SHA256SUMS.txt` 작성). `_release/SHA256SUMS.txt`에는 `split/<이름>.NNN`
+  줄과 이어 붙인 해시 주석 줄이, `RELEASE_PACKAGE.json`에는 `distribution: {form:'split', part_size_bytes, parts:[{path,sha256}],
+  joined_sha256}`가 기록된다. `--split-only`는 분할 확인 뒤 단일 ZIP을 `_release/superseded/`로 옮긴다(삭제 안 함).
+  검증기는 단일 ZIP이 없고 `distribution.form == 'split'`이면 조각별 해시·이어 붙인 해시를 확인하고, 조각들을 하나의 가상
+  파일로 순서대로 읽어 entry 목록·CRC-32·크기·SHA-256 검사를 그대로 한다(임시 결합 파일 없음).
+  `RELEASE_NOTES.md`에는 합치는 방법을 적는다: 7-Zip·반디집으로 `.001`을 열거나, 조각을 순서대로 이어 붙인다
+  (`copy /b "<이름>.001"+"<이름>.002" "<이름>"` / `cat "<이름>".0* > "<이름>"`).
 
 - **최종 패키징은 문서가 아니라 빌드 스크립트의 출력명부터 canonical 규칙과 맞춘다.** 스크립트가 임시 통합명을 만들고 사람이 나중에 이름만 바꾸는 흐름은 매니페스트·README·해시 불일치를 만든다. 스크립트가 처음부터 정해진 이름(기본 `<한국어 제목> - <BASE_TITLE_ID>.zip`)을 원자적으로 생성하게 하고, 릴리스 파일명이 그 이름과 다르면 즉시 실패시킨다. 이름 형식을 바꿀 때 다른 형식의 같은 Title ID ZIP이 있으면 bytes가 같을 때만 새 이름으로 바꿔 재사용하고, 다르면 `--replace` 없이는 교체하지 않는다. 정확한 파일 allowlist·ZIP root·리로드를 검사한 뒤 현재 SHA-256을 모든 릴리스 기록에 동기화한다.
 - **canonical 파일명 규칙은 빌드 불변조건이다.** 빌드·릴리스 검증기는 실제 경로·basename·확장자·대소문자가 규칙과 다르면 실패하고, 임의 접두사/접미사, 중복 확장자, 빌드 뒤 수동 이름 변경, 진단·후보 ZIP의 릴리스 전달을 거부해야 한다.

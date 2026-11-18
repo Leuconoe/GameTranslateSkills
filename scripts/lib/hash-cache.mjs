@@ -34,6 +34,18 @@ async function rawSha256(target) {
   return hash.digest('hex');
 }
 
+function writeCache(file, updates) {
+  try {
+    const cache = { ...readCache(file), ...updates }; // merge with whatever other processes wrote meanwhile
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const tmp = `${file}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(cache));
+    fs.renameSync(tmp, file);
+  } catch {
+    // ponytail: cache is best-effort; last writer wins between concurrent processes.
+  }
+}
+
 /** Lowercase hex SHA-256 of a file, served from the cache when path+size+mtime are unchanged. */
 export async function cachedSha256(target) {
   const file = cacheFile();
@@ -42,15 +54,33 @@ export async function cachedSha256(target) {
   const hit = readCache(file)[key];
   if (hit) return hit;
   const hex = await rawSha256(target);
-  try {
-    const cache = readCache(file); // merge with whatever other processes wrote meanwhile
-    cache[key] = hex;
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    const tmp = `${file}.${process.pid}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify(cache));
-    fs.renameSync(tmp, file);
-  } catch {
-    // ponytail: cache is best-effort; last writer wins between concurrent processes.
-  }
+  writeCache(file, { [key]: hex });
   return hex;
+}
+
+/**
+ * Split-ZIP parts: { parts: [lowercase hex per part], joined: lowercase hex of the parts concatenated in order }, in one
+ * read pass. The joined hash is cached under "joined:" + the parts' path+size+mtime keys, so any changed part misses.
+ */
+export async function cachedJoinedSha256(paths) {
+  const file = cacheFile();
+  const keys = file === 'off' ? null : paths.map(cacheKey);
+  const joinKey = keys && `joined:${keys.join('|')}`;
+  if (keys) {
+    const cache = readCache(file);
+    if (cache[joinKey] && keys.every((key) => cache[key])) return { parts: keys.map((key) => cache[key]), joined: cache[joinKey] };
+  }
+  const joined = crypto.createHash('sha256');
+  const parts = [];
+  for (const target of paths) {
+    const hash = crypto.createHash('sha256');
+    for await (const chunk of fs.createReadStream(target, { highWaterMark: 16 << 20 })) {
+      hash.update(chunk);
+      joined.update(chunk);
+    }
+    parts.push(hash.digest('hex'));
+  }
+  const result = { parts, joined: joined.digest('hex') };
+  if (keys) writeCache(file, Object.fromEntries([...keys.map((key, i) => [key, parts[i]]), [joinKey, result.joined]]));
+  return result;
 }

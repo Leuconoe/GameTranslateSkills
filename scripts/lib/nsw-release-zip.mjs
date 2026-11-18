@@ -4,7 +4,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import { cachedSha256 } from './hash-cache.mjs';
+import { cachedJoinedSha256, cachedSha256 } from './hash-cache.mjs';
 import zlib from 'node:zlib';
 
 const TITLE_ID_PATTERN = /^[0-9A-F]{16}$/;
@@ -479,111 +479,149 @@ async function readExact(handle, length, position) {
   return buffer;
 }
 
-async function parseCentralDirectory(zipPath) {
-  const handle = await fsp.open(zipPath, 'r');
+// A ZIP source is a file path or { parts: [paths] }: split parts read as one virtual file (no temporary joined copy).
+// Both give a FileHandle-like object with read(buffer, offset, length, position), stat() and close().
+class ConcatenatedFile {
+  constructor(handles, sizes) {
+    this.handles = handles;
+    this.starts = [];
+    let start = 0;
+    for (const size of sizes) { this.starts.push(start); start += size; }
+    this.sizes = sizes;
+    this.size = start;
+  }
+
+  async stat() { return { size: this.size }; }
+
+  // Reads at most to the end of the part holding `position`; readExact/readRange loop for the rest.
+  async read(buffer, offset, length, position) {
+    const index = this.starts.findLastIndex((start) => start <= position);
+    if (index === -1 || position >= this.size) return { bytesRead: 0, buffer };
+    const local = position - this.starts[index];
+    return this.handles[index].read(buffer, offset, Math.min(length, this.sizes[index] - local), local);
+  }
+
+  async close() { await Promise.all(this.handles.map((handle) => handle.close())); }
+}
+
+export async function openZipSource(source) {
+  if (typeof source === 'string') return fsp.open(source, 'r');
+  const handles = [];
   try {
-    const stats = await handle.stat();
-    const tailLength = Math.min(stats.size, 0xffff + 22);
-    const tail = await readExact(handle, tailLength, stats.size - tailLength);
-    let endOffset = -1;
-    for (let index = tail.length - 22; index >= 0; index -= 1) {
-      if (tail.readUInt32LE(index) === END_OF_CENTRAL_DIRECTORY) {
-        endOffset = index;
-        break;
-      }
-    }
-    if (endOffset === -1) throw new Error('ZIP end-of-central-directory record is missing');
-    let entryCount = tail.readUInt16LE(endOffset + 10);
-    let centralSize = tail.readUInt32LE(endOffset + 12);
-    let centralOffset = tail.readUInt32LE(endOffset + 16);
-    const commentLength = tail.readUInt16LE(endOffset + 20);
-    if (commentLength !== 0) throw new Error('NSW release ZIP comments are forbidden');
-    const hasLocator = endOffset >= 20 && tail.readUInt32LE(endOffset - 20) === ZIP64_END_LOCATOR;
-    if (hasLocator) {
-      const zip64EndOffset = Number(tail.readBigUInt64LE(endOffset - 12));
-      const zip64End = await readExact(handle, 56, zip64EndOffset);
-      if (zip64End.readUInt32LE(0) !== ZIP64_END_OF_CENTRAL_DIRECTORY) throw new Error('Zip64 end-of-central-directory record is missing');
-      const zip64EntryCount = Number(zip64End.readBigUInt64LE(32));
-      const zip64CentralSize = Number(zip64End.readBigUInt64LE(40));
-      const zip64CentralOffset = Number(zip64End.readBigUInt64LE(48));
-      // Classic fields are either the 0xFFFF/0xFFFFFFFF sentinel or must agree with the Zip64 record.
-      if ((entryCount !== MAX_UINT16 && entryCount !== zip64EntryCount)
-        || (centralSize !== MAX_UINT32 && centralSize !== zip64CentralSize)
-        || (centralOffset !== MAX_UINT32 && centralOffset !== zip64CentralOffset)) {
-        throw new Error('ZIP/Zip64 end-of-central-directory records disagree');
-      }
-      if (zip64CentralOffset + zip64CentralSize !== zip64EndOffset) throw new Error('Zip64 central directory is out of place');
-      entryCount = zip64EntryCount;
-      centralSize = zip64CentralSize;
-      centralOffset = zip64CentralOffset;
-    } else if (entryCount === MAX_UINT16 || centralSize === MAX_UINT32 || centralOffset === MAX_UINT32) {
-      throw new Error('ZIP uses Zip64 sentinels without a Zip64 end-of-central-directory locator');
-    }
-    if (centralOffset + centralSize > stats.size) throw new Error('ZIP central directory is out of range');
-    const central = await readExact(handle, centralSize, centralOffset);
-    const entries = [];
-    let cursor = 0;
-    while (cursor < central.length) {
-      if (central.readUInt32LE(cursor) !== CENTRAL_DIRECTORY_HEADER) throw new Error('Invalid ZIP central directory entry');
-      const versionNeeded = central.readUInt16LE(cursor + 6);
-      const flags = central.readUInt16LE(cursor + 8);
-      const method = central.readUInt16LE(cursor + 10);
-      const crc32 = central.readUInt32LE(cursor + 16);
-      let compressedSize = central.readUInt32LE(cursor + 20);
-      let uncompressedSize = central.readUInt32LE(cursor + 24);
-      const nameLength = central.readUInt16LE(cursor + 28);
-      const extraLength = central.readUInt16LE(cursor + 30);
-      const commentSize = central.readUInt16LE(cursor + 32);
-      let localHeaderOffset = central.readUInt32LE(cursor + 42);
-      const recordLength = 46 + nameLength + extraLength + commentSize;
-      if (cursor + recordLength > central.length) throw new Error('Truncated ZIP central directory entry');
-      const archivePath = central.subarray(cursor + 46, cursor + 46 + nameLength).toString('utf8');
-      const extra = central.subarray(cursor + 46 + nameLength, cursor + 46 + nameLength + extraLength);
-      let zip64 = null;
-      for (let at = 0; at + 4 <= extra.length;) {
-        const id = extra.readUInt16LE(at);
-        const size = extra.readUInt16LE(at + 2);
-        if (at + 4 + size > extra.length) throw new Error(`Truncated ZIP extra field for ${archivePath}`);
-        if (id === ZIP64_EXTRA_ID) zip64 = extra.subarray(at + 4, at + 4 + size);
-        at += 4 + size;
-      }
-      // APPNOTE 4.5.3: Zip64 values appear only for 0xFFFFFFFF header fields, in the order uncompressed, compressed, offset.
-      let zip64Cursor = 0;
-      const zip64Value = () => {
-        if (!zip64 || zip64Cursor + 8 > zip64.length) throw new Error(`Missing Zip64 extra value for ${archivePath}`);
-        const value = Number(zip64.readBigUInt64LE(zip64Cursor));
-        zip64Cursor += 8;
-        if (!Number.isSafeInteger(value)) throw new Error(`Zip64 value is too large for ${archivePath}`);
-        return value;
-      };
-      if (uncompressedSize === MAX_UINT32) uncompressedSize = zip64Value();
-      if (compressedSize === MAX_UINT32) compressedSize = zip64Value();
-      if (localHeaderOffset === MAX_UINT32) localHeaderOffset = zip64Value();
-      if (zip64 && versionNeeded < 45) throw new Error(`Zip64 entry must need version 4.5: ${archivePath}`);
-      entries.push({ archivePath, flags, method, crc32, compressedSize, uncompressedSize, localHeaderOffset });
-      cursor += recordLength;
-    }
-    if (entries.length !== entryCount) throw new Error(`ZIP entry count mismatch: expected ${entryCount}, found ${entries.length}`);
-    return { entries, stats };
-  } finally {
-    await handle.close();
+    for (const part of source.parts) handles.push(await fsp.open(part, 'r'));
+    const sizes = [];
+    for (const handle of handles) sizes.push((await handle.stat()).size);
+    return new ConcatenatedFile(handles, sizes);
+  } catch (error) {
+    await Promise.all(handles.map((handle) => handle.close()));
+    throw error;
   }
 }
 
-async function hashZipEntry(zipPath, entry) {
-  const handle = await fsp.open(zipPath, 'r');
-  let dataStart;
-  try {
-    const local = await readExact(handle, 30, entry.localHeaderOffset);
-    if (local.readUInt32LE(0) !== LOCAL_FILE_HEADER) throw new Error(`Invalid local ZIP header for ${entry.archivePath}`);
-    const nameLength = local.readUInt16LE(26);
-    const extraLength = local.readUInt16LE(28);
-    const name = (await readExact(handle, nameLength, entry.localHeaderOffset + 30)).toString('utf8');
-    if (name !== entry.archivePath) throw new Error(`Local/central ZIP name mismatch for ${entry.archivePath}`);
-    dataStart = entry.localHeaderOffset + 30 + nameLength + extraLength;
-  } finally {
-    await handle.close();
+async function* readRange(handle, start, length) {
+  for (let done = 0; done < length;) {
+    const buffer = Buffer.allocUnsafe(Math.min(1 << 20, length - done));
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, start + done);
+    if (bytesRead === 0) throw new Error('Unexpected end of ZIP');
+    done += bytesRead;
+    yield buffer.subarray(0, bytesRead);
   }
+}
+
+async function parseCentralDirectory(handle) {
+  const stats = await handle.stat();
+  const tailLength = Math.min(stats.size, 0xffff + 22);
+  const tail = await readExact(handle, tailLength, stats.size - tailLength);
+  let endOffset = -1;
+  for (let index = tail.length - 22; index >= 0; index -= 1) {
+    if (tail.readUInt32LE(index) === END_OF_CENTRAL_DIRECTORY) {
+      endOffset = index;
+      break;
+    }
+  }
+  if (endOffset === -1) throw new Error('ZIP end-of-central-directory record is missing');
+  let entryCount = tail.readUInt16LE(endOffset + 10);
+  let centralSize = tail.readUInt32LE(endOffset + 12);
+  let centralOffset = tail.readUInt32LE(endOffset + 16);
+  const commentLength = tail.readUInt16LE(endOffset + 20);
+  if (commentLength !== 0) throw new Error('NSW release ZIP comments are forbidden');
+  const hasLocator = endOffset >= 20 && tail.readUInt32LE(endOffset - 20) === ZIP64_END_LOCATOR;
+  if (hasLocator) {
+    const zip64EndOffset = Number(tail.readBigUInt64LE(endOffset - 12));
+    const zip64End = await readExact(handle, 56, zip64EndOffset);
+    if (zip64End.readUInt32LE(0) !== ZIP64_END_OF_CENTRAL_DIRECTORY) throw new Error('Zip64 end-of-central-directory record is missing');
+    const zip64EntryCount = Number(zip64End.readBigUInt64LE(32));
+    const zip64CentralSize = Number(zip64End.readBigUInt64LE(40));
+    const zip64CentralOffset = Number(zip64End.readBigUInt64LE(48));
+    // Classic fields are either the 0xFFFF/0xFFFFFFFF sentinel or must agree with the Zip64 record.
+    if ((entryCount !== MAX_UINT16 && entryCount !== zip64EntryCount)
+      || (centralSize !== MAX_UINT32 && centralSize !== zip64CentralSize)
+      || (centralOffset !== MAX_UINT32 && centralOffset !== zip64CentralOffset)) {
+      throw new Error('ZIP/Zip64 end-of-central-directory records disagree');
+    }
+    if (zip64CentralOffset + zip64CentralSize !== zip64EndOffset) throw new Error('Zip64 central directory is out of place');
+    entryCount = zip64EntryCount;
+    centralSize = zip64CentralSize;
+    centralOffset = zip64CentralOffset;
+  } else if (entryCount === MAX_UINT16 || centralSize === MAX_UINT32 || centralOffset === MAX_UINT32) {
+    throw new Error('ZIP uses Zip64 sentinels without a Zip64 end-of-central-directory locator');
+  }
+  if (centralOffset + centralSize > stats.size) throw new Error('ZIP central directory is out of range');
+  const central = await readExact(handle, centralSize, centralOffset);
+  const entries = [];
+  let cursor = 0;
+  while (cursor < central.length) {
+    if (central.readUInt32LE(cursor) !== CENTRAL_DIRECTORY_HEADER) throw new Error('Invalid ZIP central directory entry');
+    const versionNeeded = central.readUInt16LE(cursor + 6);
+    const flags = central.readUInt16LE(cursor + 8);
+    const method = central.readUInt16LE(cursor + 10);
+    const crc32 = central.readUInt32LE(cursor + 16);
+    let compressedSize = central.readUInt32LE(cursor + 20);
+    let uncompressedSize = central.readUInt32LE(cursor + 24);
+    const nameLength = central.readUInt16LE(cursor + 28);
+    const extraLength = central.readUInt16LE(cursor + 30);
+    const commentSize = central.readUInt16LE(cursor + 32);
+    let localHeaderOffset = central.readUInt32LE(cursor + 42);
+    const recordLength = 46 + nameLength + extraLength + commentSize;
+    if (cursor + recordLength > central.length) throw new Error('Truncated ZIP central directory entry');
+    const archivePath = central.subarray(cursor + 46, cursor + 46 + nameLength).toString('utf8');
+    const extra = central.subarray(cursor + 46 + nameLength, cursor + 46 + nameLength + extraLength);
+    let zip64 = null;
+    for (let at = 0; at + 4 <= extra.length;) {
+      const id = extra.readUInt16LE(at);
+      const size = extra.readUInt16LE(at + 2);
+      if (at + 4 + size > extra.length) throw new Error(`Truncated ZIP extra field for ${archivePath}`);
+      if (id === ZIP64_EXTRA_ID) zip64 = extra.subarray(at + 4, at + 4 + size);
+      at += 4 + size;
+    }
+    // APPNOTE 4.5.3: Zip64 values appear only for 0xFFFFFFFF header fields, in the order uncompressed, compressed, offset.
+    let zip64Cursor = 0;
+    const zip64Value = () => {
+      if (!zip64 || zip64Cursor + 8 > zip64.length) throw new Error(`Missing Zip64 extra value for ${archivePath}`);
+      const value = Number(zip64.readBigUInt64LE(zip64Cursor));
+      zip64Cursor += 8;
+      if (!Number.isSafeInteger(value)) throw new Error(`Zip64 value is too large for ${archivePath}`);
+      return value;
+    };
+    if (uncompressedSize === MAX_UINT32) uncompressedSize = zip64Value();
+    if (compressedSize === MAX_UINT32) compressedSize = zip64Value();
+    if (localHeaderOffset === MAX_UINT32) localHeaderOffset = zip64Value();
+    if (zip64 && versionNeeded < 45) throw new Error(`Zip64 entry must need version 4.5: ${archivePath}`);
+    entries.push({ archivePath, flags, method, crc32, compressedSize, uncompressedSize, localHeaderOffset });
+    cursor += recordLength;
+  }
+  if (entries.length !== entryCount) throw new Error(`ZIP entry count mismatch: expected ${entryCount}, found ${entries.length}`);
+  return { entries, stats };
+}
+
+async function hashZipEntry(handle, entry) {
+  const local = await readExact(handle, 30, entry.localHeaderOffset);
+  if (local.readUInt32LE(0) !== LOCAL_FILE_HEADER) throw new Error(`Invalid local ZIP header for ${entry.archivePath}`);
+  const nameLength = local.readUInt16LE(26);
+  const extraLength = local.readUInt16LE(28);
+  const name = (await readExact(handle, nameLength, entry.localHeaderOffset + 30)).toString('utf8');
+  if (name !== entry.archivePath) throw new Error(`Local/central ZIP name mismatch for ${entry.archivePath}`);
+  const dataStart = entry.localHeaderOffset + 30 + nameLength + extraLength;
 
   const hash = crypto.createHash('sha256');
   let crc = 0;
@@ -596,12 +634,8 @@ async function hashZipEntry(zipPath, entry) {
       callback(null, chunk);
     },
   });
-  const source = fs.createReadStream(zipPath, {
-    start: dataStart,
-    end: dataStart + entry.compressedSize - 1,
-  });
   if (entry.method !== DEFLATE_METHOD) throw new Error(`Unsupported ZIP compression method for ${entry.archivePath}: ${entry.method}`);
-  await pipeline(source, zlib.createInflateRaw(), tracker, async (stream) => {
+  await pipeline(readRange(handle, dataStart, entry.compressedSize), zlib.createInflateRaw(), tracker, async (stream) => {
     for await (const _chunk of stream) { /* drain */ }
   });
   if (size !== entry.uncompressedSize) throw new Error(`Uncompressed size mismatch for ${entry.archivePath}`);
@@ -627,18 +661,25 @@ export async function sha256File(target) {
 
 export async function inspectDeterministicZip(zipPath) {
   const resolvedZip = path.resolve(zipPath);
-  const { entries } = await parseCentralDirectory(resolvedZip);
+  const handle = await openZipSource(resolvedZip);
   const verified = [];
-  for (const entry of entries) {
-    if (entry.flags !== UTF8_DATA_DESCRIPTOR_FLAGS) throw new Error(`Unexpected ZIP flags for ${entry.archivePath}`);
-    if (entry.method !== DEFLATE_METHOD) throw new Error(`Unexpected ZIP compression method for ${entry.archivePath}`);
-    const payload = await hashZipEntry(resolvedZip, entry);
-    verified.push({ path: entry.archivePath, size: payload.size, sha256: payload.sha256 });
+  try {
+    const { entries } = await parseCentralDirectory(handle);
+    for (const entry of entries) {
+      if (entry.flags !== UTF8_DATA_DESCRIPTOR_FLAGS) throw new Error(`Unexpected ZIP flags for ${entry.archivePath}`);
+      if (entry.method !== DEFLATE_METHOD) throw new Error(`Unexpected ZIP compression method for ${entry.archivePath}`);
+      const payload = await hashZipEntry(handle, entry);
+      verified.push({ path: entry.archivePath, size: payload.size, sha256: payload.sha256 });
+    }
+  } finally {
+    await handle.close();
   }
   return { zipPath: resolvedZip, zipSha256: await sha256File(resolvedZip), entries: verified };
 }
 
-export async function validateNswRelease({ titleId, zipPath, romfsRoot = null, exefsRoot = null, allowTemporaryName = false, gameName = null }) {
+// `parts` (split distribution): zipPath is then the virtual name of the joined ZIP (it need not exist) and the parts are
+// read in order as one file; pass parts only after verifySplitDistribution. zipSha256 is the joined hash.
+export async function validateNswRelease({ titleId, zipPath, romfsRoot = null, exefsRoot = null, allowTemporaryName = false, gameName = null, parts = null }) {
   const id = normalizeTitleId(titleId);
   const contentRoot = `atmosphere/contents/${id}`;
   const resolvedZip = path.resolve(zipPath);
@@ -652,49 +693,166 @@ export async function validateNswRelease({ titleId, zipPath, romfsRoot = null, e
   if (!allowTemporaryName && !RELEASE_PARENT_NAMES.has(path.basename(path.dirname(resolvedZip)).toLowerCase())) {
     throw new Error('NSW release ZIP must be directly under <title root>/_release (legacy: 60_release, 40_build/releases); version/candidate subfolders are forbidden');
   }
-  const { entries } = await parseCentralDirectory(resolvedZip);
-  if (entries.length === 0) throw new Error('NSW release ZIP contains no patch files');
-  const romfsPrefix = `${contentRoot}/romfs/`;
-  const exefsPrefix = `${contentRoot}/exefs/`;
-  const seen = new Set();
-  for (const entry of entries) {
-    if (entry.flags !== UTF8_DATA_DESCRIPTOR_FLAGS) throw new Error(`Unexpected ZIP flags for ${entry.archivePath}`);
-    const isRomfs = entry.archivePath.startsWith(romfsPrefix);
-    const isExefs = entry.archivePath.startsWith(exefsPrefix);
-    if (!isRomfs && !isExefs) throw new Error(`ZIP entry must use ${romfsPrefix} or ${exefsPrefix}: ${entry.archivePath}`);
-    const patchPath = validatePatchRelativePath(entry.archivePath.slice(isRomfs ? romfsPrefix.length : exefsPrefix.length));
-    if (isExefs && (patchPath !== 'main' || !exefsRoot)) throw new Error(`Unrecognized ExeFS release entry: ${entry.archivePath}`);
-    const key = entry.archivePath.toLowerCase();
-    if (seen.has(key)) throw new Error(`Duplicate/case-colliding ZIP entry: ${entry.archivePath}`);
-    seen.add(key);
-  }
-
-  const sourceInventory = romfsRoot ? [
-    ...(await inventoryRomfs(romfsRoot)).map((file) => ({ ...file, archivePath: `${romfsPrefix}${file.patchPath}` })),
-    ...(exefsRoot ? await inventoryExefs(exefsRoot) : []).map((file) => ({ ...file, archivePath: `${exefsPrefix}${file.patchPath}` })),
-  ] : null;
-  if (sourceInventory && sourceInventory.length !== entries.length) {
-    throw new Error(`ZIP/source file count mismatch: ${entries.length} != ${sourceInventory.length}`);
-  }
-  const sourceByArchive = new Map(sourceInventory?.map((file) => [file.archivePath, file]) ?? []);
-  const verifiedEntries = [];
-  for (const entry of entries) {
-    const payload = await hashZipEntry(resolvedZip, entry);
-    const source = sourceByArchive.get(entry.archivePath);
-    if (source) {
-      const sourceHash = await sha256File(source.absolutePath);
-      if (payload.size !== source.size || payload.sha256 !== sourceHash) {
-        throw new Error(`ZIP/source payload mismatch: ${entry.archivePath}`);
-      }
-      sourceByArchive.delete(entry.archivePath);
+  const handle = await openZipSource(parts ? { parts } : resolvedZip);
+  try {
+    const { entries } = await parseCentralDirectory(handle);
+    if (entries.length === 0) throw new Error('NSW release ZIP contains no patch files');
+    const romfsPrefix = `${contentRoot}/romfs/`;
+    const exefsPrefix = `${contentRoot}/exefs/`;
+    const seen = new Set();
+    for (const entry of entries) {
+      if (entry.flags !== UTF8_DATA_DESCRIPTOR_FLAGS) throw new Error(`Unexpected ZIP flags for ${entry.archivePath}`);
+      const isRomfs = entry.archivePath.startsWith(romfsPrefix);
+      const isExefs = entry.archivePath.startsWith(exefsPrefix);
+      if (!isRomfs && !isExefs) throw new Error(`ZIP entry must use ${romfsPrefix} or ${exefsPrefix}: ${entry.archivePath}`);
+      const patchPath = validatePatchRelativePath(entry.archivePath.slice(isRomfs ? romfsPrefix.length : exefsPrefix.length));
+      if (isExefs && (patchPath !== 'main' || !exefsRoot)) throw new Error(`Unrecognized ExeFS release entry: ${entry.archivePath}`);
+      const key = entry.archivePath.toLowerCase();
+      if (seen.has(key)) throw new Error(`Duplicate/case-colliding ZIP entry: ${entry.archivePath}`);
+      seen.add(key);
     }
-    verifiedEntries.push({ path: entry.archivePath, size: payload.size, sha256: payload.sha256 });
+
+    const sourceInventory = romfsRoot ? [
+      ...(await inventoryRomfs(romfsRoot)).map((file) => ({ ...file, archivePath: `${romfsPrefix}${file.patchPath}` })),
+      ...(exefsRoot ? await inventoryExefs(exefsRoot) : []).map((file) => ({ ...file, archivePath: `${exefsPrefix}${file.patchPath}` })),
+    ] : null;
+    if (sourceInventory && sourceInventory.length !== entries.length) {
+      throw new Error(`ZIP/source file count mismatch: ${entries.length} != ${sourceInventory.length}`);
+    }
+    const sourceByArchive = new Map(sourceInventory?.map((file) => [file.archivePath, file]) ?? []);
+    const verifiedEntries = [];
+    for (const entry of entries) {
+      const payload = await hashZipEntry(handle, entry);
+      const source = sourceByArchive.get(entry.archivePath);
+      if (source) {
+        const sourceHash = await sha256File(source.absolutePath);
+        if (payload.size !== source.size || payload.sha256 !== sourceHash) {
+          throw new Error(`ZIP/source payload mismatch: ${entry.archivePath}`);
+        }
+        sourceByArchive.delete(entry.archivePath);
+      }
+      verifiedEntries.push({ path: entry.archivePath, size: payload.size, sha256: payload.sha256 });
+    }
+    if (sourceByArchive.size !== 0) throw new Error(`ZIP is missing source files: ${[...sourceByArchive.keys()].join(', ')}`);
+    return {
+      titleId: id,
+      zipPath: resolvedZip,
+      zipSha256: parts ? (await cachedJoinedSha256(parts)).joined.toUpperCase() : await sha256File(resolvedZip),
+      entries: verifiedEntries,
+    };
+  } finally {
+    await handle.close();
   }
-  if (sourceByArchive.size !== 0) throw new Error(`ZIP is missing source files: ${[...sourceByArchive.keys()].join(', ')}`);
-  return {
-    titleId: id,
-    zipPath: resolvedZip,
-    zipSha256: await sha256File(resolvedZip),
-    entries: verifiedEntries,
-  };
+}
+
+// Split distribution, for a ZIP >= 4 GiB (FAT32 and many hosts refuse one such file): the ZIP's raw bytes cut in order
+// into <release dir>/split/<zip name>.001, .002, … — 7-Zip/Bandizip open .001, or byte concatenation
+// (`copy /b a.001+a.002 a.zip`, `cat a.0* > a.zip`) restores the identical ZIP.
+export const SPLIT_DIR = 'split';
+export const DEFAULT_SPLIT_PART_SIZE = 3990 * 2 ** 20;
+
+export function parseByteSize(value) {
+  const match = String(value).trim().match(/^(\d+)\s*(B|KiB|MiB|GiB)?$/i);
+  const size = match ? Number(match[1]) * 2 ** { b: 0, kib: 10, mib: 20, gib: 30 }[(match[2] ?? 'b').toLowerCase()] : NaN;
+  if (!Number.isSafeInteger(size) || size <= 0) throw new Error(`Invalid size: ${value} (bytes, or a KiB/MiB/GiB suffix)`);
+  return size;
+}
+
+export function splitPartName(zipName, index) {
+  return `${zipName}.${String(index).padStart(3, '0')}`;
+}
+
+// Writes the parts as temporaries, verifies parts-joined SHA-256 == zipSha256, then publishes them. An existing part with
+// other bytes, or a stale higher-numbered part, goes to <release dir>/superseded/ (never deleted). The ZIP is untouched.
+export async function splitRelease({ zipPath, releaseRoot, zipSha256, partSize = DEFAULT_SPLIT_PART_SIZE }) {
+  const zipName = path.basename(zipPath);
+  const splitDir = path.join(releaseRoot, SPLIT_DIR);
+  const stats = await fsp.lstat(splitDir).catch((error) => { if (error?.code === 'ENOENT') return null; throw error; });
+  if (stats && (stats.isSymbolicLink() || !stats.isDirectory())) throw new Error(`Split directory must be a real directory, not a link/junction: ${splitDir}`);
+  if (!stats) await fsp.mkdir(splitDir);
+
+  const temporaries = [];
+  const input = await fsp.open(zipPath, 'r');
+  try {
+    const { size } = await input.stat();
+    const buffer = Buffer.allocUnsafe(64 << 20);
+    for (let start = 0, index = 1; start < size; start += partSize, index += 1) {
+      const temporary = path.join(splitDir, `tmp-${splitPartName(zipName, index)}.tmp`);
+      await fsp.rm(temporary, { force: true });
+      temporaries.push(temporary);
+      const output = await fsp.open(temporary, 'wx');
+      try {
+        for (let at = start, end = Math.min(size, start + partSize); at < end;) {
+          const { bytesRead } = await input.read(buffer, 0, Math.min(buffer.length, end - at), at);
+          if (bytesRead === 0) throw new Error(`Unexpected end of ZIP while splitting ${zipPath}`);
+          for (let written = 0; written < bytesRead;) {
+            written += (await output.write(buffer, written, bytesRead - written)).bytesWritten;
+          }
+          at += bytesRead;
+        }
+        await output.sync();
+      } finally {
+        await output.close();
+      }
+    }
+    const hashes = await cachedJoinedSha256(temporaries);
+    if (hashes.joined.toUpperCase() !== zipSha256.toUpperCase()) {
+      throw new Error(`Split parts do not rejoin to the ZIP: ${hashes.joined.toUpperCase()} != ${zipSha256.toUpperCase()}`);
+    }
+
+    const parts = [];
+    for (const [i, temporary] of temporaries.entries()) {
+      const name = splitPartName(zipName, i + 1);
+      const target = path.join(splitDir, name);
+      const sha256 = hashes.parts[i].toUpperCase();
+      if (fs.existsSync(target) && await sha256File(target) === sha256) {
+        await fsp.rm(temporary);
+      } else {
+        if (fs.existsSync(target)) await supersedeRelease(target, releaseRoot);
+        await fsp.rename(temporary, target);
+      }
+      parts.push({ name, absolutePath: target, sha256 });
+    }
+    const current = new Set(parts.map((part) => part.name));
+    for (const name of await fsp.readdir(splitDir)) {
+      if (name.startsWith(`${zipName}.`) && /^\d{3,}$/.test(name.slice(zipName.length + 1)) && !current.has(name)) {
+        await supersedeRelease(path.join(splitDir, name), releaseRoot);
+      }
+    }
+    return { parts, joinedSha256: hashes.joined.toUpperCase() };
+  } finally {
+    await input.close();
+    for (const temporary of temporaries) await fsp.rm(temporary, { force: true });
+  }
+}
+
+// RELEASE_PACKAGE.json distribution (form 'split'): part paths are relative to the title root ("_release/split/<zip>.NNN"),
+// numbered from .001 in order. Checks sizes, each part's SHA-256 and the joined SHA-256; returns the absolute part paths.
+export async function verifySplitDistribution({ releaseRoot, zipName, distribution }) {
+  if (distribution?.form !== 'split' || !Array.isArray(distribution.parts) || distribution.parts.length === 0) {
+    throw new Error('RELEASE_PACKAGE.json distribution must be { form: "split", parts: [...] }');
+  }
+  const titleRoot = path.dirname(path.resolve(releaseRoot));
+  const paths = distribution.parts.map((part, i) => {
+    const expected = path.join(releaseRoot, SPLIT_DIR, splitPartName(zipName, i + 1));
+    const actual = path.resolve(titleRoot, String(part?.path ?? ''));
+    if (actual !== path.resolve(expected)) throw new Error(`Split part ${i + 1} must be ${RELEASE_DIR}/${SPLIT_DIR}/${splitPartName(zipName, i + 1)}: ${part?.path}`);
+    return actual;
+  });
+  const partSize = distribution.part_size_bytes;
+  for (const [i, part] of paths.entries()) {
+    const { size } = await fsp.stat(part);
+    const last = i === paths.length - 1;
+    if (partSize && (last ? size > partSize || size === 0 : size !== partSize)) {
+      throw new Error(`Split part size ${size} does not fit part_size_bytes ${partSize}: ${part}`);
+    }
+  }
+  const hashes = await cachedJoinedSha256(paths);
+  for (const [i, part] of distribution.parts.entries()) {
+    if (String(part.sha256).toUpperCase() !== hashes.parts[i].toUpperCase()) throw new Error(`Split part SHA-256 mismatch: ${paths[i]}`);
+  }
+  if (String(distribution.joined_sha256).toUpperCase() !== hashes.joined.toUpperCase()) {
+    throw new Error(`Split parts joined SHA-256 ${hashes.joined.toUpperCase()} != joined_sha256 ${distribution.joined_sha256}`);
+  }
+  return paths;
 }

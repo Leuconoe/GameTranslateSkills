@@ -507,10 +507,9 @@ date | type | observed | impact | decision | evidence | status(open/applied/reje
 - panel의 positive alpha를 전부 source text S로 분류하지 않는다. A/B 같은 UI는 원 글자·판·테두리·그림자 역할을 실제 관측으로 나누고, source 관측으로 고정한 text 영역 및 균일 배경 색/글자 support를 이용해 보호 G 차이0을 확인한다. current-alpha 상계 fit은 이 역할·보호 증거를 대신하지 않는다. 원문 고유 표기(예: 甲士園)를 익숙한 유사 표기로 근거 없이 정규화하지 않는다.
 
 
-### 기존 한국어 후보의 잘림·겹침 직접 수정 — Tokimeki GS1–GS4, 2026-11-13
+### 기존 한국어 후보의 잘림·겹침 직접 수정 — 2026-11-13
 
-- 사용자가 네 편의 기존 번역 이미지에 대해 `기존 후보는 직접 조판으로 수정 (추천)`을 선택했다. 이 범위에서는 과거 imagegen 시도 기록이 UNKNOWN이어도 잘림·겹침을 직접 조판/합성으로 수정한다. 두 실패 증거를 새로 요구하거나 같은 권한을 다시 묻지 않는다. 이는 기존 후보의 국소 수정 권한이며 신규 미번역 이미지나 다른 프로젝트의 기본 정책을 바꾸지 않는다.
-- UNKNOWN은 그대로 보존하고 실제 기법은 `origin=agent-typeset`/compositing으로 기록한다. 새 원본·기존 후보를 덮어쓰지 않고 폰트 hash, 렌더 설정, source S, 새 전체 glyph/effect K, 보호 G, 자체 표시 영역을 남긴다. 인접 CPU·상태로 넘어간 기존 글자는 원본 RGBA로 복구하고 그 인접 그래픽을 보호한다.
+- 프로젝트가 기존 후보의 직접 조판 수정을 허용한 경우의 기록 규칙이다. 과거 imagegen 시도 기록 UNKNOWN은 그대로 보존하고 실제 기법은 `origin=agent-typeset`/compositing으로 기록한다. 새 원본·기존 후보를 덮어쓰지 않고 폰트 hash, 렌더 설정, source S, 새 전체 glyph/effect K, 보호 G, 자체 표시 영역을 남긴다. 인접 CPU·상태로 넘어간 기존 글자는 원본 RGBA로 복구하고 그 인접 그래픽을 보호한다.
 - 여러 Sprite의 합집합이나 각 m_Rect로 잘라 낸 alpha fit0만으로 소유 글자의 적합성을 주장하지 않는다. 독립 확인한 원래 Sprite 영역 안에 새 렌더의 전체 glyph/effect가 자연스럽게 들어가게 배치·공통 배율을 정하고, 잘라내기 전 K로 자체 geometry 적합성과 이웃 G 차이0을 검증한다. 변경하지 않은 상태의 성공 증거는 재사용하고 변경 상태만 새 시각 검수·native/fresh를 수행한다. 정적 통과와 Eden 실행 검증은 구분한다.
 
 

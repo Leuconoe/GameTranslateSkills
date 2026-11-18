@@ -28,6 +28,11 @@
   Il2CppDumper auto 모드가 정적 CodeRegistration을 못 찾으면 실패할 수 있다. 이때는 CodeRegistration을 보강한 합성 NSO로 덤프하고, 사용한 입력·도구 버전을 기록한다.
 - 보충 원천을 나중에 추가할 때는 canonical manifest를 바꾸지 않고 별도 보충 manifest로 두며, 기존 행과 겹치는 원문은 표시한다.
 - 게이트: 무수정 재기록 시 대상 번들 전 객체 raw-identical, 한국어 probe 주입 → 재추출 mismatch 0.
+- **조회 키로 쓰이는 MonoBehaviour 필드는 원문 유지.** 화면에 보이는 문자열처럼 생겨도 게임이 그 값으로 데이터를 찾으면
+  번역 시 해당 화면이 무한 로딩된다(예: `ChapterListNode._chapterName`/`_chapterNum` → 이벤트 탭 무한 LOADING).
+  `supp_text.py`의 `KEY_FIELDS`가 기본 제외하고, 타이틀별로 `extract --key-fields Class.field,...`로 늘린다.
+  이미 만든 보충 manifest의 해당 행은 `status=translated`, 빈 `target_ko`, notes `;keep_source;key_field`로 되돌린다.
+  화면이 멈추면 원본 → 파일 → 클래스(`cls=` notes) 순으로 bisect해 원인 클래스를 좁힌다.
 
 ## TMP/SDF 한글 폰트 주입
 

@@ -1,7 +1,9 @@
 """supp_text.py - Unity supplement text classes (outside master TSV / Utage scenario).
 
-  python -I supp_text.py extract -p <_work/TID> [--prefix GS|key] [--bundle-dirs model,pc/AssetBundle] [--force]
-        -> 30_translation/text/supplement/SUPP_MANIFEST.tsv (refuses overwrite)
+  python -I supp_text.py extract -p <_work/TID> [--prefix GS|key] [--bundle-dirs model,pc/AssetBundle]
+        [--key-fields Class.field,...] [--force]
+        -> 30_translation/text/supplement/SUPP_MANIFEST.tsv (refuses overwrite); lookup-key fields (KEY_FIELDS + the
+        --key-fields list) are never extracted
   python -I supp_text.py noop -p <_work/TID> [--manifest M]   rewrite every owned file unchanged: all objects raw-exact
   python -I supp_text.py selftest
 Inject / verify of these rows: unity_adapter (bulk_tool inject/verify, or `unity_adapter.py inject|verify --manifest`).
@@ -49,9 +51,14 @@ def ui_fields(t):
         for i, opt in enumerate(o['m_Options']):
             if isinstance(opt.get('m_Text'), str):
                 yield f'm_Options.m_Options.{i}.m_Text'  # Dropdown
-    for k in ('_chapterName', '_chapterNum'):  # Utage ChapterListNode
+    for k in ('_chapterName', '_chapterNum'):  # chapter-node style string fields (see KEY_FIELDS)
         if isinstance(t.get(k), str):
             yield k
+
+
+# MonoBehaviour string fields that games use as lookup keys (translating them hangs the screen that resolves them).
+# Extend per project with `extract --key-fields Class.field,...`.
+KEY_FIELDS = {('ChapterListNode', '_chapterName'), ('ChapterListNode', '_chapterNum')}
 
 
 def keep_ui(s):
@@ -166,8 +173,8 @@ def ta_set(s, li, ci, v):
 
 
 # ---------------- extract ----------------
-def units(env, rel):
-    """Yield (class, source_key, value, script/asset name) for every owned unit of one Unity file."""
+def units(env, rel, key_fields=KEY_FIELDS):
+    """Yield (class, source_key, value, script/asset name) for every owned unit of one Unity file (key fields skipped)."""
     u3d = rel == U3D_REL
     for o in env.objects:
         an = o.assets_file.name
@@ -191,12 +198,16 @@ def units(env, rel):
             t = o.read_typetree()
         except Exception:
             continue
+        cn = None
         for f in ui_fields(t):
+            cn = cn or script_name(o)
+            if (cn, f) in key_fields:
+                continue
             v = t
             for k in f.split('.'):
                 v = v[int(k)] if isinstance(v, list) else v[k]
             if keep_ui(v):
-                yield ('u3d_ui' if u3d else 'ui_prefab'), f'{an}|{o.path_id}|{f}', v, script_name(o)
+                yield ('u3d_ui' if u3d else 'ui_prefab'), f'{an}|{o.path_id}|{f}', v, cn
 
 
 def lit_keep(s):
@@ -228,7 +239,7 @@ def bundle_files(rom, dirs):
     return out
 
 
-def extract(prj, prefix, dirs):
+def extract(prj, prefix, dirs, key_fields=KEY_FIELDS):
     from meta_literals import META_REL, texts
     rom = prj / '10_extract' / 'romfs_original'
     man = prj / '30_translation' / 'text' / 'translation_manifest.tsv'
@@ -247,7 +258,7 @@ def extract(prj, prefix, dirs):
         except Exception:
             stats['load_error'] += 1
             continue
-        for cls, key, v, cn in units(env, rel):
+        for cls, key, v, cn in units(env, rel, key_fields):
             add(cls, rel, key, v, f'cls={cn}')
     main_ja = {r['ja'] for r in read_manifest(man)} if man.exists() else set()
     seen = set()
@@ -310,6 +321,17 @@ def selftest():
     assert list(ui_fields(t)) == ['m_Text', 'm_Options.m_Options.0.m_Text', 'm_Options.m_Options.1.m_Text']
     assert list(ui_fields({'m_text': 'あ', 'm_fontAsset': {}})) == ['m_text'] and not list(ui_fields({'m_Text': 'あ'}))
     assert keep_ui('閉じる') and not keep_ui('あああ') and not keep_ui('Close')
+    # key fields: ChapterListNode._chapterName is a lookup key -> never extracted; extra project fields too
+    from types import SimpleNamespace as NS
+    def mb(cls, tt):
+        sc = NS(deref_parse_as_object=lambda: NS(m_ClassName=cls))
+        return NS(assets_file=NS(name='level4'), path_id=1, type=NS(name='MonoBehaviour'), read_typetree=lambda: tt,
+                  parse_monobehaviour_head=lambda: NS(m_Script=sc))
+    env = NS(objects=[mb('ChapterListNode', {'_chapterName': 'バレンタイン', '_chapterNum': '第5章'}),
+                      mb('Label', {'m_Text': '閉じる', 'm_FontData': {}})])
+    assert [k for _, k, _, _ in units(env, 'x')] == ['level4|1|m_Text']
+    assert not list(units(env, 'x', KEY_FIELDS | {('Label', 'm_Text')}))
+    assert len(list(units(env, 'x', set()))) == 3
     assert lit_keep('ガチャを引く') == (True, '') and lit_keep('エラーです')[1] == 'dev_log'
     assert lit_keep('剣')[1] == 'single_kanji' and lit_keep('a,b,c')[1] == 'no_jp'
     print('supp_text selftest OK')
@@ -322,6 +344,7 @@ def main():
     ap.add_argument('--prefix', default='GS', help="sequential id prefix, or 'key' for <CLS>|<file>|<key> ids")
     ap.add_argument('--bundle-dirs', default='model,pc/AssetBundle')
     ap.add_argument('--manifest')
+    ap.add_argument('--key-fields', default='', help='extra Class.field lookup-key fields to skip (added to KEY_FIELDS)')
     ap.add_argument('--force', action='store_true')
     a = ap.parse_args()
     if a.cmd == 'selftest':
@@ -330,7 +353,8 @@ def main():
     if a.cmd == 'extract':
         if (prj / '30_translation/text/supplement/SUPP_MANIFEST.tsv').exists() and not a.force:
             sys.exit('refuse: SUPP_MANIFEST.tsv exists')
-        return extract(prj, a.prefix, a.bundle_dirs.split(','))
+        return extract(prj, a.prefix, a.bundle_dirs.split(','),
+                       KEY_FIELDS | {tuple(s.split('.', 1)) for s in a.key_fields.split(',') if s})
     return noop(prj, a.manifest or prj / '30_translation/text/supplement/SUPP_MANIFEST.tsv')
 
 

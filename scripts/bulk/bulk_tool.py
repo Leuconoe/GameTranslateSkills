@@ -20,6 +20,11 @@
                                  batches/bulk/slots.tsv class<TAB>ja<TAB>ko; numbers; (曜日). Whole-row template first, then
                                  per-sentence templates. 을/를 이/가 은/는 과/와 으로/로 after a name follow its final consonant.
   merge     [--width N]          ONE atomic manifest write + merge_log (refuses on any error or pending row)
+  supp-merge [--tm MANIFEST ...] [--width N]  manifest + text/supplement/SUPP_MANIFEST.tsv -> text/
+                                 translation_manifest_merged.tsv (atomic + merge_log). Supplement row n value: part
+                                 supplement/out/*.tsv `n<TAB>ko` first, else exact-source TM (--tm, e.g. the canonical
+                                 manifest, + the parts). No value / `<KEEP>` / value == source: row untouched. Filled
+                                 rows pass check; refuses on any error or id collision
   import-held                    30_translation/text/HELD_FOR_USER.tsv (id, text): text != source -> translation
   resume-md [--force]            write a <=40-line 30_translation/RESUME.md skeleton
   inject / verify / roundtrip --adapter A --out NEWDIR   overlay write; verify/roundtrip read every row back by key
@@ -58,6 +63,10 @@ GEN = ('PZ_dupfill.tsv', 'PZ_tm.tsv')  # dupfill's own outputs (not donors)
 RUBY = re.compile(r'<ruby=[^<>]*>|</ruby>|\[ruby=[^\[\]]*\]|\[/ruby\]|\{ruby:([^{}|:]*)(?:[|:][^{}]*)?\}|@r([^@]*)@[^@]*@')
 NAME_KIND = re.compile(r'speaker|name|chara', re.I)
 KOPOL = re.compile(r'(요|니다|니까|죠|세요)[!?~.…―\s」』）)]*$')
+# 을(를) 이(가) 은(는) 과(와) (으)로 (either order): a josa fallback, not a bracket pair
+JOSA_ALT = re.compile(r'(?<=을)\(를\)|(?<=를)\(을\)|(?<=이)\(가\)|(?<=가)\(이\)|(?<=은)\(는\)|(?<=는)\(은\)'
+                      r'|(?<=과)\(와\)|(?<=와)\(과\)|\(으\)(?=로)')
+VERBATIM = re.compile(r'\{[^{}]*\}|#[^\s\\<>#、。，！？!?,.「」『』（）()]+')  # {名前キー} / #hashtag spans copied from the source
 
 
 # ---------- project paths / manifest ----------
@@ -74,6 +83,7 @@ class Prj:
         self.out, self.oseg = self.bulk / 'out', self.bulk / 'out_seg'
         self.held_rows, self.hfu = self.bulk / 'HELD_ROWS.tsv', t / 'text' / 'HELD_FOR_USER.tsv'
         self.log, self.resume = t / 'text' / 'batches' / 'merge_log.tsv', t / 'RESUME.md'
+        self.supp = t / 'text' / 'supplement'
 
 
 def w_atomic(path, text, bom=False):
@@ -177,6 +187,13 @@ def check_row(ja, ko, kd='', maxw=0, tok=None):
     if re.search(r'[\t\r\n]', ko):
         return ['control char']
     errs = [f'ruby in Korean {[m.group() for m in RUBY.finditer(ko)][:2]}'] if RUBY.search(ko) else []
+    ko0 = ko
+    # Japanese-bearing {key}/#tag spans present verbatim in both sides are runtime keys, not JP residue; tokens stay
+    keep = {m.group() for m in VERBATIM.finditer(ja) if JP.search(m.group()) and not tok.fullmatch(m.group())} & \
+        {m.group() for m in VERBATIM.finditer(ko)}
+    for s in sorted(keep, key=len, reverse=True):
+        ja, ko = ja.replace(s, ''), ko.replace(s, '')
+    ko = JOSA_ALT.sub('', ko)
     ja = unruby(ja)
     if tok.findall(ja) != tok.findall(unruby(ko)):
         errs.append(f'tokens {tok.findall(ja)} != {tok.findall(ko)}')
@@ -206,10 +223,10 @@ def check_row(ja, ko, kd='', maxw=0, tok=None):
             errs.append(f'bracket balance {o}{c}')
     if JP.search(tok.sub('', ko)):
         errs.append(f'JP residue {JP.findall(tok.sub("", ko))[:3]}')
-    if NAME_KIND.search(kd) and tok.findall(ko):
+    if NAME_KIND.search(kd) and tok.findall(ko) and not tok.findall(ja):  # source-borne tags (player-name param) stay
         errs.append('tag in name row')
     if maxw:
-        w = max(width(tok.sub('', x)) for x in BR.split(ko))
+        w = max(width(tok.sub('', x)) for x in BR.split(ko0))
         if w > maxw:
             errs.append(f'line width {w} > {maxw}')
     return errs
@@ -336,6 +353,58 @@ def cmd_merge(p, rows, a):
     log(p, f'BULK\t{len(res)} rows\tnontrans={nt}\tQA_OK\theld={len(h)}\t{sha}')
     print(f'merged {len(res)} + nontrans {nt} | translated {sum(r["status"] == "translated" for r in rows)}/'
           f'{len(rows)} | held {len(h)} | sha256 {sha}')
+
+
+def lead(ja, ko):
+    """leading full-width spaces after each break follow the source (TM values may carry half-width ones)."""
+    js, ks, seps = BR.split(ja), BR.split(ko), BR.findall(ko)
+    if len(js) != len(ks):
+        return ko
+    out = [ks[0]] + [re.match('　*', a).group() + c.lstrip(' 　') if a[:1] == '　' or c[:1] in ' 　' and c else c
+                     for a, c in zip(js[1:], ks[1:])]
+    return out[0] + ''.join(s + t for s, t in zip(seps, out[1:]))
+
+
+def cmd_supp_merge(p, rows, a):
+    """canonical manifest + supplement/SUPP_MANIFEST.tsv (parts supplement/out/*.tsv, exact-source TM from --tm and the
+    parts) -> translation_manifest_merged.tsv. Rows with no value, `<KEEP>` or value == source stay untouched."""
+    hdr, rows, bom = load(p)
+    sp = Prj(p.root)
+    sp.man = p.supp / 'SUPP_MANIFEST.tsv'
+    _, supp, _ = load(sp)
+    part, errs = {}, []
+    for f in sorted((p.supp / 'out').glob('*.tsv')):
+        for i, l in enumerate(f.read_text(encoding='utf-8-sig').split('\n'), 1):
+            g = l.rstrip('\r').split('\t')
+            if len(g) >= 2 and g[0].isdigit():
+                n = int(g[0])
+                if not 1 <= n <= len(supp) or n in part:
+                    errs.append(f'{f.name}:{i}: n {n} out of range or duplicate')
+                part.setdefault(n, g[1])
+    tm = load_tm(a.tm)
+    for n, ko in part.items():
+        if 1 <= n <= len(supp) and ko != '<KEEP>':
+            tm.setdefault(supp[n - 1]['ja'], ko)
+    src = collections.Counter()
+    for n, r in enumerate(supp, 1):
+        ko = part.get(n) or tm.get(r['ja'])
+        if r['status'] != 'new' or not ko or ko in ('<KEEP>', r['ja']):
+            src['untouched'] += 1
+            continue
+        src['part' if n in part else 'tm'] += 1
+        ko = lead(r['ja'], fix_br(r['ja'], ko))
+        errs += [f'SUPP {n} {r["id"]}: {e}' for e in check_row(r['ja'], ko, kind(r), a.width)]
+        r['target_ko'], r['status'] = ko, 'translated'
+    ids = {r['id'] for r in rows}
+    errs += [f'id collision {r["id"]}' for r in supp if r['id'] in ids]
+    if errs:
+        sys.exit('\n'.join(errs[:80]) + f'\nrefuse supp-merge: errors {len(errs)}')
+    out = p.man.with_name('translation_manifest_merged.tsv')
+    w_atomic(out, '\t'.join(hdr) + '\n' + ''.join('\t'.join(r.get(h, '') for h in hdr) + '\n'
+                                                  for r in rows + supp), bom)
+    sha = hashlib.sha256(out.read_bytes()).hexdigest()
+    log(p, f'SUPP\t{len(supp)} rows\tpart={src["part"]}\ttm={src["tm"]}\tuntouched={src["untouched"]}\tQA_OK\t{sha}')
+    print(f'supp-merge main {len(rows)} + supp {len(supp)} {dict(src)} -> {out} | sha256 {sha}')
 
 
 def cmd_import_held(p, rows, a):
@@ -856,6 +925,42 @@ def selftest():
         w_atomic(p.out / 'P1.tsv', '1\t「리본」 획득!\n3\t내일도 와.\n5\t별의 모래를 3개 입수\n9\t봄의 리본\n')
         assert 'fill failed 2' in said(cmd_tpl, p, rows, ns)  # quoted value missing in donor: rows 2 and 4 fail
         assert p.out.joinpath('PT_tpl.tsv').read_text(encoding='utf-8') == '6\t달의 돌을 5개 입수\n8\t별을 2개 입수\n'
+    # name rows: a source-borne tag (player-name param) stays; a tag added in Korean is still an error
+    assert check_row('<pname>', '<pname>', 'speaker') == [] and check_row('風太郎', '<b>후타로</b>', 'speaker') != []
+    # josa alternations are not brackets; a real stray bracket still is
+    assert check_row('リボンを入手', '리본을(를) 입수') == [] and check_row('彼が来た', '그 사람이(가) 왔다') == []
+    assert check_row('花は', '꽃은(는)') == [] and check_row('花と', '꽃과(와)') == [] and check_row('家へ', '집(으)로') == []
+    assert check_row('リボンを入手', '리본을(가) 입수') != [] and check_row('リボン', '리본(') != []
+    # {key}/#tag copied verbatim from the source pass; altered, invented or token-shaped ones do not
+    assert check_row('{チケット名称}を使う #ごとぱず！', '{チケット名称}을(를) 사용 #ごとぱず!') == []
+    assert check_row('{チケット名称}を使う', '{チケット名}을 사용') != [] and check_row('使う', '{チケット}을 사용') != []
+    assert check_row('{0}と{1}', '{1}와 {0}') != [] and check_row('#ごとぱず', '#ごとぱ') != []
+    assert check_row('あい', '가나다라(를)', maxw=8) != []  # width counts the original Korean
+    with tempfile.TemporaryDirectory() as d:  # supp-merge
+        p = Prj(d)
+        save(p, hdr, [dict(zip(hdr, ('T1', 'f', '1', '元気？', '', '잘 지내?', 'translated', 'dlg')))], True)
+        sp = Prj(d)
+        sp.man = p.supp / 'SUPP_MANIFEST.tsv'
+        src = [('元気？', 'tsv'), ('あ\\n　い', 'tsv'), ('リテラル', 'lit'), ('{名}を使う', 'tsv'), ('LIT2', 'lit'),
+               ('あ\\n　い', 'tsv')]
+        save(sp, hdr + ['class'], [dict(zip(hdr, (f'S{i}', 'f', str(i), ja, '', '', 'new', nt)))
+                                   for i, (ja, nt) in enumerate(src, 1)], False)
+        w_atomic(p.supp / 'out' / 'S1.tsv', '2\t가\\\\n 나\n3\t<KEEP>\n4\t{名}을(를) 사용\n5\tLIT2\n')
+        ns = argparse.Namespace(tm=[str(p.man)], width=0)
+        cmd_supp_merge(p, None, ns)
+        m = p.man.with_name('translation_manifest_merged.tsv')
+        got = [l.split('\t') for l in m.read_text(encoding='utf-8-sig').split('\n')[1:] if l]
+        assert m.read_bytes().startswith(b'\xef\xbb\xbf') and len(got) == 7 and len(got[0]) == len(hdr)
+        assert [(g[5], g[6]) for g in got[1:]] == [('잘 지내?', 'translated'), ('가\\n　나', 'translated'),
+                                                    ('', 'new'), ('{名}을(를) 사용', 'translated'), ('', 'new'),
+                                                    ('가\\n　나', 'translated')]
+        assert 'part=2\ttm=2\tuntouched=2' in p.log.read_text(encoding='utf-8')
+        w_atomic(p.supp / 'out' / 'S2.tsv', '1\t元気\n')  # JP residue -> refuse, merged file unchanged
+        before = m.read_bytes()
+        with contextlib.suppress(SystemExit):
+            cmd_supp_merge(p, None, ns)
+            raise AssertionError('supp-merge accepted JP residue')
+        assert m.read_bytes() == before
     print('selftest ok')
 
 
@@ -899,7 +1004,7 @@ def main():
         return 1 if errs else 0
     fn = {'export': cmd_export, 'next': cmd_next, 'dupfill': cmd_dupfill, 'merge': cmd_merge,
           'import-held': cmd_import_held, 'resume-md': cmd_resume_md, 'seg-export': cmd_seg_export,
-          'seg-build': cmd_seg_build, 'tpl': cmd_tpl}.get(a.cmd)
+          'seg-build': cmd_seg_build, 'tpl': cmd_tpl, 'supp-merge': cmd_supp_merge}.get(a.cmd)
     if not fn:
         sys.exit(f'unknown command {a.cmd}')
     return fn(p, rows, a)

@@ -109,6 +109,9 @@ description: "Text branch translation after text analysis: batch-translate extra
 - **이어하기 하네스**: 일괄 번역은 `glossary-rules.md` "일괄 번역 이어하기 하네스"를 따른다. 준비가 끝나면
   `30_translation/RESUME.md`를 쓰고, 이어하기 실행은 그 파일과 원문 slice만 읽으며, 재개 지점은 `out/` 파트
   파일에서 구하고, 검사·병합·주입 검증은 타이틀 끝에 1회만 한다.
+- **번역 전 고정**: 첫 chunk 전에 원문 근거 화자 말투표, 보류 기준·산출물 형식, 추출 범위 게이트(모든 컨테이너 원문
+  스캔 대 manifest)를 끝낸다. 번역 중 규칙을 바꾸면 소급하지 않고 리뷰 단계에서 한 번에 고친다
+  (`common/harness-performance.md`).
 - **동일 원문 재사용**: 분기·회상 반복이 많은 작품은 이미 번역한 동일 원문 행을 같은 번역으로 채우는
   보조 스크립트(dupfill)를 실행 시작 시 1회 먼저 돌리고 남은 행만 번역한다(같은 시리즈의 끝난 타이틀 TM 선택). 산출 파트 파일 이름도
   `check`가 읽는 패턴(`P*.tsv`, 예: `PD<first>.tsv`)을 따라야 누락되지 않는다.

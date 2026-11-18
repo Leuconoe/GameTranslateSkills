@@ -32,7 +32,7 @@
     "release:package:steam": "node scripts/create-steam-release.mjs",
     "release:validate:steam": "node scripts/validate-steam-release.mjs",
     "skills:validate": "node scripts/validate-skill-bundle.mjs",
-    "test": "node --test tests/harness.test.mjs tests/image-policy-override.test.mjs tests/game-registry.test.mjs tests/nsw-release-exefs.test.mjs tests/nsw-release-zip64.test.mjs tests/codex-imagegen.test.mjs tests/release-notes.test.mjs",
+    "test": "node --test tests/harness.test.mjs tests/image-policy-override.test.mjs tests/game-registry.test.mjs tests/nsw-release-exefs.test.mjs tests/nsw-release-zip64.test.mjs tests/codex-imagegen.test.mjs tests/release-notes.test.mjs tests/python-selftests.test.mjs",
     "test:image-policy": "node --test tests/image-policy-override.test.mjs"
   }
 }

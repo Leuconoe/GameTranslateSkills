@@ -21,11 +21,13 @@ Config `30_translation/image_translation/image_config.json` (all keys optional):
   spec: spec TSV (default IMAGE_TEXT_INVENTORY.tsv, relative to image_translation)
   primary_root: _work/TID of the title whose boxes are primary; set on a sibling title that shares the spec.
 tex_id = <fk>|<assets_file>|<base name>|<w>x<h>[#n]  (base name = sactx prefix and -hash suffix stripped)
-Spec columns: key status mode tex_id box also tex_id_p2 ja ko font fill bands tbox size sx thr align notes
+Spec columns: key status mode tex_id box also tex_id_p2 ja ko font fill bands tbox size sx thr align notes [ref scale]
   status typeset (primary box + `also` copies; secondary uses `tex_id_p2` via LOCATE), typeset_p1 (primary only),
   typeset_p2 (secondary only, explicit box); other statuses are inventory only.
   mode sticker|rect|badge|page (erase + typeset `ko`), logo (`ko` = PNG fitted to the box content alpha bbox),
-  patch (`ko` = PNG of exactly the box size replacing the box, e.g. an imagegen edit of an opaque crop).
+  patch (`ko` = PNG of exactly the box size replacing the box, e.g. an imagegen edit of an opaque crop),
+  recomp (logo baked into opaque art: `ref` = the JP logo RGBA, `ko` = the KO logo on the same canvas; the JP logo is
+  fitted inside the box (`scale` = min,max of the fit-to-box scale, default 0.3,1.0), un-composited and replaced).
 Format, size and m_PlatformBlob are kept: payload is patched in place (deswizzle -> re-encode only blocks holding
 edited pixels -> swizzle). No object, key or file is added.
 """
@@ -347,10 +349,97 @@ def paste_logo(sub, logo):
     return int(al.sum())
 
 
+def resize_rgba(im, w, h):
+    """premultiplied resize (no dark/white fringes at alpha edges); float32 RGBA 0..255"""
+    f = im.astype(np.float32)
+    pm = np.dstack([f[:, :, :3] * f[:, :, 3:4] / 255.0, f[:, :, 3:4]])
+    r = cv2.resize(pm, (max(1, w), max(1, h)), interpolation=cv2.INTER_AREA if w < im.shape[1] else cv2.INTER_CUBIC)
+    r = np.clip(r, 0, 255)
+    al = r[:, :, 3:4]
+    rgb = np.where(al > 0.5, r[:, :, :3] * 255.0 / np.maximum(al, 1e-3), 0)
+    return np.dstack([np.clip(rgb, 0, 255), al])
+
+
+def fit_logo(rgb, J, smin, smax, steps=41):
+    """scale s and top-left (ox, oy) of RGBA logo J (already cropped) composited into rgb (float HxWx3).
+    Masked SSD on J's opaque core: coarse search on a downsampled copy, then refine at full resolution."""
+    H, W = rgb.shape[:2]
+    f = min(1.0, 160.0 / (J.shape[1] * smax))
+    S = cv2.resize(rgb.astype(np.float32), (max(1, round(W * f)), max(1, round(H * f))), interpolation=cv2.INTER_AREA)
+    best = None
+    for s in np.linspace(smin, smax, steps):
+        t = resize_rgba(J, round(J.shape[1] * s * f), round(J.shape[0] * s * f))
+        m = (t[:, :, 3] > 230).astype(np.float32)
+        if m.sum() < 30 or t.shape[0] > S.shape[0] or t.shape[1] > S.shape[1]:
+            continue
+        res = cv2.matchTemplate(S, np.ascontiguousarray(t[:, :, :3]), cv2.TM_SQDIFF, mask=np.dstack([m] * 3))
+        v, _, loc, _ = cv2.minMaxLoc(res)
+        v /= m.sum()
+        if best is None or v < best[0]:
+            best = (v, s, loc[0] / f, loc[1] / f)
+    assert best, 'logo does not fit in the box'
+    _, s0, x0, y0 = best
+    best = None
+    for s in s0 * (1 + np.linspace(-0.03, 0.03, 13)):
+        t = resize_rgba(J, round(J.shape[1] * s), round(J.shape[0] * s))
+        m = t[:, :, 3] > 230
+        th, tw = m.shape
+        for dy in range(-4, 5):
+            for dx in range(-4, 5):
+                ox, oy = round(x0) + dx, round(y0) + dy
+                if ox < 0 or oy < 0 or ox + tw > W or oy + th > H:
+                    continue
+                v = float(((rgb[oy:oy + th, ox:ox + tw][m] - t[:, :, :3][m]) ** 2).mean())
+                if best is None or v < best[0]:
+                    best = (v, s, ox, oy)
+    assert best, 'logo refine failed'
+    return best[1], best[2], best[3], best[0]
+
+
+def recomp(sub, J, K, smin=0.3, smax=1.0):
+    """replace a logo baked into opaque art: fit the JP logo J, un-composite it (background recovered where its alpha
+    is low, inpainted under its opaque core), then composite the KO logo K (same canvas as J) with the same transform."""
+    ys, xs = np.where((J[:, :, 3] > 8) | (K[:, :, 3] > 8))
+    Jc = J[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
+    Kc = K[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
+    H, W = sub.shape[:2]
+    rgb = sub[:, :, :3].astype(np.float32)
+    s0 = min(W / Jc.shape[1], H / Jc.shape[0])
+    s, ox, oy, err = fit_logo(rgb, Jc, smin * s0, smax * s0)
+    tj = resize_rgba(Jc, round(Jc.shape[1] * s), round(Jc.shape[0] * s))
+    tk = resize_rgba(Kc, tj.shape[1], tj.shape[0])
+    th, tw = tj.shape[:2]
+    aj = np.zeros((H, W), np.float32)
+    cj = np.zeros((H, W, 3), np.float32)
+    ak, ck = aj.copy(), cj.copy()
+    y0, x0, y1, x1 = max(0, oy), max(0, ox), min(H, oy + th), min(W, ox + tw)
+    sl = (slice(y0 - oy, y1 - oy), slice(x0 - ox, x1 - ox))
+    aj[y0:y1, x0:x1] = tj[sl][:, :, 3] / 255.0
+    cj[y0:y1, x0:x1] = tj[sl][:, :, :3]
+    ak[y0:y1, x0:x1] = tk[sl][:, :, 3] / 255.0
+    ck[y0:y1, x0:x1] = tk[sl][:, :, :3]
+    a3 = aj[:, :, None]
+    bg = np.clip((rgb - a3 * cj) / np.maximum(1 - a3, 1e-3), 0, 255)
+    unk = cv2.dilate((aj > 0.6).astype(np.uint8), np.ones((3, 3), np.uint8))
+    bg = np.where(aj[:, :, None] > 0.004, bg, rgb)
+    bg = cv2.inpaint(np.clip(bg, 0, 255).astype(np.uint8), unk, 5, cv2.INPAINT_TELEA).astype(np.float32)
+    out = ak[:, :, None] * ck + (1 - ak[:, :, None]) * bg
+    touched = (aj > 0.004) | (ak > 0.004)
+    sub[:, :, :3] = np.where(touched[:, :, None], np.clip(np.rint(out), 0, 255), sub[:, :, :3]).astype(np.uint8)
+    return dict(fill=f's={s:.4f}', bands=f'at={ox},{oy} core_rmse={err ** 0.5:.1f}', cleared=int(unk.sum()))
+
+
 def apply_row(a, r, box, it, fonts):
     x, y, w, h = box
     mode = r['mode']
     sub = a[y:y + h, x:x + w]
+    if mode == 'recomp':
+        J = np.asarray(Image.open(os.path.join(it, r['ref'])).convert('RGBA'))
+        K = np.asarray(Image.open(os.path.join(it, r['ko'])).convert('RGBA'))
+        if K.shape != J.shape:
+            K = np.asarray(Image.fromarray(K).resize((J.shape[1], J.shape[0]), Image.LANCZOS))
+        sc = [float(v) for v in (r.get('scale') or '0.3,1.0').split(',')]
+        return recomp(sub, J, K, *sc)
     if mode in ('logo', 'patch'):
         im = np.asarray(Image.open(os.path.join(it, r['ko'])).convert('RGBA'))
         if mode == 'logo':
@@ -744,6 +833,26 @@ def selftest():
     lg = np.zeros((8, 8, 4), np.uint8)
     lg[2:6, 2:6] = (200, 0, 0, 255)
     assert paste_logo(cv[2:18, 2:18], lg) == 100 and (cv[5:15, 5:15, 0] == 200).all() and cv[:5].sum() == 0
+    # recomp: JP logo baked into a gradient at scale 0.5 -> recovered background outside the core, KO logo pasted
+    gy, gx = np.mgrid[0:60, 0:90]
+    art = np.dstack([gx * 2, gy * 3, 100 + gx, np.full_like(gx, 255)]).astype(np.uint8)
+    J = np.zeros((40, 80, 4), np.uint8)
+    J[8:32, 8:72] = (250, 30, 30, 255)
+    J[8:32, 8:72, 1] = np.mgrid[0:24, 0:64][1] * 3 + np.mgrid[0:24, 0:64][0] * 2  # textured core: unique fit
+    J[4:36, 4:76, 3] = np.maximum(J[4:36, 4:76, 3], 120)
+    J[4:36, 4:76, :3] = np.where(J[4:36, 4:76, 3:4] == 120, 255, J[4:36, 4:76, :3])
+    K = np.zeros_like(J)
+    K[10:30, 10:70] = (20, 200, 20, 255)
+    sc = resize_rgba(J, 40, 20)
+    comp = art.astype(np.float32)
+    a_ = sc[:, :, 3:4] / 255.0
+    comp[20:40, 30:70, :3] = a_ * sc[:, :, :3] + (1 - a_) * comp[20:40, 30:70, :3]
+    comp = np.clip(np.rint(comp), 0, 255).astype(np.uint8)
+    out = comp.copy()
+    info = recomp(out, J, K, 0.3, 1.0)
+    assert abs(float(info['fill'][2:]) - 0.5) < 0.03, info
+    assert (out[:18] == comp[:18]).all() and (out[:, :28] == comp[:, :28]).all()  # untouched outside the logo
+    assert out[30, 50, 1] > 150 and out[30, 50, 0] < 80, out[30, 50]  # KO core pasted
     print('unity_image selftest OK')
     return 0
 

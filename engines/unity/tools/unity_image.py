@@ -301,8 +301,11 @@ def draw_text(canvas, box, text, font_path, fill, bands, size0=None, align='cent
 def fit_bands(a, mask):
     """Ring analysis from the lettering edge inwards: consecutive rings of similar colour form one band.
     Returns (fill, [(colour, width), ...] outermost first). The innermost band is the fill."""
-    # zero border: a mask filling the whole box has no outside pixel, which would give unbounded distances
-    dist = cv2.distanceTransform(np.pad(mask.astype(np.uint8), 1), cv2.DIST_L2, 3)[1:-1, 1:-1]
+    m8 = mask.astype(np.uint8)
+    if m8.all():  # no outside pixel -> unbounded distances: measure from the box edge instead
+        dist = cv2.distanceTransform(np.pad(m8, 1), cv2.DIST_L2, 3)[1:-1, 1:-1]
+    else:
+        dist = cv2.distanceTransform(m8, cv2.DIST_L2, 3)
     rgb = a[:, :, :3].reshape(-1, 3).astype(int)
     dm = dist.reshape(-1)
     op = a[:, :, 3].reshape(-1) > 160

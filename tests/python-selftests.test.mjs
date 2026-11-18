@@ -7,7 +7,8 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const py = process.env.PYTHON || 'python';
 
 // Shared python tools carry an assert-based `selftest` command; run each isolated (-I) from the repo root.
-for (const script of ['scripts/bulk/bulk_tool.py', 'engines/unity/tools/utage_text.py', 'engines/unity/tools/supp_text.py', 'engines/unity/tools/unity_font.py', 'engines/unity/tools/meta_literals.py', 'engines/unity/tools/unity_adapter.py']) {
+for (const script of ['scripts/bulk/bulk_tool.py', 'engines/unity/tools/utage_text.py', 'engines/unity/tools/supp_text.py', 'engines/unity/tools/unity_font.py', 'engines/unity/tools/meta_literals.py', 'engines/unity/tools/unity_adapter.py',
+  'engines/m2-psb/tools/psb.py', 'engines/m2-psb/tools/m2arc.py', 'engines/m2-psb/tools/m2_adapter.py', 'engines/m2-psb/tools/m2img.py']) {
   test(`${script} selftest`, () => {
     const r = spawnSync(py, ['-I', script, 'selftest'], { cwd: root, encoding: 'utf8' });
     assert.equal(r.status, 0, `${r.stdout}\n${r.stderr}`);

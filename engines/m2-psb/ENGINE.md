@@ -71,3 +71,21 @@ SHA-256을 기록하며, 모듈 이름이 겹치면 이름을 바꿔 둔다(예:
 - [ ] 폰트 PSB 직렬화기 selftest(원본 바이트 동일)와 v4 체크섬 확인
 - [ ] 한글 글리프 커버리지·잘림 0·원본 불변·TTF 무손상 검증
 - [ ] 한글 표시·줄바꿈·작은 UI 폰트를 런타임에서 확인
+
+## Tools (공용, `engines/m2-psb/tools/`)
+
+위 "도구" 절의 프로젝트별 복사본 대신 이 공용 도구를 쓴다. 모두 `python -I <file> selftest`(타이틀 데이터 없이)를 가진다.
+키는 `-k KEYFILE` → 환경변수 `M2_KEY_FILE` → `<project>/90_tools/environment/m2_key.txt` 순으로 읽고 출력하지 않는다.
+
+| 파일 | 역할 |
+|---|---|
+| `psb.py` | PSB v2–v4 reader/serializer (scn·config·info PSB 바이트 동일 재생성, v4 체크섬) |
+| `m2arc.py` | MDF(MT19937 XOR + zlib), 아카이브 `list`/`dump`/재구성(키 추가 금지, 오프셋 순서 유지), patch override, `findkey` |
+| `m2_adapter.py` | `scripts/bulk/bulk_tool.py` 어댑터: scn 대사·제목·선택지, scenelist, config `text.psb.m`, Squirrel nut(`NUT_ALLOW.txt` 허용 목록만), `*speaker`/`*disp`. 행별 개행 형태 보존, count 필드 갱신 |
+| `m2font.py` | PSB v4 A8 아틀라스 한글 페이지 추가 + raw TTF(`scripts/fonts/ttf_append.py`) `build`/`verify`/`check` |
+| `m2img.py` | 텍스처 코덱(RGBA8=BGRA/A8L8/L8/A8) `export`/`compose`/`import`(같은 크기 제자리 교체) |
+
+- 무수정 왕복: `bulk_tool.py roundtrip -p <_work/TID> --adapter engines/m2-psb/tools/m2_adapter.py --out <새 폴더>` → `mismatch=0`
+  (2026-11 근거 타이틀 1건: 23,058행, 재작성 아카이브 8개가 원본과 바이트 동일).
+- 매니페스트 키 체계는 `<arch>/<keyname>` + `s<i>/t<j>` 등이다. 타이틀 전용 스크립트로 만든 기존 매니페스트는 체계가 다를 수 있으니 새 타이틀은 이 어댑터로 추출한다.
+- 타이포셋·imagegen·검수 반영 스크립트는 타이틀 전용이라 공용화하지 않는다.

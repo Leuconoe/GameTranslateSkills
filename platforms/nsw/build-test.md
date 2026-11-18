@@ -97,7 +97,7 @@ emucap은 NSW 어댑터를 제공하지 않으므로 이 절차에서는 사용�
 1. `platforms/nsw/runtime-emulators.json`에서 공식 release page prefix와 download host를 읽는다.
 2. 공식 사이트의 배포용 release artifact를 별도로 받아 정확한 version·release page·download
    URL·실행 바이너리 SHA-256을 기록한다. nightly/dev/CI/MCP 번들·전용 빌드는 거부한다.
-3. 현재 final build를 새 격리 mod root에 게시하고 `relative_path, sha256, size_bytes` 전수
+3. 현재 final build를 새 격리 mod root에 실제 파일 복사로 게시하고(하드링크·정션 금지, `common/SAFETY.md` §3) `relative_path, sha256, size_bytes` 전수
    manifest를 만든다. 누락·추가·stale 파일은 0이어야 한다.
 4. 해당 release binary를 MCP 없이 직접 실행한다. 한국 지역/언어, 실제 Title ID, 활성 mod,
    타이틀 화면, 인게임 진입, 한글/폰트, 저장·불러오기, 조건부 이미지와 로그를 확인한다.

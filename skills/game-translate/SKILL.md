@@ -20,7 +20,10 @@ description: "Orchestrate a fail-closed Korean game-localization workflow across
   |---|---|
   | Codex imagegen 편집 1회 | `npm run image:codex` (`scripts/codex-imagegen.mjs`) |
   | Eden MCP 브로커·호출·입력+캡처·패치 게시 | `scripts/eden/eden_tools.py` `broker` / `call` / `step` / `publish` (eden-mcp venv python으로 실행) |
+  | Eden 경로 기록·재생 (재검수 시 탐색 생략) | `eden_tools.py record` / `route` + 타이틀별 `50_test/eden/ROUTE.json` |
   | 릴리스 패키징·검증 | `npm run release:package:nsw` / `release:validate:nsw` |
+  | 릴리스 노트 생성 (7항목·출시일 `*`·exFAT 자동) | `npm run release:notes` (손으로 쓰거나 다른 노트 복사 금지) |
+  | 서브에이전트 브리프 | `briefs/<template>.md` + 변수만 전달 (긴 브리프 새로 작성 금지) |
   | 폰트 아틀라스·이미지·레지스트리 검증 | `npm run font:validate` / `image:validate` / `registry:check` |
 - 공용 도구가 없거나 모자라면 타이틀 전용 우회 스크립트를 만들지 않는다. 공용 도구를 고치고 테스트를 붙여 커밋한 뒤 쓴다.
 - 엔진 포맷 도구(아카이브·폰트·이미지 코덱)는 처음에는 타이틀 `90_tools/`에 둘 수 있다. 두 번째 타이틀에서 쓰게 되면

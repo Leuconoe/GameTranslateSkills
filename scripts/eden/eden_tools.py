@@ -5,6 +5,8 @@
   call    <workdir> <tool> <json|@file> [timeout_s]   enqueue one MCP call, wait, print "<id> <result json (truncated)>"
   step    <workdir> <sid> <capdir> <name> [ops...]    input ops then a screenshot -> <capdir>/<NN>_<name>.png
           ops: A B X Y UP DOWN LEFT RIGHT PLUS MINUS L R ZL ZR | hBTN (hold 1 s) | wNNNN (wait ms) | tX,Y (touch, 1920x1080)
+  route   <workdir> <sid> <capdir> <ROUTE.json> [from_name]   replay a recorded route (list of {name, ops}) via step
+  record  <ROUTE.json> <name> [ops...]          append one step to the route (record while exploring, replay on re-QA)
   publish <tid> <sid> <candidate_dir> <prefix> <tag> <retire_dir>
           candidate_dir holds romfs/ and optionally exefs/. Real copies into <load>/<tid>/.staging_<name>, hash-checked,
           every other entry for this TID moved to <retire_dir>, then an atomic rename. Asserts exactly one entry. No deletes.
@@ -138,5 +140,12 @@ if __name__ == '__main__':
         n, res = call(a[0], a[1], args, float(a[3]) if len(a) > 3 else 300)
         sys.stdout.reconfigure(encoding='utf-8'); print(n, json.dumps(res, ensure_ascii=False)[:6000])
     elif cmd == 'step': step(a[0], a[1], a[2], a[3], a[4:])
+    elif cmd == 'route':  # route <workdir> <sid> <capdir> <ROUTE.json> [from_name]
+        steps_ = json.loads(Path(a[3]).read_text(encoding='utf-8'))
+        start = next((i for i, s in enumerate(steps_) if len(a) > 4 and s['name'] == a[4]), 0)
+        for s in steps_[start:]: step(a[0], a[1], a[2], s['name'], s.get('ops', []))
+    elif cmd == 'record':  # record <ROUTE.json> <name> [ops...]  -> append one step to the route file
+        p = Path(a[0]); r_ = json.loads(p.read_text(encoding='utf-8')) if p.exists() else []
+        r_.append(dict(name=a[1], ops=a[2:])); p.write_text(json.dumps(r_, ensure_ascii=False, indent=1), encoding='utf-8')
     elif cmd == 'publish': publish(*a[:6])
     else: sys.exit(__doc__)

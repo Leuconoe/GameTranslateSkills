@@ -28,10 +28,11 @@
     "runtime:validate": "node scripts/validate-release-runtime.mjs",
     "release:package:nsw": "node scripts/create-nsw-release.mjs",
     "release:validate:nsw": "node scripts/validate-nsw-release.mjs",
+    "release:notes": "node scripts/release-notes.mjs",
     "release:package:steam": "node scripts/create-steam-release.mjs",
     "release:validate:steam": "node scripts/validate-steam-release.mjs",
     "skills:validate": "node scripts/validate-skill-bundle.mjs",
-    "test": "node --test tests/harness.test.mjs tests/image-policy-override.test.mjs tests/game-registry.test.mjs tests/nsw-release-exefs.test.mjs tests/nsw-release-zip64.test.mjs tests/codex-imagegen.test.mjs",
+    "test": "node --test tests/harness.test.mjs tests/image-policy-override.test.mjs tests/game-registry.test.mjs tests/nsw-release-exefs.test.mjs tests/nsw-release-zip64.test.mjs tests/codex-imagegen.test.mjs tests/release-notes.test.mjs",
     "test:image-policy": "node --test tests/image-policy-override.test.mjs"
   }
 }

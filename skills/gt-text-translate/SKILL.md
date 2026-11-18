@@ -132,10 +132,10 @@ description: "Text branch translation after text analysis: batch-translate extra
      `HELD_ROWS.tsv` 경로와 행 수를 기록한다.
    - `GAME_REGISTRY.tsv` 진행 문구: `Text translated …; HELD <n> rows (user)`처럼 보류 수를 남긴다.
    - 보류 행이 원문 그대로라도 빌드·폰트(원문 글리프 포함)·검수 단계는 계속 진행한다.
-2. **사용자 산출물 `30_translation/text/HELD_FOR_USER.tsv`를 항상 만든다**(UTF-8 BOM, TSV). 내부 목록에만
+2. **보류 행이 1개라도 있으면 사용자 산출물 `30_translation/text/HELD_FOR_USER.tsv`를 만든다**(UTF-8 BOM, TSV). 내부 목록에만
    두지 않는다. 열은 정확히 2개: `id	text`. `text`에는 원문을 넣고, 사용자는 그 칸을 번역문으로 덮어쓴다
    (별도 번역 열은 없다).
-   보류 행이 0개여도 헤더만 있는 파일을 써서 "없음"과 "안 만듦"이 구분되게 한다. 번역 실행 중 보류가 생길 때마다
+   보류 행이 0개면 파일을 만들지 않으며, 파일이 없으면 "보류 0행"으로 본다. 번역 실행 중 보류가 생길 때마다
    이 파일에 이어 쓴다. `HANDOFF.md`와 `RESUME.md` 마지막 단계에 이 파일 경로와 행 수를 적는다.
    사용자는 텍스트 번역이 끝난 뒤 채운 파일을 돌려주며, 파이프라인은 기다리지 않고 병합·다음 단계를 진행한다
    (돌려받으면 그때 아래 3번으로 병합한다).
@@ -156,7 +156,7 @@ description: "Text branch translation after text analysis: batch-translate extra
 | `30_translation/text/glossary.tsv` | 누적 용어집 |
 | `30_translation/STYLE.md` | 말투·문체 규칙 (캐릭터별) |
 | `30_translation/WORKLOG.md` | 배치 작업 로그 |
-| `30_translation/text/HELD_FOR_USER.tsv` | 보류 행 사용자 산출물 `id	text` (사용자가 text를 번역문으로 덮어씀; UTF-8 BOM, 0행이어도 헤더만) |
+| `30_translation/text/HELD_FOR_USER.tsv` | 보류 행 사용자 산출물 `id	text` (사용자가 text를 번역문으로 덮어씀; UTF-8 BOM, 보류 0행이면 만들지 않음) |
 
 ## 완료 기준
 

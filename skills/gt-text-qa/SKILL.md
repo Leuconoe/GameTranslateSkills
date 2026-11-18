@@ -125,7 +125,7 @@ description: "Text branch technical QA after Korean translation: validate manife
 ## 완료 기준
 
 - [ ] 모든 번역 대상의 ID·구조·제어 토큰·왕복 검증 통과
-- [ ] `30_translation/text/HELD_FOR_USER.tsv`가 있고(0행이면 헤더만), 사용자가 덮어써 병합된 행도 같은 구조 검사를 통과함
+- [ ] 보류 행이 있으면 `30_translation/text/HELD_FOR_USER.tsv`가 있고(파일이 없으면 보류 0행으로 보고 실패로 치지 않음), 사용자가 덮어써 병합된 행도 같은 구조 검사를 통과함
 - [ ] 전체 가시 코드포인트가 실제 consumer 폰트에 대응함
 - [ ] 기존 glyph 보존, 새 glyph 공통 scale/baseline, rect·padding·UV·metrics 검증 통과
 - [ ] 아틀라스 재추출 왕복과 렌더 probe에서 tofu·위치·잘림·겹침 오류 0건

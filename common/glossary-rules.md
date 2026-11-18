@@ -196,7 +196,7 @@
 1. **준비는 타이틀당 1회**: 분석·도구 준비가 끝나면 `30_translation/RESUME.md`(40줄 이하)를 쓴다. 담을 것:
    화자 말투 표, 반드시 지킬 용어 약 30개, 원문 export 경로, `out/` 파트 파일에서 재개 지점을 구하는 명령 1개,
    마지막 dupfill·check·merge·inject·verify 명령, 보류 행 산출물 `30_translation/text/HELD_FOR_USER.tsv` 생성
-   (`gt-text-translate` "번역 보류(HELD) 행과 사용자 인계"; 0행이어도 헤더만 쓴다).
+   (`gt-text-translate` "번역 보류(HELD) 행과 사용자 인계"; 보류 0행이면 만들지 않는다).
 2. **이어하기 실행은 `RESUME.md`와 원문 slice만 읽는다.** 스킬·PLATFORM·ANALYSIS·전체 WORK_LOG·전체 용어집을
    다시 읽지 않고, 재분석·추출 재검증도 하지 않는다.
 3. **재개 지점은 로그가 아니라 `out/` 파트 파일에서 구한다.** 컨텍스트가 부족해지면 마지막으로 쓴 파트가

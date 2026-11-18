@@ -5,7 +5,8 @@
     dump <fk> <regex>          decoded PNGs of matching textures -> 90_tools/work/image_<round>/dump/
     comps <tex_id> [min_h]     annotated alpha-component map of one texture -> 90_tools/work/image_<round>/comps/
     locate                     secondary title: template-match every primary box into this title -> LOCATE_<TID>.tsv
-    render                     typeset all status=typeset* rows -> image_translation/typeset_<round>/<TID>/ (+compare/)
+    render [--skip-missing]    typeset all status=typeset* rows -> image_translation/typeset_<round>/<TID>/ (+compare/);
+                               --skip-missing leaves rows whose ko/ref PNG is not there yet pending (render_log.json)
     build                      changed-block splice -> <out|40_build/image_<round>>/romfs/<rel> (+IMAGE_BUILD_MANIFEST.tsv);
                                source container = <base>/romfs/<rel> when present (text/font overlay) else romfs_original;
                                a --base without romfs/ is refused; an --out ending in romfs is not nested again
@@ -18,7 +19,8 @@
 Config `30_translation/image_translation/image_config.json` (all keys optional):
   files: {alias: romfs-relative path}  (a tex_id file key that is not an alias is used as the path itself)
   fonts: {key: ttf path}  (relative paths resolve against $GT_FONTS, default E:\\NSW\\_tools\\_fonts)
-  spec: spec TSV (default IMAGE_TEXT_INVENTORY.tsv, relative to image_translation)
+  spec: spec TSV or list of TSVs read in order (default IMAGE_TEXT_INVENTORY.tsv, relative to image_translation);
+        `--spec a.tsv,b.tsv` overrides it, e.g. a later round = the earlier spec + its own rows in one overlay
   primary_root: _work/TID of the title whose boxes are primary; set on a sibling title that shares the spec.
 tex_id = <fk>|<assets_file>|<base name>|<w>x<h>[#n]  (base name = sactx prefix and -hash suffix stripped)
 Spec columns: key status mode tex_id box also tex_id_p2 ja ko font fill bands tbox size sx thr align notes [ref scale]
@@ -51,7 +53,12 @@ BLOCK_BYTES = 16  # UnityPy TEXTURE_FORMAT_BLOCK_SIZE_MAP blocks are 16 bytes (A
 C = {}  # run context: P TID IT WORK OUT TS ART SRC SPEC FILES FONTS primary prim_root round
 
 
-def setup(p, rnd='r1'):
+def spec_list(s):
+    """spec setting -> list of TSV paths: a list, or one string with ',' separators"""
+    return [t for t in (s if isinstance(s, list) else s.split(',')) if t]
+
+
+def setup(p, rnd='r1', spec=None):
     p = os.path.abspath(p)
     it = os.path.join(p, '30_translation', 'image_translation')
     cfgp = os.path.join(it, 'image_config.json')
@@ -60,7 +67,8 @@ def setup(p, rnd='r1'):
     C.update(P=p, TID=os.path.basename(p), IT=it, round=rnd, SRC=os.path.join(p, '10_extract', 'romfs_original'),
              WORK=os.path.join(p, '90_tools', 'work', 'image_' + rnd), OUT=os.path.join(p, '40_build', 'image_' + rnd),
              TS=os.path.join(it, 'typeset_' + rnd), ART=os.path.join(p, '50_test', 'artifacts', 'image_' + rnd),
-             SPEC=os.path.join(it, cfg.get('spec', 'IMAGE_TEXT_INVENTORY.tsv')), FILES=cfg.get('files', {}),
+             SPEC=[os.path.join(it, s) for s in spec_list(spec or cfg.get('spec', 'IMAGE_TEXT_INVENTORY.tsv'))],
+             FILES=cfg.get('files', {}),
              FONTS={k: os.path.join(fd, v) for k, v in cfg.get('fonts', {}).items()},
              prim_root=cfg.get('primary_root'), primary=not cfg.get('primary_root'))
 
@@ -111,13 +119,18 @@ def decode(d):
 
 
 # ---------------- spec ----------------
-def specs(path=None):
-    rows = []
-    with open(path or C['SPEC'], encoding='utf-8') as h:
-        hdr = h.readline().rstrip('\n').split('\t')
-        for ln in h:
-            if ln.strip() and not ln.startswith('#'):
-                rows.append(dict(zip(hdr, ln.rstrip('\n').split('\t'))))
+def specs(paths=None):
+    """rows of every spec TSV in order (each file has its own header; a duplicate key is refused)"""
+    rows, seen = [], set()
+    for path in paths or C['SPEC']:
+        with open(path, encoding='utf-8') as h:
+            hdr = h.readline().rstrip('\n').split('\t')
+            for ln in h:
+                if ln.strip() and not ln.startswith('#'):
+                    r = dict(zip(hdr, ln.rstrip('\n').split('\t')))
+                    assert r['key'] not in seen, ('duplicate spec key', r['key'], path)
+                    seen.add(r['key'])
+                    rows.append(r)
     return rows
 
 
@@ -494,12 +507,24 @@ def apply_row(a, r, box, it, fonts):
     return dict(fill='#%02x%02x%02x' % fill, bands=fmt_bands(bands), cleared=int(mask.sum()))
 
 
-def render():
+def missing_assets(r, it):
+    """PNG inputs (`ko`/`ref` of logo/patch/recomp rows) of a spec row that do not exist yet"""
+    if r.get('mode') not in ('logo', 'patch', 'recomp'):
+        return []
+    return [r[k] for k in ('ko', 'ref') if r.get(k) and not os.path.exists(os.path.join(it, r[k]))]
+
+
+def render(skip_missing=False):
     loc = loc_map()
     per = collections.defaultdict(list)
-    skipped = []
+    skipped, pending = [], []
     for r in specs():
         if not r['status'].startswith('typeset'):
+            continue
+        miss = missing_assets(r, C['IT'])
+        if miss:
+            assert skip_missing, ('missing input PNG (use --skip-missing to leave the row pending)', r['key'], miss)
+            pending.append(r['key'])
             continue
         for t, b in row_targets(r, loc, C['primary']):
             if b:
@@ -531,8 +556,9 @@ def render():
             cv.alpha_composite(B.resize((B.width * S, B.height * S)), (A.width * S + 8, 0))
             cv.convert('RGB').save(os.path.join(od, 'compare', safe(r['key'] + '@' + tid) + '.png'))
     with open(os.path.join(od, 'render_log.json'), 'w', encoding='utf-8') as h:
-        json.dump(dict(tid=C['TID'], rows=log, skipped=skipped), h, ensure_ascii=False, indent=1)
-    print('render', C['TID'], 'textures', len(per), 'rows', len(log), 'skipped', len(skipped), skipped[:20])
+        json.dump(dict(tid=C['TID'], rows=log, skipped=skipped, pending=pending), h, ensure_ascii=False, indent=1)
+    print('render', C['TID'], 'textures', len(per), 'rows', len(log), 'skipped', len(skipped), skipped[:20],
+          'pending', len(pending), pending[:20])
 
 
 # ---------------- codec / splice ----------------
@@ -794,6 +820,25 @@ def selftest():
     assert base_name('adv_event_logo_01') == 'adv_event_logo_01'
     b = [((10, 20, 30), 2), ((255, 255, 255), 3)]
     assert parse_bands(fmt_bands(b)) == b and parse_bands('none') == [] and fmt_bands([]) == 'none'
+    # several spec files: own headers, read in order, duplicate keys refused
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        p1, p2 = os.path.join(td, 'a.tsv'), os.path.join(td, 'b.tsv')
+        open(p1, 'w', encoding='utf-8').write('key\tstatus\tko\nk1\ttypeset\t가\n#c\n')
+        open(p2, 'w', encoding='utf-8').write('key\tko\tstatus\nk2\t나\ttypeset_p1\n')
+        assert spec_list('a.tsv,b.tsv') == ['a.tsv', 'b.tsv'] and spec_list(['a.tsv']) == ['a.tsv']
+        rs = specs([p1, p2])
+        assert [(r['key'], r['ko'], r['status']) for r in rs] == [('k1', '가', 'typeset'), ('k2', '나', 'typeset_p1')]
+        try:
+            specs([p1, p1])
+            raise AssertionError('duplicate key accepted')
+        except AssertionError as e:
+            assert e.args[0][0] == 'duplicate spec key', e
+        # pending inputs: only logo/patch/recomp rows, ko and ref checked relative to image_translation
+        open(os.path.join(td, 'k.png'), 'wb').close()
+        assert missing_assets(dict(mode='patch', ko='k.png'), td) == []
+        assert missing_assets(dict(mode='recomp', ko='k.png', ref='j.png'), td) == ['j.png']
+        assert missing_assets(dict(mode='badge', ko='텍스트'), td) == []
     # row targets: primary / secondary / title-only rows
     r = dict(key='k', status='typeset', tex_id='u3d|a|T|8x8', box='1,2,3,4', also='u3d|a|T|8x8#2', tex_id_p2='cr|b|T|8x8')
     loc = {'k@u3d|a|T|8x8#2': (5, 6, 3, 4)}
@@ -866,6 +911,9 @@ def main(argv=None):
     ap.add_argument('--round', default='r1')
     ap.add_argument('--base')
     ap.add_argument('--out')
+    ap.add_argument('--spec', help='spec TSV(s) relative to image_translation, comma-separated (overrides the config)')
+    ap.add_argument('--skip-missing', action='store_true',
+                    help='render: leave rows whose ko/ref PNG does not exist yet pending (listed in render_log.json)')
     a = ap.parse_args(argv)
     if a.cmd == 'selftest':
         return selftest()
@@ -876,7 +924,7 @@ def main(argv=None):
     base_root(a.base)  # an input build without romfs/ would silently fall back to romfs_original
     a.out = str(overlay_root(a.out).parent) if a.out else None  # build root; files go to <out>/romfs/<rel>
     assert UnityPy is not None, 'UnityPy not importable (set GT_PYLIB)'
-    setup(a.project, a.round)
+    setup(a.project, a.round, a.spec)
     if a.cmd == 'list':
         env, _ = load(a.args[0])
         for k, (o, d) in sorted(textures(env, a.args[0]).items()):
@@ -889,7 +937,7 @@ def main(argv=None):
     elif a.cmd == 'locate':
         locate()
     elif a.cmd == 'render':
-        render()
+        render(a.skip_missing)
     elif a.cmd == 'build':
         build(a.base, a.out)
     elif a.cmd == 'verify':

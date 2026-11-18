@@ -12,13 +12,14 @@
 
 | 영역 | 내용 |
 |---|---|
+| **공용 도구 (최상위)** | 반복 작업(imagegen·Eden·릴리스·일괄 번역·엔진 포맷·폰트)은 이 저장소의 공용 도구로만 한다. 타이틀마다 새로 만들거나 다른 타이틀에서 복사하지 않고, 모자라면 공용 도구를 고쳐 테스트와 함께 커밋한다 (`skills/game-translate` 최상위 규칙) |
 | 품질 | 1차 번역 → 구조 검증 → **im-not-ai(`humanize-korean`) 윤문(기본)** → 원문부터 다시 읽는 독립 2차 검수. 의미·말투·고유명사·태그·개행은 보존 |
-| 속도 | 배치당 도구 호출 3회(읽기 1·쓰기 1·검증/병합 스크립트 1), 용어집·STYLE 1회 로드, 사용자가 명시하면 전체 TXT 일괄·병렬 처리 |
+| 속도·토큰 | 번역 전 말투표·보류 기준·추출 범위를 고정하고, 이어하기는 `RESUME.md`와 원문 slice만 읽음. 세그먼트 TM, 시리즈 공유 TM, 파일 브리프(`briefs/`), 짧은 보고, 무거운 단계 동시 2개 이하 (`common/harness-performance.md`) |
 | 반복 방지 | 하네스가 같은 작업 재실행·같은 내용 사본·active 중복을 막음(`--reuse-check`). 빌드는 한 벌, 시험은 canonical ZIP을 hash로 참조 |
 | 작업 경계 | 모든 산출물은 `<타이틀 루트>/_work/<프로젝트 ID>/` 안. 워크스페이스 루트 파일·비슷한 이름의 최상위 폴더·공용 임시 폴더 금지, 타이틀 폴더는 Title ID로 찾아 재사용 |
 | 상태 폴더 | `_titles/_waitng`(대기) → **`_working`(작업 중, 시작·재개 시 이동)** → `_complete`(릴리스 완료) / `_hold`(보류). Steam/PC 설치 폴더는 옮기지 않음 |
 | 안전 | 확인할 수 없으면 `WARN`/`BLOCKED`로 멈춤(fail-closed). 정리는 계획 → 승인 → 복구 가능한 휴지통 |
-| 릴리스 | NSW 기본 `<Title ID>.zip`. 사용자가 요청할 때만 `<게임 제목> - <Title ID>.zip` |
+| 릴리스 | `<타이틀 루트>/_release/<한국어 제목> - <Title ID>.zip` + 7항목 `RELEASE_NOTES.md`(`npm run release:notes`). 4GiB 이상 파일은 Zip64와 exFAT 안내가 자동으로 붙음 |
 
 ## 브랜치 기반 워크플로우
 
@@ -149,6 +150,23 @@ npm run release:validate:nsw -- --project-root '<타이틀 루트>\_work\<TITLE_
 검증기가 경고와 함께 읽기만 하고, 다음 릴리스 때 `_release\`로 옮긴다. `_release\screenshots\`에는 `50_test` 증거에서
 복사한 대표 캡처 4~6장(`NN_<what>.png`: 타이틀, 첫 한국어 대사, 메뉴/옵션, 저장·불러오기, 한국어화 로고)을 둔다.
 
+### 공용 도구 요약
+
+```powershell
+# 일괄 번역 (엔진 어댑터: engines/<engine>/tools/)
+python -I scripts/bulk/bulk_tool.py <export|next|dupfill|check|seg-export|seg-build|merge|import-held|resume-md> ...
+# 릴리스 노트 (7항목, 출시일 *, exFAT 자동)
+npm run release:notes -- --out '<타이틀 루트>\_release\RELEASE_NOTES.md' --title '<한국어 제목>' --game-date YYYY-MM-DD --patch-version v0.0.1 --support-version '<버전>' --lang-method '<방법>' --zip '<ZIP>'
+# Codex imagegen 편집 1회 (대괄호 없는 임시 폴더, 영역 합성, 출처 기록)
+npm run image:codex -- --src '<crop.png>' --out '<out.png>' --ja '<원문>' --ko '<한국어>' --receipt '<IMAGEGEN_RECEIPT.jsonl>'
+# Eden MCP (eden-mcp venv python): broker / call / session / step / record / route / publish
+python scripts/eden/eden_tools.py publish <TID> <session> <후보 폴더> <PREFIX> <tag> <retire 폴더>
+# 타이틀 이동·현황·RomFS 검증
+npm run title:move -- ... ; npm run project:status -- ... ; npm run nsw:romfs-verify -- ...
+```
+
+서브에이전트는 `briefs/<템플릿>.md` + 변수만 넘겨 띄운다(긴 브리프를 새로 쓰지 않는다).
+
 ### Steam/PC 명령 요약
 
 Steam/PC 프로젝트 도구의 시작점은 다음과 같다.
@@ -180,7 +198,9 @@ npm run release:package:steam -- --project-root '<게임 설치 폴더>\_work\st
 package.json  크로스플랫폼 npm 명령
 skills/       Codex/Claude Code 공용 스킬 (파이프라인·정리·청결화 — 플랫폼 무관)
 platforms/    플랫폼 어댑터: nsw·steam/pc(완전) / sfc·ps1·ps2(골격) / _template(양식)
-engines/      엔진 모듈: unity / vn-common / lucasystem / giga-adv / artemis / m2-psb / shin (플랫폼과 직교)
+engines/      엔진 모듈: unity / vn-common / lucasystem / giga-adv / artemis / m2-psb / shin (플랫폼과 직교).
+              공용 엔진 도구는 engines/<engine>/tools/ (unity, m2-psb)
+briefs/       서브에이전트 브리프 템플릿 (번역 이어하기·폰트·리뷰·이미지·Eden QA·릴리스)
 common/       SAFETY.md(안전 규칙) · preflight-checks.md(사전 경고 게이트) ·
               qa-session-rules.md(MCP 단일 세션 규칙) · release-runtime-contract.md(공식 배포 릴리즈 최종 QA) ·
               emucap-integration.md(선택적 smoke QA) · glossary-rules.md · project-structure.md · pipeline-contract.* ·
@@ -189,6 +209,7 @@ common/       SAFETY.md(안전 규칙) · preflight-checks.md(사전 경고 게�
               language-preflight.md(언어·지역판·기존 이력 사전 점검)
 setup/        도구 자동 설치 (tools.manifest.json + install-tools.mjs)
 scripts/      프로젝트 생성·검증·스킬/폰트·imagegen 이미지 보존·공식 릴리즈 runtime 검증·Handoff 기반 정리 계획·아카이브·재검토·승인된 휴지통 이동·QA 세션 guard Node CLI
+              bulk/(공용 일괄 번역) · eden/(Eden MCP 도구) · fonts/(TTF 한글 추가·글리프 렌더) · codex-imagegen.mjs · release-notes.mjs
 docs/         PDCA 문서 (plan / design / analysis / report)
 ```
 

@@ -34,3 +34,6 @@ docs/03-analysis/dryrun-*.md
 # OS
 Thumbs.db
 Desktop.ini
+
+# Python bytecode
+__pycache__/

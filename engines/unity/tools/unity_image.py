@@ -301,7 +301,8 @@ def draw_text(canvas, box, text, font_path, fill, bands, size0=None, align='cent
 def fit_bands(a, mask):
     """Ring analysis from the lettering edge inwards: consecutive rings of similar colour form one band.
     Returns (fill, [(colour, width), ...] outermost first). The innermost band is the fill."""
-    dist = cv2.distanceTransform(mask.astype(np.uint8), cv2.DIST_L2, 3)
+    # zero border: a mask filling the whole box has no outside pixel, which would give unbounded distances
+    dist = cv2.distanceTransform(np.pad(mask.astype(np.uint8), 1), cv2.DIST_L2, 3)[1:-1, 1:-1]
     rgb = a[:, :, :3].reshape(-1, 3).astype(int)
     dm = dist.reshape(-1)
     op = a[:, :, 3].reshape(-1) > 160
@@ -852,6 +853,9 @@ def selftest():
     a[7:33, 7:53] = (250, 250, 250, 255)
     fill, bands = fit_bands(a, a[:, :, 3] > 0)
     assert fill == (250, 250, 250) and len(bands) == 1 and bands[0][0] == (20, 20, 20), (fill, bands)
+    # a mask covering the whole box (badge/rect on a full plate) terminates; the box edge counts as the outside
+    fill, bands = fit_bands(a[5:35, 5:55], np.ones((30, 50), bool))
+    assert fill == (250, 250, 250) and bands and bands[0][0] == (20, 20, 20), (fill, bands)
     # splice on RGBA32 (4x1 px = 16-byte blocks): only blocks with edited pixels change, rest byte-exact
     w, h = 16, 8
     orig = np.random.RandomState(1).randint(0, 255, (h, w, 4)).astype(np.uint8)

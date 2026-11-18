@@ -15,7 +15,10 @@
   seg-export [--long N] [--force] / seg-build   segment TM for long templated rows (glossary-rules rule 10)
   tpl       [--short N]          template TM for short rows differing only in slots (rule 12): out/PT_tpl.tsv fills +
                                  exports/source/tpl_source.txt (one n<TAB>source per untranslated group; answer in a part).
-                                 Slots: numbers, (曜日), glossary.tsv category=character, batches/bulk/slots.tsv class<TAB>ja<TAB>ko
+                                 Slots: 「…」『…』【…】 contents with a known Korean (names + translated short rows);
+                                 names = glossary.tsv category=character + batches/bulk/names.tsv ja<TAB>ko (longest match);
+                                 batches/bulk/slots.tsv class<TAB>ja<TAB>ko; numbers; (曜日). Whole-row template first, then
+                                 per-sentence templates. 을/를 이/가 은/는 과/와 으로/로 after a name follow its final consonant.
   merge     [--width N]          ONE atomic manifest write + merge_log (refuses on any error or pending row)
   import-held                    30_translation/text/HELD_FOR_USER.tsv (id, text): text != source -> translation
   resume-md [--force]            write a <=40-line 30_translation/RESUME.md skeleton
@@ -67,7 +70,7 @@ class Prj:
         self.segsrc = t / 'exports' / 'source' / 'seg_source.txt'
         self.tplsrc, self.gloss = t / 'exports' / 'source' / 'tpl_source.txt', t / 'text' / 'glossary.tsv'
         self.bulk = t / 'text' / 'batches' / 'bulk'
-        self.slots = self.bulk / 'slots.tsv'
+        self.slots, self.names = self.bulk / 'slots.tsv', self.bulk / 'names.tsv'
         self.out, self.oseg = self.bulk / 'out', self.bulk / 'out_seg'
         self.held_rows, self.hfu = self.bulk / 'HELD_ROWS.tsv', t / 'text' / 'HELD_FOR_USER.tsv'
         self.log, self.resume = t / 'text' / 'batches' / 'merge_log.tsv', t / 'RESUME.md'
@@ -463,6 +466,18 @@ def assemble(ja, tm, miss):
     return ''.join(x for pair in zip(out, p[1::2] + ['']) for x in pair)
 
 
+def sent_pairs(ja, ko):
+    """aligned (ja sentence, ko sentence) pairs of a translated row (breaks/tags and sentence counts must agree)."""
+    jp, kp = SEP.split(ja), SEP.split(fix_br(ja, ko))
+    if jp[1::2] != kp[1::2]:
+        return
+    for x, y in zip(jp[0::2], kp[0::2]):
+        sa = split_sent(x)
+        sb = [y.strip(' ')] if len(sa) == 1 else [z for z in re.split(r'(?<=[.!?]) +', y) if z]
+        if len(sa) == len(sb):
+            yield from ((s, k) for s, k in zip(sa, sb) if JP.search(s) and not JP.search(k))
+
+
 def seg_errs(ja, ko):
     e = [] if SEP.findall(ja) == SEP.findall(ko) else ['breaks/tags']
     if TOKEN.findall(ja) != TOKEN.findall(ko):
@@ -491,17 +506,10 @@ def cmd_seg_export(p, rows, a):
         ja = src.get(n)
         if not ja or ko == '<KEEP>':
             continue
-        jp, kp = SEP.split(ja), SEP.split(fix_br(ja, ko))
-        if jp[1::2] != kp[1::2]:
-            continue
-        for x, y in zip(jp[0::2], kp[0::2]):
-            sa = split_sent(x)
-            sb = [y.strip(' ')] if len(sa) == 1 else [z for z in re.split(r'(?<=[.!?]) +', y) if z]
-            if len(sa) == len(sb):
-                for s, k in zip(sa, sb):
-                    if JP.search(s) and s not in tm.exact and not JP.search(k):
-                        tm.add(s, k)
-                        seeded += 1
+        for s, k in sent_pairs(ja, ko):
+            if s not in tm.exact:
+                tm.add(s, k)
+                seeded += 1
     seen, todo, tot = set(), [], collections.Counter()
     for n, ja in target:
         for t in SEP.split(ja)[0::2]:
@@ -545,19 +553,33 @@ def cmd_seg_build(p, rows, a):
 
 
 # ---------- template TM (glossary-rules rule 12) ----------
-# slot class = (ja regex, ko regex, ja->ko map; None = digits kept verbatim, full-width -> ASCII)
+# slot class = (ja regex, ko regex, ja->ko map or None = digits kept (full-width -> ASCII), ko values or None = any).
+# A regex with groups marks its matched group as the slot (quote contents). Classes apply in order, each on the text
+# the earlier ones left (placeholders are private-use chars, never digits).
 SLOT_NUM = (re.compile(r'(?<![#0-9A-Za-z{])[0-9０-９]+(?![0-9a-fA-F]*[>}])'),
-            re.compile(r'(?<![#0-9A-Za-z{])[0-9]+(?![0-9a-fA-F]*[>}])'), None)
+            re.compile(r'(?<![#0-9A-Za-z{])[0-9]+(?![0-9a-fA-F]*[>}])'), None, None)
 SLOT_WDAY = (re.compile(r'(?<=[(（])[月火水木金土日](?=[)）])'), re.compile(r'(?<=[(（])[월화수목금토일](?=[)）])'),
-             dict(zip('月火水木金土日', '월화수목금토일')))
+             dict(zip('月火水木金土日', '월화수목금토일')), None)
+QJA = re.compile(r'「([^「」]+)」|『([^『』]+)』|【([^【】]+)】')
+QKO = re.compile(r'「([^「」]+)」|『([^『』]+)』|【([^【】]+)】|“([^“”]+)”|‘([^‘’]+)’|"([^"]+)"')
+JOSA = re.compile(r'([-])(?:(으로|을|를|이|가|은|는|과|와|로)(?![가-힣]))?')
+JOSA_PAIR = {j: p for p in ('을를', '이가', '은는', '과와') for j in p} | {'으로': '으로', '로': '으로'}
 
 
 def alt(xs):
     return re.compile('|'.join(map(re.escape, sorted(xs, key=len, reverse=True))))
 
 
-def slot_classes(p):
-    """numbers, weekdays, glossary characters (class name) and slots.tsv rows `class<TAB>ja<TAB>ko`."""
+def read_tsv2(path, n):
+    if not path.exists():
+        return []
+    g = (l.rstrip('\r').split('\t') for l in path.read_text(encoding='utf-8-sig').split('\n'))
+    return [x for x in g if len(x) == n and all(x)]
+
+
+def slot_classes(p, learned=()):
+    """quoted names, names (glossary characters + names.tsv, longest match), slots.tsv classes, numbers, weekdays.
+    A 「…」 slot needs its whole content in names or `learned` (translated short rows); otherwise it stays literal."""
     cls = collections.defaultdict(dict)
     if p.gloss.exists():
         lines = p.gloss.read_text(encoding='utf-8-sig').split('\n')
@@ -566,63 +588,120 @@ def slot_classes(p):
             r = dict(zip(hdr, l.rstrip('\r').split('\t')))
             if r.get('category') == 'character' and r.get('source') and r.get('ko'):
                 cls['name'][r['source']] = r['ko']
-    if p.slots.exists():
-        for l in p.slots.read_text(encoding='utf-8-sig').split('\n'):
-            g = l.rstrip('\r').split('\t')
-            if len(g) == 3 and all(g) and g[0] != 'class':
-                cls[g[0]][g[1]] = g[2]
-    return [SLOT_NUM, SLOT_WDAY] + [(alt(m), alt(set(m.values())), m) for m in cls.values()]
+    cls['name'].update(read_tsv2(p.names, 2))
+    for c, ja, ko in read_tsv2(p.slots, 3):
+        if c != 'class':
+            cls[c][ja] = ko
+    q = dict(learned) | cls['name']
+    return ([(QJA, QKO, q, set(q.values()))] + [(alt(m), alt(set(m.values())), m, None) for m in cls.values() if m]
+            + [SLOT_NUM, SLOT_WDAY])
 
 
 def tpl_key(s, slots):
     vals = []
-    for i, (jr, _, mp) in enumerate(slots):
-        vals.append([x.translate(FW) if mp is None else mp[x] for x in jr.findall(s)])
-        s = jr.sub(f'\x00{i}', s)
+    for i, (jr, _, mp, _) in enumerate(slots):
+        v, out, last = [], [], 0
+        for m in jr.finditer(s):
+            a, b = m.span(m.lastindex or 0)
+            if mp is None or s[a:b] in mp:
+                v.append(s[a:b].translate(FW) if mp is None else mp[s[a:b]])
+                out += [s[last:a], '\x00' + chr(0xE000 + i)]
+                last = b
+        s = ''.join(out) + s[last:]
+        vals.append(v)
     return s, vals
+
+
+def josa(v, j):
+    c = v.rstrip(')）」』”’" ')[-1:]
+    if '가' <= c <= '힣':
+        f = (ord(c) - 0xAC00) % 28
+        bat, rieul = f != 0, f == 8
+    elif c.isdigit():
+        bat, rieul = c in '013678', c in '178'
+    else:
+        return j
+    p = JOSA_PAIR[j]
+    return ('로' if not bat or rieul else '으로') if p == '으로' else p[0 if bat else 1]
 
 
 def tpl_fill(ko, va, vb, slots):
     """donor ko must show the donor's slot values per class in source order; swap in the target's."""
-    for (_, kr, _), a, b in zip(slots, va, vb):
-        if kr.findall(ko) != a:
+    put = []
+    for (_, kr, mp, kv), a, b in zip(slots, va, vb):
+        hits = [m.span(m.lastindex or 0) for m in kr.finditer(ko)]
+        hits = [(x, y) for x, y in hits if kv is None or ko[x:y] in kv]
+        if [ko[x:y] for x, y in hits] != a:
             return None
-        it = iter(b)
-        ko = kr.sub(lambda m: next(it), ko)
-    return ko
+        for (x, y), v in zip(reversed(hits), reversed(b)):
+            ko = ko[:x] + chr(0xE000 + len(put)) + ko[y:]
+            put.append((v, mp is not None))
+
+    def back(m):
+        i = ord(m[1]) - 0xE000
+        if i >= len(put):
+            return m[0]
+        v, name = put[i]
+        return v + (josa(v, m[2]) if name and m[2] else m[2] or '')
+    return JOSA.sub(back, ko)
 
 
 def cmd_tpl(p, rows, a):
-    slots, h = slot_classes(p), held(p, rows)
+    h = held(p, rows)
     done = {int(g[0]): g[1] for w, g in read_parts(p) if len(g) == 2 and g[0].isdigit() and g[1] != '<KEEP>'
             and 1 <= int(g[0]) <= len(rows) and not w.startswith('PT_tpl.tsv:')}
-    reps = collections.defaultdict(list)
+    learned = {}  # translated short one-line rows (and whole-row 「name」) give Korean for quoted names
+    for n, ko in done.items():
+        ja = rows[n - 1]['ja']
+        if len(ja) <= a.short and JP.search(ja) and not SEP.search(ja) and not JP.search(ko):
+            learned.setdefault(ja, ko)
+            mj, mk = QJA.fullmatch(ja), QKO.fullmatch(ko)
+            if mj and mk:
+                learned.setdefault(mj[mj.lastindex], mk[mk.lastindex])
+    slots = slot_classes(p, learned)
+    reps, sreps = collections.defaultdict(list), collections.defaultdict(list)
     for n, ko in done.items():
         k, v = tpl_key(rows[n - 1]['ja'], slots)
         if '\x00' in k:
             reps[k].append((v, ko))
+        for s, ks in sent_pairs(rows[n - 1]['ja'], ko):
+            k, v = tpl_key(s, slots)
+            sreps[k].append((v, ks))
+
+    def sent_get(s, unc):  # per-sentence template (slotless sentences match exactly)
+        if not JP.search(s):
+            return s.translate(FW)
+        k, v = tpl_key(s, slots)
+        if k not in sreps:
+            unc.append(s)
+        return next((x for va, ko in sreps.get(k, ()) for x in [tpl_fill(ko, va, v, slots)] if x), None)
+
     ns = [int(l.split('\t', 1)[0]) for l in p.src.read_text(encoding='utf-8').split('\n') if l]
     keyed = [(n, *tpl_key(rows[n - 1]['ja'], slots)) for n in ns
              if n not in done and n not in h and len(rows[n - 1]['ja']) <= a.short]
     keyed = [x for x in keyed if '\x00' in x[1]]
     size = collections.Counter(k for _, k, _ in keyed)
-    out, todo, failed = [], {}, 0
+    out, todo, failed, by_sent = [], {}, 0, 0
     for n, k, v in keyed:
-        ja = rows[n - 1]['ja']
-        for va, ko in reps.get(k, ()):
-            ko2 = tpl_fill(fix_br(ja, ko), va, v, slots)
-            if ko2 and not check_row(ja, ko2, kind(rows[n - 1])):
-                out.append(f'{n}\t{ko2}\n')
-                break
-        else:
-            if k in reps:
-                failed += 1
-            elif size[k] >= 2:
-                todo.setdefault(k, f'{n}\t{ja}\n')
+        ja, kd = rows[n - 1]['ja'], kind(rows[n - 1])
+        ko2 = next((x for va, ko in reps.get(k, ()) for x in [tpl_fill(fix_br(ja, ko), va, v, slots)]
+                    if x and not check_row(ja, x, kd)), None)
+        miss, unc = [], []
+        if ko2 is None:
+            x = assemble(ja, argparse.Namespace(get=lambda s: sent_get(s, unc)), miss)
+            if not miss and not check_row(ja, x, kd):
+                ko2, by_sent = x, by_sent + 1
+        if ko2:
+            out.append(f'{n}\t{ko2}\n')
+        elif k in reps or not unc:  # a representative existed but some slot did not map/show -> failure
+            failed += 1
+        elif size[k] >= 2:
+            todo.setdefault(k, f'{n}\t{ja}\n')
     w_atomic(p.out / 'PT_tpl.tsv', ''.join(out))
     w_atomic(p.tplsrc, ''.join(todo.values()))
-    print(f'tpl short rows with slots {len(keyed)}: filled {len(out)} -> PT_tpl.tsv; fill failed {failed}; '
-          f'templates to translate {len(todo)} (cover {sum(size[k] for k in todo)} rows) -> {p.tplsrc}')
+    print(f'tpl short rows with slots {len(keyed)}: filled {len(out)} (by sentence {by_sent}) -> PT_tpl.tsv; '
+          f'fill failed {failed}; templates to translate {len(todo)} (cover {sum(size[k] for k in todo)} rows) '
+          f'-> {p.tplsrc}')
 
 
 # ---------- adapter: extract / inject / verify / roundtrip ----------
@@ -759,6 +838,24 @@ def selftest():
         w_atomic(p.out / 'P1.tsv', '1\t그녀의 리본×3\n')  # donor ko lacks a slot value (name) -> no fill
         assert 'fill failed 2' in said(cmd_tpl, p, rows, ns)
         assert p.out.joinpath('PT_tpl.tsv').read_text(encoding='utf-8') == ''
+    assert josa('달의 돌', '를') == '을' and josa('니노', '은') == '는' and josa('2', '으로') == '로'
+    with tempfile.TemporaryDirectory() as d:  # quoted names, names.tsv longest match, per-sentence templates
+        p = Prj(d)
+        src = ['「春のリボン」を獲得！', '「夏の帽子」を獲得！', '明日も来てね。', '明日も来てね。「夏の帽子」を獲得！',
+               '星の砂を3個入手', '月の石を5個入手', '「謎」を獲得！', '星を2個入手', '春のリボン']
+        rows = [dict(zip(hdr, (f'T{i}', 'f', str(i), ja, '', '', 'new', 'ui'))) for i, ja in enumerate(src, 1)]
+        save(p, hdr, rows, False)
+        w_atomic(p.names, '星\t별\n星の砂\t별의 모래\n月の石\t달의 돌\n夏の帽子\t여름 모자\n')
+        cmd_export(p, rows, ns)
+        w_atomic(p.out / 'P1.tsv', '1\t「봄의 리본」 획득!\n3\t내일도 와.\n5\t별의 모래를 3개 입수\n9\t봄의 리본\n')
+        assert 'by sentence 1' in said(cmd_tpl, p, rows, ns)
+        # 2: quoted name from names.tsv (donor's 春のリボン learned from row 9); 4: two sentence templates;
+        # 6/8: longest-match names + josa 를->을; 7: 謎 has no Korean -> literal, not filled
+        assert p.out.joinpath('PT_tpl.tsv').read_text(encoding='utf-8') == \
+            '2\t「여름 모자」 획득!\n4\t내일도 와. 「여름 모자」 획득!\n6\t달의 돌을 5개 입수\n8\t별을 2개 입수\n'
+        w_atomic(p.out / 'P1.tsv', '1\t「리본」 획득!\n3\t내일도 와.\n5\t별의 모래를 3개 입수\n9\t봄의 리본\n')
+        assert 'fill failed 2' in said(cmd_tpl, p, rows, ns)  # quoted value missing in donor: rows 2 and 4 fail
+        assert p.out.joinpath('PT_tpl.tsv').read_text(encoding='utf-8') == '6\t달의 돌을 5개 입수\n8\t별을 2개 입수\n'
     print('selftest ok')
 
 

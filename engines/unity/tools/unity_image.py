@@ -519,8 +519,8 @@ def render(skip_missing=False):
     per = collections.defaultdict(list)
     skipped, pending = [], []
     for r in specs():
-        if not r['status'].startswith('typeset'):
-            continue
+        if not r['status'].startswith('typeset') or not row_targets(r, loc, C['primary']):
+            continue  # not a row of this title
         miss = missing_assets(r, C['IT'])
         if miss:
             assert skip_missing, ('missing input PNG (use --skip-missing to leave the row pending)', r['key'], miss)

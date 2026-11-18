@@ -69,6 +69,8 @@ $w  = '<프로젝트>\10_extract'
 - nstool은 PowerShell에서 실행한다. Git Bash(MSYS)는 `-x /1` 같은 가상 경로를 `C:\Program Files\Git\1`로 바꿔 버리고,
   nstool은 WARNING만 내고 종료 코드 0으로 아무것도 추출하지 않는다. Git Bash를 써야 하면 `MSYS_NO_PATHCONV=1`을 붙이고,
   어느 쪽이든 출력 파일 수·크기로 빈 추출이 아닌지 확인한다.
+- Git Bash의 `/e/...` 경로를 Windows용 Python·Node·exe 인자로 넘기면 `E:\e\...`로 해석돼 엉뚱한 곳에 폴더가 생긴다.
+  스크립트 인자에는 `E:/...` 또는 `E:\...` 형식을 쓴다. 이미 생겼다면 그 명령이 만든 빈 폴더만 지우고 산출물은 타이틀 안으로 옮긴다.
 - 중단된 추출은 NCA 끝부분(수십~수백 MB)이 비거나 다른 채로 남을 수 있다. RomFS를 풀기 전에 추출한 NCA의 크기·해시를
   패키지 엔트리와 대조하고(nstool hash 실패도 같은 신호), 불일치하면 `10_extract/superseded/`로 옮긴 뒤 다시 추출한다.
 - `WORK_LOG.md`에는 도구 경로와 버전, 전체 명령, 종료 코드, 표준 출력·오류 로그 위치, 입력 원본 SHA-256, 추출 파일 수와 출력 경로를 함께 기록한다.

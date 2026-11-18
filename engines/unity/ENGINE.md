@@ -13,6 +13,22 @@
 - Il2CppDumper에는 실행 파일과 `global-metadata.dat`가 필요하다. 도구가 요구하는 전처리(실행 파일 압축 해제 등)는 한 번만 검증하고, 실패 시 입력을 계속 변형하지 말고 버전·입력 해시·오류를 고정해 기록한다.
 - 문자열 테이블 주입용 매니페스트는 **type tree/스키마 파싱**으로 만든다. 길이 접두 문자열 스캔·인접 언어 휴리스틱은 inventory 후보 수집용일 뿐, raw 후보 보고서를 canonical 번역표로 승격하지 않는다.
 
+## 텍스트 원천 전수 (시나리오 밖 문자열)
+
+시나리오·TSV만 추출하면 UI가 일본어로 남는다. 분석 단계에서 아래 원천을 모두 inventory한다.
+
+| 원천 | 비고 |
+|---|---|
+| 시나리오·TextAsset·TSV/마스터 데이터 | 보통 첫 manifest에 들어감 |
+| UI 프리팹 문자열(`data.unity3d`, 씬·프리팹의 Text/TMP 컴포넌트) | MonoBehaviour typetree가 제거된 빌드가 많음 |
+| I2 Localization 등 로컬라이즈 에셋 | 언어 열 구조를 확인해 슬롯 결정 |
+| IL2CPP 코드 리터럴(`global-metadata.dat`) | 우선 추출만(extract-only) 하고 주입 여부는 별도 판단 |
+
+- **typetree가 제거된 번들**: Il2CppDumper로 DummyDll을 만들고 TypeTreeGeneratorAPI로 typetree를 생성해 MonoBehaviour를 읽는다.
+  Il2CppDumper auto 모드가 정적 CodeRegistration을 못 찾으면 실패할 수 있다. 이때는 CodeRegistration을 보강한 합성 NSO로 덤프하고, 사용한 입력·도구 버전을 기록한다.
+- 보충 원천을 나중에 추가할 때는 canonical manifest를 바꾸지 않고 별도 보충 manifest로 두며, 기존 행과 겹치는 원문은 표시한다.
+- 게이트: 무수정 재기록 시 대상 번들 전 객체 raw-identical, 한국어 probe 주입 → 재추출 mismatch 0.
+
 ## TMP/SDF 한글 폰트 주입
 
 TextMeshPro 폰트 에셋(SDF 아틀라스 + glyph/character 테이블)에 한글을 주입할 때:

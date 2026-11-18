@@ -5,14 +5,16 @@
         -> 90_tools/work/font_<tag>/<NAME>_<sha8>_ko_<tag>.otf (+ _orig.otf, merge_meta.json, added_glyphs.tsv)
   python -I unity_font.py fontcheck -p P     original-glyph preservation + new-glyph transform + render probe
   python -I unity_font.py build|verify -p P [--base DIR] [--out DIR]   only m_FontData of the target Font objects changes;
-        source = <base>/romfs/<rel> when present (e.g. the text-injected overlay) else romfs_original
+        source = <base>/romfs/<rel> when present (e.g. the text-injected overlay) else romfs_original;
+        a --base without romfs/ is refused; output = <out>/romfs/<rel> (an --out ending in romfs is not nested)
   python -I unity_font.py noop -p P          rewrite target files unchanged in memory, all objects raw-exact
   python -I unity_font.py coverage -p P      FONT_COVERAGE.tsv (all Hangul + every char used in target_ko / bulk out)
   python -I unity_font.py selftest
 Method: Hangul is appended to the original CID-keyed CFF as new CIDs in the FontDict of a reference kanji; original
 glyphs, cmap, hmtx/vmtx and face metrics stay exact. One common scale/offset per glyph source (no per-glyph scaling):
 Hangul bbox height = ratio x reference-kanji bbox height. The first --ko source that has a non-empty outline wins per
-code point. --font (Unity Font m_Name) and the sources are stored in merge_meta.json for later commands.
+code point. --font (Unity Font m_Name) and the sources are stored in merge_meta.json for later commands (an older
+merge_meta.json without "font" falls back to --font, else to the NAME of the single merged <NAME>_<sha8>_ko_<tag>.otf).
 Not for TMP SDF atlases (see ENGINE.md: atlas contract) or TrueType (glyf) bases.
 """
 import argparse
@@ -26,7 +28,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # -I drops the script dir
-from ucommon import JP, load_env  # noqa: E402
+from ucommon import JP, base_root, load_env, overlay_root  # noqa: E402
 
 SKIP_DIRS = {'movie', 'sound', 'TSV'}
 ASCII_ONLY = re.compile(r'[\x00-\x7f]*')
@@ -50,10 +52,22 @@ class P:
         self.rom = self.prj / '10_extract' / 'romfs_original'
         self.art = self.prj / '50_test' / 'artifacts' / f'font_{a.tag}'
         self.work = self.prj / '90_tools' / 'work' / f'font_{a.tag}'
-        self.out = Path(a.out) if a.out else self.prj / '40_build' / f'font_{a.tag}'
+        # build root: files go to <out>/romfs/<rel>; an --out that already ends in romfs is not nested again
+        self.out = overlay_root(a.out).parent if a.out else self.prj / '40_build' / f'font_{a.tag}'
+        base_root(a.base)
 
     def meta(self):
-        return json.loads((self.work / 'merge_meta.json').read_text(encoding='utf-8'))
+        m = json.loads((self.work / 'merge_meta.json').read_text(encoding='utf-8'))
+        if not m.get('font'):  # older metas: --font, else the NAME of the one <NAME>_<sha8>_ko_<tag>.otf in work/
+            tail = f'_{m["orig_sha256"][:8]}_ko_{self.a.tag}.otf'
+            hits = sorted(f.name[:-len(tail)] for f in self.work.glob('*' + tail))
+            if not self.a.font and len(hits) != 1:
+                sys.exit(f'merge_meta.json has no "font" key (older meta) and {len(hits)} merged fonts *{tail} in '
+                         f'{self.work}: pass --font <Unity Font m_Name>')
+            m['font'] = self.a.font or hits[0]
+            print(f'note: merge_meta.json has no "font" key (older meta); using font={m["font"]!r} '
+                  f'({"--font" if self.a.font else "merged file name"})', file=sys.stderr)
+        return m
 
     def font(self):
         return self.a.font or self.meta()['font']
@@ -570,6 +584,26 @@ def selftest():
     st = {c: s for c, s, _ in rows}
     assert st[0xAC00] == 'added' and st[0x3042] == 'orig' and st[0xFF5E] == 'MISSING' and st[0xAC01] == 'MISSING'
     assert TOKEN.sub('', '가\\n<color=red>나</color>{0}%d') == '가나'
+    import contextlib
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:  # older merge_meta.json without "font"; --base without romfs/
+        ns = argparse.Namespace(p=d, tag='r1', out=None, base=None, font=None)
+        q = P(ns)
+        q.work.mkdir(parents=True)
+        (q.work / 'merge_meta.json').write_text(json.dumps({'orig_sha256': 'ab' * 32}), encoding='utf-8')
+        (q.work / f'Old_Font_{"ab" * 4}_ko_r1.otf').write_bytes(b'')
+        with contextlib.redirect_stderr(io.StringIO()):
+            assert q.meta()['font'] == q.font() == 'Old_Font'
+            ns.font = 'Given'
+            assert q.meta()['font'] == 'Given'
+        (q.work / f'Two_{"ab" * 4}_ko_r1.otf').write_bytes(b'')
+        ns.font = None
+        for bad in (lambda: q.meta(), lambda: P(argparse.Namespace(p=d, tag='r1', out=None, base=d, font=None))):
+            try:
+                bad()
+                raise AssertionError('accepted')
+            except SystemExit as e:
+                assert 'font' in str(e) or 'no romfs/' in str(e), e
     print('unity_font selftest OK')
 
 

@@ -3,6 +3,7 @@
   python -I scripts/bulk/bulk_tool.py extract|inject|verify|roundtrip -p <_work/TID> --adapter <this file> ...
   python -I unity_adapter.py inject|verify --manifest M --src <romfs> --out DIR   any manifest (e.g. SUPP_MANIFEST.tsv);
                                                                                  value = target_ko or ja
+  Overlays are written to <out>/romfs/<rel> (<out> itself when it is a romfs dir); overlay_root(out) gives that root.
   python -I unity_adapter.py selftest
 
 extract() = utage_text.walk (master TSV + scenario); supplement classes come from supp_text.py extract.
@@ -24,7 +25,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from ucommon import SA, esc, has_esc, load_env, read_manifest, tget, tset, unesc, w_atomic  # noqa: E402
+from ucommon import SA, base_root, esc, has_esc, load_env, overlay_root, read_manifest, tget, tset, unesc, w_atomic  # noqa: E402,F401
 import meta_literals as ML  # noqa: E402
 import supp_text as ST  # noqa: E402
 import utage_text as UT  # noqa: E402
@@ -179,7 +180,8 @@ def apply_file(path, rel, es, rom, shared=None):
 
 
 def inject(rows, src_root, out_root):
-    src, out = Path(src_root), Path(out_root)
+    """Writes under overlay_root(out_root) = <out>/romfs (unless <out> is a romfs dir); returns romfs-relative paths."""
+    src, out = Path(src_root), overlay_root(out_root)
     edits, shared, skipped = plan(rows)
     sh = {loc: v for loc, v in shared}
     if sh:
@@ -324,13 +326,25 @@ def selftest():
         w_atomic(src / SA / 'TSV/a.tsv', tsv)
         w_atomic(src / ML.META_REL, ML.synth(['はい', 'いいえ']))
         sub = [dict(rows[0], value='검\\n강함'), dict(rows[1], value='방패'), dict(rows[8], value='いいえ')]
-        files = inject(sub, src, out)
+        files = inject(sub, src, out)  # --out without \romfs still lands in <out>/romfs
         assert files == [ML.META_REL, f'{SA}TSV/a.tsv'], files
-        assert (out / ML.META_REL).read_bytes() == (src / ML.META_REL).read_bytes()
-        assert (out / SA / 'TSV/a.tsv').read_text(encoding='utf-8') == tsv.replace('剣\\n強い', '검\\n강함').replace('盾', '방패')
-        assert read([out, src], sub) == ['검\\n강함', '방패', 'いいえ']
-        assert read([out, src], [rows[0], rows[9]]) == ['검\\n강함', None]  # value read regardless of language
+        ov = out / 'romfs'
+        assert overlay_root(out) == ov and overlay_root(ov) == ov and not (out / SA).exists()
+        assert (ov / ML.META_REL).read_bytes() == (src / ML.META_REL).read_bytes()
+        assert (ov / SA / 'TSV/a.tsv').read_text(encoding='utf-8') == tsv.replace('剣\\n強い', '검\\n강함').replace('盾', '방패')
+        assert read([ov, src], sub) == ['검\\n강함', '방패', 'いいえ']
+        assert read([ov, src], [rows[0], rows[9]]) == ['검\\n강함', None]  # value read regardless of language
         assert read([src], sub[:1]) == ['剣\\n強い']
+        inject(sub[:1], src, Path(d, 'b2', 'romfs'))  # an explicit romfs dir is not nested again
+        assert Path(d, 'b2', 'romfs', SA, 'TSV/a.tsv').exists() and not Path(d, 'b2', 'romfs', 'romfs').exists()
+        # next stages: a build root holding romfs/ is accepted, one without it (or romfs/ itself) is refused
+        assert base_root(str(out)) == str(out) and base_root(None) is None
+        for bad in (src, ov):
+            try:
+                base_root(str(bad))
+                raise AssertionError(f'base_root accepted {bad}')
+            except SystemExit as e:
+                assert 'no romfs/' in str(e)
     print('unity_adapter selftest OK')
 
 
@@ -349,7 +363,7 @@ def main(argv):
         if Path(a.out).exists():
             sys.exit(f'refuse: {a.out} exists')
         return print(f'inject files={len(inject(rows, a.src, a.out))} -> {a.out}')
-    got = read([a.out, a.src], rows)
+    got = read([overlay_root(a.out), a.src], rows)
     bad = [(r['id'], r['value'], v) for r, v in zip(rows, got) if v != r['value']]
     for b in bad[:20]:
         print('MISMATCH', *b, sep='\t')

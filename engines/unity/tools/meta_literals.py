@@ -7,6 +7,8 @@
   python -I meta_literals.py selftest
 Manifest rows: source_key `lit:<i>`, non-empty target_ko; every literal index holding the same text gets the value.
 With safety.tsv (columns id, verdict) only ids whose verdict == safe are applied (usage review is per title).
+<meta> may be a build root (-> <build>/romfs/<META_REL>, refused without romfs/); an <out_file> that is not a .dat is a
+build root (-> <out>/romfs/<META_REL>, or <out>/<META_REL> when <out> is a romfs dir).
 
 Format (v29): header int32s; [8]=stringLiteralOffset [12]=stringLiteralSize (8 bytes/entry: uint32 length,
 uint32 dataIndex) [16]=stringLiteralDataOffset [20]=stringLiteralDataSize; UTF-8 without NUL. Injection keeps the old
@@ -132,6 +134,18 @@ def esc_cell(s):
     return s.replace('\\', '\\\\').replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t')
 
 
+def meta_in(x):
+    """<meta> file, or an input build root dir -> <build>/romfs/META_REL (refused when the build lacks romfs/)."""
+    from ucommon import base_root
+    return Path(base_root(x)) / 'romfs' / META_REL if Path(x).is_dir() else Path(x)
+
+
+def meta_out(x):
+    """<out_file> (.dat), or a build dir -> <out>/romfs/META_REL (<out>/META_REL when <out> is a romfs dir)."""
+    from ucommon import overlay_root
+    return Path(x) if Path(x).suffix == '.dat' else overlay_root(x) / META_REL
+
+
 def main(a):
     cmd = a[0] if a else ''
     if cmd == 'selftest':
@@ -151,9 +165,9 @@ def main(a):
         return 0 if ok else 1
     if cmd in ('inject', 'verify'):
         from ucommon import read_manifest, w_atomic
-        b = Path(a[1]).read_bytes()
+        b = Path(meta_in(a[1])).read_bytes()
         ch, stats = changes_from(read_manifest(a[2]), b, safe_ids(a[4] if len(a) > 4 else None))
-        out = Path(a[3])
+        out = meta_out(a[3])
         if cmd == 'inject':
             new = inject(b, ch)
             bad, stray = check(b, new, ch)
@@ -193,6 +207,17 @@ def selftest():
     assert check(b, new, ch) == ([], [])
     assert check(b, inject(b, {1: 'NG'}), ch)[0] == [0, 1, 2, 3]
     assert changes_from(rows, b, allow={'x2'})[0] == {3: '아니요\n!'}
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:  # build-root forms of <meta> / <out_file>
+        assert meta_out(d) == Path(d, 'romfs', META_REL) and meta_out(Path(d, 'romfs')) == Path(d, 'romfs', META_REL)
+        assert meta_out(Path(d, 'x.dat')) == Path(d, 'x.dat')
+        try:
+            meta_in(d)
+            raise AssertionError('build root without romfs/ accepted')
+        except SystemExit:
+            pass
+        Path(d, 'romfs').mkdir()
+        assert meta_in(d) == Path(d, 'romfs', META_REL)
     print('meta_literals selftest OK')
 
 

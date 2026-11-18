@@ -59,6 +59,21 @@ def w_atomic(path, data):
     os.replace(tmp, path)
 
 
+def overlay_root(out):
+    """Write root of an overlay build: <out>/romfs unless <out> already is a `romfs` dir. Every stage reads a previous
+    build as <base>/romfs/<rel>; an overlay written straight into <out> would be skipped and the original read instead."""
+    out = Path(out)
+    return out if out.name.lower() == 'romfs' else out / 'romfs'
+
+
+def base_root(base):
+    """Validate an input build root (--base): it must hold romfs/, else later stages silently read romfs_original."""
+    if base and not (Path(base) / 'romfs').is_dir():
+        sys.exit(f'refuse: input build {base} has no romfs/ (pass the build root that contains romfs/, not romfs/ '
+                 f'itself; an overlay written without romfs/ must be rebuilt)')
+    return base
+
+
 def tget(t, path):
     for k in path:
         t = t[int(k)] if isinstance(t, list) else t[k]

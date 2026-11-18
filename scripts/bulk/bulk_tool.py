@@ -25,6 +25,11 @@
                                  supplement/out/*.tsv `n<TAB>ko` first, else exact-source TM (--tm, e.g. the canonical
                                  manifest, + the parts). No value / `<KEEP>` / value == source: row untouched. Filled
                                  rows pass check; refuses on any error or id collision
+  check-all [--width N]          the check rules over the canonical manifest (every translated row with a target_ko)
+  review-apply <edits.tsv> [--width N]  review edits `id<TAB>ko<TAB>category` (optional `id` header) -> ONE atomic
+                                 manifest write + merge_log `REVIEW ... edits=<hash>`; refuses on unknown/duplicate/
+                                 non-translated ids, any check error, check-all errors on the result, or an existing
+                                 REVIEW line with the same edits hash (never applied twice). Nothing written on refusal
   import-held                    30_translation/text/HELD_FOR_USER.tsv (id, text): text != source -> translation
   resume-md [--force]            write a <=40-line 30_translation/RESUME.md skeleton
   inject / verify / roundtrip --adapter A --out NEWDIR   overlay write; verify/roundtrip read every row back by key
@@ -35,7 +40,8 @@ Line breaks: each row keeps its own source form (engine escape `\\n` vs escaped 
 Held rows: ids listed in HELD_FOR_USER.tsv (+ legacy HELD_ROWS.tsv `first<TAB>last` n ranges) stay source until import-held.
 Adapter (python file): SRC_REL; extract(src_root) -> iter of dict(source_file, source_key, ja, notes[, speaker]);
   inject(rows, src_root, out_root) -> [rel paths] writing row['value']; read(roots, rows) -> [value at each row key]
-  (roots = [overlay, src_root], first existing file wins; never filter by language); optional TOKEN regex.
+  (roots = [overlay, src_root], first existing file wins; never filter by language); optional TOKEN regex;
+  optional overlay_root(out) -> the dir inject actually writes (Unity: <out>/romfs), used for read-back.
 """
 import argparse
 import collections
@@ -333,6 +339,66 @@ def cmd_check(p, rows, a, quiet=False):
     if not quiet:
         print(f'check rows={len(res)} errors={len(errs)} pending={len(pend)} {pend[:10]} held={len(h)}')
     return res, errs, pend, h
+
+
+def check_all(rows, maxw=0):
+    """check_row over the canonical manifest: every translated row with a target_ko (keep_source rows are empty)."""
+    return [f'{n} {r["id"]}: {e}' for n, r in enumerate(rows, 1) if r['status'] == 'translated' and r['target_ko']
+            for e in check_row(r['ja'], r['target_ko'], kind(r), maxw)]
+
+
+def cmd_check_all(p, rows, a):
+    errs = check_all(rows, a.width)
+    print('\n'.join(errs[:80]) or f'check-all OK {sum(r["status"] == "translated" for r in rows)}/{len(rows)} '
+          f'translated rows')
+    return 1 if errs else 0
+
+
+def cmd_review_apply(p, rows, a):
+    """edits TSV (optional `id` header): id<TAB>ko<TAB>category -> ONE atomic manifest write + merge_log REVIEW."""
+    if not a.edits:
+        sys.exit('review-apply needs <edits.tsv> (id<TAB>ko<TAB>category)')
+    hdr, rows, bom = load(p)
+    lines = [l.rstrip('\r').split('\t') for l in Path(a.edits).read_text(encoding='utf-8-sig').split('\n') if l.strip()]
+    if lines and lines[0][0] == 'id':
+        lines = lines[1:]
+    edits = [(g + [''] * 3)[:3] for g in lines]
+    h = hashlib.sha256(''.join(f'{i}\t{ko}\t{c}\n' for i, ko, c in edits).encode('utf-8')).hexdigest()[:16]
+    if p.log.exists() and any(l.startswith('REVIEW\t') and f'edits={h}' in l
+                              for l in p.log.read_text(encoding='utf-8').split('\n')):
+        sys.exit(f'refuse: merge_log already has REVIEW edits={h} (these edits were applied)')
+    by, seen, cats, errs, new = {r['id']: n for n, r in enumerate(rows, 1)}, set(), collections.Counter(), [], {}
+    for k, (i, ko, cat) in enumerate(edits, 1):
+        n = by.get(i)
+        if n is None or i in seen:
+            errs.append(f'line {k}: id {i} {"unknown" if n is None else "duplicate"}')
+            continue
+        seen.add(i)
+        r = rows[n - 1]
+        if len(lines[k - 1]) != 3 or not cat:
+            errs.append(f'line {k}: {i} needs id<TAB>ko<TAB>category')
+        elif r['status'] != 'translated':
+            errs.append(f'line {k}: {i} status {r["status"]}')
+        else:
+            ko = fix_br(r['ja'], ko)
+            errs += [f'line {k}: {i} {e}' for e in check_row(r['ja'], ko, kind(r), a.width)]
+            cats[cat] += 1
+            if ko != r['target_ko']:
+                new[n] = ko
+    if errs:
+        print('\n'.join(errs[:80]))
+        sys.exit(f'refuse review-apply: {len(errs)} errors - manifest untouched')
+    for n, ko in new.items():
+        rows[n - 1]['target_ko'] = ko
+    bad = check_all(rows, a.width)
+    if bad:
+        print('\n'.join(bad[:80]))
+        sys.exit(f'refuse review-apply: check-all {len(bad)} errors on the result - manifest untouched')
+    sha = save(p, hdr, rows, bom)
+    log(p, f'REVIEW\t{len(new)} rows\tQA_OK\tedits={h}\t{dict(cats)} unchanged={len(edits) - len(new)} '
+           f'src={Path(a.edits).name}\t{sha}')
+    print(f'REVIEW applied {len(new)} rows (unchanged {len(edits) - len(new)}) {dict(cats)} edits={h} | check-all OK '
+          f'| sha256 {sha}')
 
 
 def cmd_merge(p, rows, a):
@@ -808,11 +874,12 @@ def cmd_overlay(p, rows, a, mode):
     for r in rows:
         r['value'] = r['ja'] if mode == 'roundtrip' else (r['target_ko'] or r['ja'])
     files = ad.inject(rows, sr, out)
+    ov = Path(ad.overlay_root(out)) if hasattr(ad, 'overlay_root') else out  # e.g. <out>/romfs
     if mode == 'inject':
-        return print(f'inject files={len(files)} -> {out}')
-    got = ad.read([out, sr], rows)
+        return print(f'inject files={len(files)} -> {ov}')
+    got = ad.read([ov, sr], rows)
     bad = [(r['id'], r['value'], v) for r, v in zip(rows, got) if v != r['value']]
-    same = sum((out / f).read_bytes() == (sr / f).read_bytes() for f in files)
+    same = sum((ov / f).read_bytes() == (sr / f).read_bytes() for f in files)
     for b in bad[:20]:
         print('MISMATCH', *b, sep='\t')
     print(f'{mode} rows={len(rows)} mismatch={len(bad)} files={len(files)} byte_identical={same}')
@@ -961,6 +1028,41 @@ def selftest():
             cmd_supp_merge(p, None, ns)
             raise AssertionError('supp-merge accepted JP residue')
         assert m.read_bytes() == before
+    with tempfile.TemporaryDirectory() as d:  # check-all / review-apply
+        p = Prj(d)
+        src = [('こんにちは', '안녕', 'translated'), ('元気？\\nうん', '잘 지내?\\n응', 'translated'), ('あ', '', 'new')]
+        save(p, hdr, [dict(zip(hdr, (f'T{i}', 'f', str(i), ja, '', ko, st, 'dlg')))
+                      for i, (ja, ko, st) in enumerate(src, 1)], True)
+        _, rows, _ = load(p)
+        ns = argparse.Namespace(width=0, edits=str(Path(d, 'edits.tsv')))
+        assert cmd_check_all(p, rows, ns) == 0 and not check_all(rows)
+        assert check_all([dict(rows[0], target_ko='안녕あ')]) and check_all([dict(rows[0], target_ko='')]) == []
+
+        def refused(text):
+            w_atomic(Path(ns.edits), text)
+            before = p.man.read_bytes()
+            try:
+                with contextlib.redirect_stdout(io.StringIO()):
+                    cmd_review_apply(p, None, ns)
+            except SystemExit as e:
+                assert p.man.read_bytes() == before
+                return str(e)
+            raise AssertionError(f'review-apply accepted {text!r}')
+        assert 'manifest untouched' in refused('T3\t아\t윤문\n')                      # status new
+        assert 'manifest untouched' in refused('T1\t안녕あ\t윤문\n')                   # JP residue
+        assert 'manifest untouched' in refused('T9\t아\t윤문\n')                       # unknown id
+        assert 'manifest untouched' in refused('T1\t아\t윤문\nT1\t어\t말투\n')          # duplicate id
+        assert 'manifest untouched' in refused('T1\t안녕하세요\n')                      # no category
+        edits = 'id\tko\tcategory\nT1\t안녕하세요\t말투\nT2\t잘 지내?\\\\n응\t윤문\n'      # break form follows the row
+        w_atomic(Path(ns.edits), edits)
+        assert 'REVIEW applied 1 rows (unchanged 1)' in said(cmd_review_apply, p, None, ns)
+        _, rows, bom = load(p)
+        assert bom and [r['target_ko'] for r in rows] == ['안녕하세요', '잘 지내?\\n응', '']
+        lg = [l for l in p.log.read_text(encoding='utf-8').split('\n') if l.startswith('REVIEW\t')]
+        assert len(lg) == 1 and 'edits=' in lg[0] and lg[0].endswith(hashlib.sha256(p.man.read_bytes()).hexdigest())
+        assert 'already has REVIEW' in refused(edits)                                # same edits never twice
+        w_atomic(Path(ns.edits), 'T1\t안녕\t말투\n')                                   # a new edit set still applies
+        assert 'REVIEW applied 1 rows' in said(cmd_review_apply, p, None, ns)
     print('selftest ok')
 
 
@@ -974,6 +1076,7 @@ def said(fn, *args):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('cmd')
+    ap.add_argument('edits', nargs='?', help='review-apply: edits TSV')
     ap.add_argument('-p', '--project')
     ap.add_argument('--adapter')
     ap.add_argument('--src')
@@ -1004,7 +1107,8 @@ def main():
         return 1 if errs else 0
     fn = {'export': cmd_export, 'next': cmd_next, 'dupfill': cmd_dupfill, 'merge': cmd_merge,
           'import-held': cmd_import_held, 'resume-md': cmd_resume_md, 'seg-export': cmd_seg_export,
-          'seg-build': cmd_seg_build, 'tpl': cmd_tpl, 'supp-merge': cmd_supp_merge}.get(a.cmd)
+          'seg-build': cmd_seg_build, 'tpl': cmd_tpl, 'supp-merge': cmd_supp_merge, 'check-all': cmd_check_all,
+          'review-apply': cmd_review_apply}.get(a.cmd)
     if not fn:
         sys.exit(f'unknown command {a.cmd}')
     return fn(p, rows, a)

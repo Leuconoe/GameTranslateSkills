@@ -7,7 +7,8 @@
     locate                     secondary title: template-match every primary box into this title -> LOCATE_<TID>.tsv
     render                     typeset all status=typeset* rows -> image_translation/typeset_<round>/<TID>/ (+compare/)
     build                      changed-block splice -> <out|40_build/image_<round>>/romfs/<rel> (+IMAGE_BUILD_MANIFEST.tsv);
-                               source container = <base>/romfs/<rel> when present (text/font overlay) else romfs_original
+                               source container = <base>/romfs/<rel> when present (text/font overlay) else romfs_original;
+                               a --base without romfs/ is refused; an --out ending in romfs is not nested again
     verify                     reload: non-target objects raw-exact, resS bytes outside target ranges exact, raw blocks
                                outside the edit set exact, decoded pixels outside edit blocks exact, headers unchanged
     noop                       codec gate: deswizzle->swizzle and untouched rewrite byte-identical for every target
@@ -38,7 +39,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # -I drops the script dir
-from ucommon import UnityPy  # noqa: E402  (sets sys.path for the shared site dir)
+from ucommon import UnityPy, base_root, overlay_root  # noqa: E402  (sets sys.path for the shared site dir)
 import numpy as np  # noqa: E402
 import cv2  # noqa: E402
 from PIL import Image, ImageDraw, ImageFont  # noqa: E402
@@ -763,6 +764,8 @@ def main(argv=None):
         halo_final(a.args[0], a.args[1], a.args[2], not (len(a.args) > 3 and a.args[3] == 'noglow'))
         return 0
     assert a.project, '-p <_work/TID> required'
+    base_root(a.base)  # an input build without romfs/ would silently fall back to romfs_original
+    a.out = str(overlay_root(a.out).parent) if a.out else None  # build root; files go to <out>/romfs/<rel>
     assert UnityPy is not None, 'UnityPy not importable (set GT_PYLIB)'
     setup(a.project, a.round)
     if a.cmd == 'list':

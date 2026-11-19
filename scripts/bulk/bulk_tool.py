@@ -520,6 +520,8 @@ def cmd_import_held(p, rows, a):
         if not l.strip():
             continue
         r = by.get(g[0])
+        if r is None and g[0].isdigit() and 0 < int(g[0]) <= len(rows):
+            r = rows[int(g[0]) - 1]  # export n (1-based manifest row), as written by the held-row export
         if r is None or len(g) != 2:
             errs.append(f'line {i}: unknown id / not 2 columns')
             continue

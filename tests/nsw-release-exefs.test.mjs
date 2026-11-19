@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { createDeterministicNswZip, nswReleaseFileName, parseNswReleaseFileName, validateNswRelease } from '../scripts/lib/nsw-release-zip.mjs';
+import { createDeterministicNswZip, createDeterministicZip, nswReleaseFileName, parseNswReleaseFileName, validateNswRelease } from '../scripts/lib/nsw-release-zip.mjs';
 
 test('NSW release accepts one ExeFS main and still validates RomFS-only archives', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'nsw-release-exefs-'));
@@ -45,6 +45,45 @@ test('NSW release accepts one ExeFS main and still validates RomFS-only archives
     await assert.rejects(validateNswRelease({ titleId, zipPath: titledZip, romfsRoot, gameName: 'Other' }), /filename must be exactly/);
     assert.equal(nswReleaseFileName('Bluey’s Quest: Gold Pen? [0100EF802631A000]', '0100EF802631A000'), 'Bluey’s Quest Gold Pen - 0100EF802631A000.zip');
     assert.equal(parseNswReleaseFileName('A  B - 0100EF802631A000.zip', '0100EF802631A000'), null);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('NSW release rejects a double-nested overlay (romfs/romfs/...) in the packager and the validator', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'nsw-release-nested-'));
+  const titleId = '0100983013C9A000';
+  const contentRoot = `atmosphere/contents/${titleId}`;
+  try {
+    const releases = path.join(root, 'releases');
+    const romfsRoot = path.join(root, 'romfs');
+    await fs.mkdir(path.join(romfsRoot, 'romfs', 'data'), { recursive: true });
+    await fs.mkdir(releases);
+    const payload = path.join(romfsRoot, 'romfs', 'data', 'foo.bin');
+    await fs.writeFile(payload, 'Korean patch');
+    const zipPath = path.join(releases, `${titleId}.zip`);
+    await assert.rejects(createDeterministicNswZip({ titleId, romfsRoot, outputPath: zipPath }), /Double-nested.*belong directly in/);
+
+    // Hand-built ZIPs: each bad layout must fail validation even without a source tree to compare against.
+    for (const [bad, pattern] of [
+      [`${contentRoot}/romfs/romfs/data/foo.bin`, /Repeated LayeredFS layout segment/],
+      [`${contentRoot}/romfs/EXEFS/main`, /Repeated LayeredFS layout segment/],
+      [`${contentRoot}/exefs/romfs/data/foo.bin`, /Repeated LayeredFS layout segment/],
+      [`${contentRoot}/exefs/exefs/main`, /Repeated LayeredFS layout segment/],
+      [`${contentRoot}/cheats/foo.txt`, /must use/],
+    ]) {
+      await fs.rm(zipPath, { force: true });
+      await createDeterministicZip({ files: [{ absolutePath: payload, archivePath: bad }], outputPath: zipPath });
+      await assert.rejects(validateNswRelease({ titleId, zipPath, exefsRoot: path.join(root, 'exefs') }), pattern, bad);
+    }
+
+    // The same payload, flattened to the overlay root, packages and validates.
+    await fs.rename(path.join(romfsRoot, 'romfs', 'data'), path.join(romfsRoot, 'data'));
+    await fs.rmdir(path.join(romfsRoot, 'romfs'));
+    await fs.rm(zipPath, { force: true });
+    await createDeterministicNswZip({ titleId, romfsRoot, outputPath: zipPath });
+    const receipt = await validateNswRelease({ titleId, zipPath, romfsRoot });
+    assert.deepEqual(receipt.entries.map((entry) => entry.path), [`${contentRoot}/romfs/data/foo.bin`]);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }

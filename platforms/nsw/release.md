@@ -57,6 +57,7 @@
   않거나, 패치 파일이 0개이거나, link/reparse path·NSP/XCI·키·`*.gldelta`·별도 패처가
   섞이면 실패해야 한다. 생성 후 ZIP을 다시 열어 모든 entry의 경로·크기·CRC-32·SHA-256을
   원본 canonical RomFS/ExeFS와 전수 비교한다.
+- 이중 중첩 오버레이는 실패한다: 패키저는 RomFS 소스 최상위에 `romfs/`·`exefs/` 폴더가 있으면 거부하고, 검증기는 `<TID>/` 아래 `romfs/`·`exefs/` 외 항목이나 `romfs/romfs/`·`exefs/exefs/`·`romfs/exefs/`·`exefs/romfs/`를 담은 ZIP(분할 배포의 결합 스트림 포함)을 거부한다.
 - ZIP > 4 GiB uses Zip64; standard extractors (Windows 10+ Explorer, 7-Zip, unzip 6.0) support it.
   공용 패키저는 크기·오프셋이 `0xFFFFFFFF` 이상인 entry에만 Zip64 extra(0x0001, version-needed 45)를,
   EOCD 필드가 넘칠 때만 Zip64 EOCD record+locator를 쓴다(APPNOTE 4.5). 4 GiB 미만 ZIP은 이전과 바이트 동일하며,

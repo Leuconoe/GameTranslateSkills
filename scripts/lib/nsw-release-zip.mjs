@@ -163,6 +163,9 @@ export async function resolveNswReleaseNaming(projectRoot, { koreanTitle = null,
   return { gameName: resolved };
 }
 
+// Directly under atmosphere/contents/<TID>/ only these two exist; seeing one again one level down means double nesting.
+const LAYOUT_SEGMENTS = new Set(['romfs', 'exefs']);
+
 function normalizedArchivePath(value) {
   return value.split(path.sep).join('/');
 }
@@ -364,6 +367,13 @@ export async function inventoryExefs(exefsRoot) {
 export async function createDeterministicNswZip({ titleId, romfsRoot, exefsRoot = null, outputPath, zip64Threshold = ZIP64_THRESHOLD }) {
   const id = normalizeTitleId(titleId);
   const contentRoot = `atmosphere/contents/${id}`;
+  // A build whose overlay root already held romfs/ would otherwise ship .../romfs/romfs/... (game sees nothing).
+  const nested = (await fsp.readdir(romfsRoot, { withFileTypes: true }).catch(() => []))
+    .find((entry) => entry.isDirectory() && LAYOUT_SEGMENTS.has(entry.name.toLowerCase()));
+  if (nested) {
+    const target = nested.name.toLowerCase() === 'exefs' ? path.join(path.dirname(romfsRoot), 'exefs') : romfsRoot;
+    throw new Error(`Double-nested LayeredFS overlay: ${path.join(romfsRoot, nested.name)}; its contents belong directly in ${target} (the overlay root, not a folder that contains romfs/)`);
+  }
   const romfsFiles = await inventoryRomfs(romfsRoot);
   const exefsFiles = exefsRoot ? await inventoryExefs(exefsRoot) : [];
   return createDeterministicZip({
@@ -706,6 +716,9 @@ export async function validateNswRelease({ titleId, zipPath, romfsRoot = null, e
       const isExefs = entry.archivePath.startsWith(exefsPrefix);
       if (!isRomfs && !isExefs) throw new Error(`ZIP entry must use ${romfsPrefix} or ${exefsPrefix}: ${entry.archivePath}`);
       const patchPath = validatePatchRelativePath(entry.archivePath.slice(isRomfs ? romfsPrefix.length : exefsPrefix.length));
+      if (LAYOUT_SEGMENTS.has(patchPath.split('/')[0].toLowerCase())) {
+        throw new Error(`Repeated LayeredFS layout segment (double-nested overlay): ${entry.archivePath}`);
+      }
       if (isExefs && (patchPath !== 'main' || !exefsRoot)) throw new Error(`Unrecognized ExeFS release entry: ${entry.archivePath}`);
       const key = entry.archivePath.toLowerCase();
       if (seen.has(key)) throw new Error(`Duplicate/case-colliding ZIP entry: ${entry.archivePath}`);

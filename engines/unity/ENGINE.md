@@ -33,6 +33,12 @@
   `supp_text.py`의 `KEY_FIELDS`가 기본 제외하고, 타이틀별로 `extract --key-fields Class.field,...`로 늘린다.
   이미 만든 보충 manifest의 해당 행은 `status=translated`, 빈 `target_ko`, notes `;keep_source;key_field`로 되돌린다.
   화면이 멈추면 원본 → 파일 → 클래스(`cls=` notes) 순으로 bisect해 원인 클래스를 좁힌다.
+- **I2 읽기(가나) 필드는 원문 유지.** `Tutorial/LabelInitialLastNameKana`·`…FirstNameKana`처럼 이름 입력의 읽기 값을
+  담는 term은 게임이 가나인지 검증하므로, 한국어로 바꾸면 입력 확인이 통과하지 않는다. `supp_text.py`의
+  `KEY_I2_TERMS`(term 이름이 `Kana`/`Furigana`/`Yomi`로 끝남)가 기본 제외하고, 다른 term은 `--key-fields I2.<term>`로 늘린다.
+- **IL2CPP 리터럴은 xref로 표시 전용이 증명된 것만 주입한다.** 같은 리터럴이 비교·사전 키·리소스 경로·enum 이름·
+  저장 키로도 쓰이면(lookup key) 원문을 유지한다. `lit_keep` 휴리스틱 통과나 "화면에 보임"은 증명이 아니다. 화면에 보이는
+  반각(ｶﾀｶﾅ) 변형이 별도 리터럴로 있을 수 있으므로, 표시가 증명된 변형만 따로 보충 행으로 두고 safety TSV에 `safe`로 올린다.
 
 ## TMP/SDF 한글 폰트 주입
 

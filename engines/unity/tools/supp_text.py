@@ -3,7 +3,7 @@
   python -I supp_text.py extract -p <_work/TID> [--prefix GS|key] [--bundle-dirs model,pc/AssetBundle]
         [--key-fields Class.field,...] [--force]
         -> 30_translation/text/supplement/SUPP_MANIFEST.tsv (refuses overwrite); lookup-key fields (KEY_FIELDS + the
-        --key-fields list) are never extracted
+        --key-fields list, `I2.<term>` for one I2 term) and I2 kana-reading terms (KEY_I2_TERMS) are never extracted
   python -I supp_text.py noop -p <_work/TID> [--manifest M]   rewrite every owned file unchanged: all objects raw-exact
   python -I supp_text.py selftest
 Inject / verify of these rows: unity_adapter (bulk_tool inject/verify, or `unity_adapter.py inject|verify --manifest`).
@@ -57,8 +57,14 @@ def ui_fields(t):
 
 
 # MonoBehaviour string fields that games use as lookup keys (translating them hangs the screen that resolves them).
-# Extend per project with `extract --key-fields Class.field,...`.
+# Extend per project with `extract --key-fields Class.field,...`; `I2.<term>` entries name single I2 terms.
 KEY_FIELDS = {('ChapterListNode', '_chapterName'), ('ChapterListNode', '_chapterNum')}
+# I2 terms holding kana readings (e.g. `Tutorial/LabelInitialLastNameKana`): the game validates the value as kana.
+KEY_I2_TERMS = re.compile(r'(Kana|Furigana|Yomi)$')
+
+
+def i2_key(term, key_fields):
+    return bool(KEY_I2_TERMS.search(term)) or ('I2', term) in key_fields
 
 
 def keep_ui(s):
@@ -191,6 +197,8 @@ def units(env, rel, key_fields=KEY_FIELDS):
                 i2 = I2(o.get_raw_data())
                 ji = i2.ja_index()
                 for term, _, langs, _, _ in i2.terms:
+                    if i2_key(term, key_fields):
+                        continue
                     if term.split('_')[0].split('/')[0] != 'Debug' and len(langs) > ji and JP.search(langs[ji]):
                         yield 'u3d_i2', f'{an}|{o.path_id}|term:{term}', langs[ji], 'I2:' + term.split('_')[0]
             continue
@@ -332,6 +340,15 @@ def selftest():
     assert [k for _, k, _, _ in units(env, 'x')] == ['level4|1|m_Text']
     assert not list(units(env, 'x', KEY_FIELDS | {('Label', 'm_Text')}))
     assert len(list(units(env, 'x', set()))) == 3
+    # I2 kana-reading terms stay source (game validates kana); `I2.<term>` key fields skip single terms
+    assert i2_key('Tutorial/LabelInitialLastNameKana', set()) and i2_key('Tutorial/LabelInitialFirstNameKana', set())
+    assert not i2_key('Tutorial/LabelInitialLastName', set()) and i2_key('Menu/Start', {('I2', 'Menu/Start')})
+    raw2 = head + struct.pack('<i', 2) + term('Menu/Start', ['Start', 'はじめる']) + \
+        term('Tutorial/LabelInitialLastNameKana', ['', 'やまだ']) + tail
+    i2o = NS(assets_file=NS(name='resources.assets'), path_id=7, type=NS(name='MonoBehaviour'),
+             get_raw_data=lambda: raw2, parse_monobehaviour_head=lambda: NS(m_Script=NS(
+                 deref_parse_as_object=lambda: NS(m_ClassName='LanguageSourceAsset'))))
+    assert [k for _, k, _, _ in units(NS(objects=[i2o]), U3D_REL)] == ['resources.assets|7|term:Menu/Start']
     assert lit_keep('ガチャを引く') == (True, '') and lit_keep('エラーです')[1] == 'dev_log'
     assert lit_keep('剣')[1] == 'single_kanji' and lit_keep('a,b,c')[1] == 'no_jp'
     print('supp_text selftest OK')

@@ -16,6 +16,10 @@
 Env overrides: EDEN_MCP_EXE, EDEN_CONFIG_FILE, EDEN_SESSIONS_ROOT, EDEN_MAX_SESSIONS (default 8), HOLD (button ms).
 The broker writes <workdir>/r/READY.json when connected. Stop the broker with: call <workdir> __quit__ {}.
 Stop a game with eden_stop (not eden_stop_session) so the session stays registered.
+Software keyboard applet (name entry): while it is open the render-surface screenshot fails/times out, and pad/touch ops
+do not reach it. A stale ROUTE.json (recorded on another build or save state) can open it by pressing A on a name field.
+Workaround: capture with PrintWindow on the owned Eden PID's top-level window, type with WM_CHAR posted to that window,
+confirm/close, then return to step captures. A screenshot timeout here is not a crash or localization FAIL.
 """
 import asyncio, base64, hashlib, json, os, shutil, sys, time
 from pathlib import Path

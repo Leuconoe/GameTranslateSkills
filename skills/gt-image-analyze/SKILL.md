@@ -26,6 +26,10 @@ text handoff 또는 `font_status=verified`가 없으면 이미지 안의 텍스�
 1. **범위 판정**: 컨테이너 엔트리 전수 목록을 만들고 이미지가 없거나 게임별 근거상
    번역 대상이 없으면 `image_scope=N/A`와 0건 근거를 `PROJECT.md`/`IMAGE_ANALYSIS.md`에
    기록한다. 대상이 하나라도 있거나 확인할 수 없으면 `required` 또는 `BLOCKED`로 둔다.
+   **기본 범위는 글자가 든 모든 UI 이미지다**(이름표·타이틀·HUD·버튼·탭·팝업·메뉴 라벨 포함). "노출 높은 것 먼저"로
+   일부만 `required`로 잡고 나머지를 미루지 않는다. 사용자가 범위를 줄인 경우에만 그 지시와 제외 목록을 기록한다.
+   모든 컨테이너(번들·아카이브·data 파일·sprite atlas)를 순회해 inventory하고, 디코드·재인코딩이 막힌 포맷도 해독·
+   변환 경로를 만드는 것까지가 작업이다. 막힌 포맷을 이유로 대상에서 빼지 말고 `BLOCKED`와 시도 근거로 남긴다.
 2. **이미지 전수 inventory**: 경로·stable key·포맷·canvas·색상 모드·alpha·압축·mip·
    원본 SHA-256·언어 variant·runtime consumer를 기록한다. 아틀라스는 page·x/y·width/
    height·padding·UV 원점·sprite/region ID까지 기록한다.
@@ -66,6 +70,7 @@ text handoff 또는 `font_status=verified`가 없으면 이미지 안의 텍스�
 ## 완료 기준
 
 - [ ] 대상·비대상·미확인 이미지가 전수 기록됨
+- [ ] 글자가 든 UI 이미지 전부가 `required`이고, 빠진 것은 기록된 사용자 범위 지시나 `BLOCKED`(막힌 포맷 시도 근거)뿐임
 - [ ] 문자 영역·보존 영역·atlas region·runtime consumer가 구분됨
 - [ ] canvas·format·alpha·압축·좌표·분위기·스타일 계약과 원본/reference hash가 있음
 - [ ] edit region·anchor·atlas rect가 수치로 고정되고 원본/reference가 byte-exact임

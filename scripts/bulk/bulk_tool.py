@@ -8,7 +8,9 @@
                                  each unique (name-row?, source); non-translatable rows (digits/symbols/IDs/Korean) skipped
   next                           resume point: first export line whose n is in no out/*.tsv part yet (generated too)
   dupfill   [--tm MANIFEST ...]  out/PZ_dupfill.tsv (same-speaker donor preferred; cross-speaker fills listed in
-                                 dupfill_xspk.tsv for review) + out/PZ_tm.tsv (exact source from sibling-title manifests)
+                                 dupfill_xspk.tsv for review) + out/PZ_tm.tsv (exact source from sibling-title manifests).
+                                 Exact-source reuse (export dedup, dupfill, TM) stays inside one row class = notes kind
+                                 (speaker/name/chara kinds -> name); a row whose notes carry `xclass` opts in to any class
   check     [--width N]          validate every out/*.tsv row (tokens, line breaks, brackets, JP residue, line width);
                                  ruby markup may (and in Korean must) be dropped: <ruby=..>..</ruby> {ruby:base|..}
                                  [ruby=..]..[/ruby] @rbase@reading@
@@ -29,7 +31,9 @@
   review-apply <edits.tsv> [--width N]  review edits `id<TAB>ko<TAB>category` (optional `id` header) -> ONE atomic
                                  manifest write + merge_log `REVIEW ... edits=<hash>`; refuses on unknown/duplicate/
                                  non-translated ids, any check error, check-all errors on the result, or an existing
-                                 REVIEW line with the same edits hash (never applied twice). Nothing written on refusal
+                                 REVIEW line with the same edits hash (never applied twice). Nothing written on refusal.
+                                 Ids of text/supplement/SUPP_MANIFEST.tsv rows edit their supplement/out part line
+                                 (no part line yet -> supplement/out/PR_review.tsv); rerun supp-merge afterwards
   import-held                    30_translation/text/HELD_FOR_USER.tsv (id, text): text != source -> translation
   resume-md [--force]            write a <=40-line 30_translation/RESUME.md skeleton
   inject / verify / roundtrip --adapter A --out NEWDIR   overlay write; verify/roundtrip read every row back by key
@@ -133,7 +137,11 @@ def spk(r):
 
 
 def key(r):
-    return (bool(NAME_KIND.search(kind(r))), r['ja'])
+    """exact-source reuse bucket: (row class, source). Row class = the notes kind (speaker/name/chara kinds -> 'name');
+    rows tagged `xclass` in notes opt in to any-class donors and share the bucket ('*', source)."""
+    if 'xclass' in r['notes'].split(';'):
+        return ('*', r['ja'])
+    return ('name' if NAME_KIND.search(kind(r)) else kind(r), r['ja'])
 
 
 def translatable(s):
@@ -275,7 +283,7 @@ def cmd_export(p, rows, a):
     h, seen, lines = held(p, rows), set(), []
     for n, r in enumerate(rows, 1):
         if r['status'] == 'new' and n not in h and translatable(r['ja']) and key(r) not in seen:
-            seen.add(key(r))
+            seen.update((key(r), ('*', r['ja'])))  # an `xclass` row may take any exported class as its donor
             lines.append(f"{n}\t{spk(r)}\t{r['ja']}\n" if a.speaker else f"{n}\t{r['ja']}\n")
     w_atomic(p.src, ''.join(lines))
     skipped = sum(r['status'] == 'new' and not translatable(r['ja']) for r in rows)
@@ -290,7 +298,8 @@ def cmd_next(p, rows, a):
           else f'all {len(ns)} export rows done -> dupfill, check, merge')
 
 
-def load_tm(paths):
+def load_tm(paths, by_class=False):
+    """sibling manifests -> {source: ko}; by_class: {key(row): ko} plus ('*', source) for `xclass` recipients."""
     tm = {}
     for f in paths or ():
         lines = Path(f).read_text(encoding='utf-8-sig').split('\n')
@@ -298,11 +307,13 @@ def load_tm(paths):
         for l in lines[1:]:
             r = dict(zip(hdr, l.rstrip('\r').split('\t')))
             if r.get('target_ko') and r.get('status', '').startswith('translated'):
-                tm.setdefault(r['ja'], r['target_ko'])
+                for k in ((key(dict(r, notes=r.get('notes', ''))), ('*', r['ja'])) if by_class else (r['ja'],)):
+                    tm.setdefault(k, r['target_ko'])
     return tm
 
 
 def cmd_dupfill(p, rows, a):
+    """exact-source fills only within one row class (key()): a UI はーい never takes a dialogue translation."""
     h, donors = held(p, rows), collections.defaultdict(list)
     have = {}
     for _, g in read_parts(p, generated=False):
@@ -310,7 +321,9 @@ def cmd_dupfill(p, rows, a):
             have.setdefault(int(g[0]), g[1])
     for n in sorted(have):
         donors[key(rows[n - 1])].append(n)
-    tm, dup, tml, xs = load_tm(a.tm), [], [], ['id\tspeaker\tdonor_id\tdonor_speaker\tregister\tja\tko']
+        if key(rows[n - 1])[0] != '*':
+            donors[('*', rows[n - 1]['ja'])].append(n)
+    tm, dup, tml, xs = load_tm(a.tm, True), [], [], ['id\tspeaker\tdonor_id\tdonor_speaker\tregister\tja\tko']
     for n, r in enumerate(rows, 1):
         if r['status'] != 'new' or n in have or n in h or not translatable(r['ja']):
             continue
@@ -322,8 +335,8 @@ def cmd_dupfill(p, rows, a):
             if spk(rows[m - 1]) != spk(r) and HANGUL.search(ko):
                 reg = 'polite' if any(KOPOL.search(x.strip()) for x in BR.split(ko)) else 'casual'
                 xs.append(f"{r['id']}\t{spk(r)}\t{rows[m - 1]['id']}\t{spk(rows[m - 1])}\t{reg}\t{r['ja']}\t{ko}")
-        elif r['ja'] in tm and not check_row(r['ja'], fix_br(r['ja'], tm[r['ja']]), kind(r)):
-            tml.append(f"{n}\t{fix_br(r['ja'], tm[r['ja']])}\n")
+        elif key(r) in tm and not check_row(r['ja'], fix_br(r['ja'], tm[key(r)]), kind(r)):
+            tml.append(f"{n}\t{fix_br(r['ja'], tm[key(r)])}\n")
     w_atomic(p.out / 'PZ_dupfill.tsv', ''.join(dup))
     w_atomic(p.out / 'PZ_tm.tsv', ''.join(tml))
     w_atomic(p.bulk / 'dupfill_xspk.tsv', '\n'.join(xs) + '\n')
@@ -367,24 +380,37 @@ def cmd_review_apply(p, rows, a):
     if p.log.exists() and any(l.startswith('REVIEW\t') and f'edits={h}' in l
                               for l in p.log.read_text(encoding='utf-8').split('\n')):
         sys.exit(f'refuse: merge_log already has REVIEW edits={h} (these edits were applied)')
+    supp, sparts = [], {}  # supplement rows (ids not in the manifest) are edited in their supplement/out parts
+    if (p.supp / 'SUPP_MANIFEST.tsv').exists():
+        sp = Prj(p.root)
+        sp.man = p.supp / 'SUPP_MANIFEST.tsv'
+        supp = load(sp)[1]
+        for f in sorted((p.supp / 'out').glob('*.tsv')):
+            for j, l in enumerate(f.read_text(encoding='utf-8-sig').split('\n')):
+                if l.split('\t')[0].isdigit():
+                    sparts.setdefault(int(l.split('\t')[0]), (f, j))
+    sby = {r['id']: n for n, r in enumerate(supp, 1)}
     by, seen, cats, errs, new = {r['id']: n for n, r in enumerate(rows, 1)}, set(), collections.Counter(), [], {}
+    snew = {}
     for k, (i, ko, cat) in enumerate(edits, 1):
         n = by.get(i)
-        if n is None or i in seen:
-            errs.append(f'line {k}: id {i} {"unknown" if n is None else "duplicate"}')
+        if (n is None and i not in sby) or i in seen:
+            errs.append(f'line {k}: id {i} {"duplicate" if i in seen else "unknown"}')
             continue
         seen.add(i)
-        r = rows[n - 1]
+        r = rows[n - 1] if n else supp[sby[i] - 1]
         if len(lines[k - 1]) != 3 or not cat:
             errs.append(f'line {k}: {i} needs id<TAB>ko<TAB>category')
-        elif r['status'] != 'translated':
+        elif n and r['status'] != 'translated':
             errs.append(f'line {k}: {i} status {r["status"]}')
         else:
             ko = fix_br(r['ja'], ko)
             errs += [f'line {k}: {i} {e}' for e in check_row(r['ja'], ko, kind(r), a.width)]
             cats[cat] += 1
-            if ko != r['target_ko']:
+            if n and ko != r['target_ko']:
                 new[n] = ko
+            elif not n:
+                snew[sby[i]] = ko
     if errs:
         print('\n'.join(errs[:80]))
         sys.exit(f'refuse review-apply: {len(errs)} errors - manifest untouched')
@@ -394,11 +420,21 @@ def cmd_review_apply(p, rows, a):
     if bad:
         print('\n'.join(bad[:80]))
         sys.exit(f'refuse review-apply: check-all {len(bad)} errors on the result - manifest untouched')
+    files = collections.defaultdict(dict)  # part file -> {line index: new line}; rows without a part -> PR_review.tsv
+    for n, ko in snew.items():
+        f, j = sparts.get(n, (p.supp / 'out' / 'PR_review.tsv', None))
+        files[f][j if j is not None else ('+', n)] = f'{n}\t{ko}'
+    for f, ch in files.items():
+        ls = f.read_text(encoding='utf-8-sig').split('\n') if f.exists() else []
+        if ls and ls[-1] == '':
+            ls.pop()
+        ls = [ch.get(j, l) for j, l in enumerate(ls)] + [v for j, v in ch.items() if isinstance(j, tuple)]
+        w_atomic(f, '\n'.join(ls) + '\n')
     sha = save(p, hdr, rows, bom)
-    log(p, f'REVIEW\t{len(new)} rows\tQA_OK\tedits={h}\t{dict(cats)} unchanged={len(edits) - len(new)} '
-           f'src={Path(a.edits).name}\t{sha}')
-    print(f'REVIEW applied {len(new)} rows (unchanged {len(edits) - len(new)}) {dict(cats)} edits={h} | check-all OK '
-          f'| sha256 {sha}')
+    log(p, f'REVIEW\t{len(new)} rows\tsupp={len(snew)}\tQA_OK\tedits={h}\t{dict(cats)} '
+           f'unchanged={len(edits) - len(new) - len(snew)} src={Path(a.edits).name}\t{sha}')
+    print(f'REVIEW applied {len(new)} rows (unchanged {len(edits) - len(new) - len(snew)}) supp parts {len(snew)} '
+          f'{dict(cats)} edits={h} | check-all OK | sha256 {sha}' + (' | rerun supp-merge' if snew else ''))
 
 
 def cmd_merge(p, rows, a):
@@ -953,6 +989,20 @@ def selftest():
         assert p.log.read_text(encoding='utf-8').count('\n') == 2
         cmd_resume_md(p, rows, ns)
         assert p.resume.read_text(encoding='utf-8').count('\n') <= 40
+    with tempfile.TemporaryDirectory() as d:  # dupfill / TM stay inside one row class unless the row is `xclass`
+        p = Prj(d)
+        src = [('はーい', 'dlg;spk=A'), ('はーい', 'ui'), ('はーい', 'ui2;xclass'), ('はーい', 'ui3')]
+        rows = [dict(zip(hdr, (f'T{i}', 'f', str(i), ja, '', '', 'new', nt))) for i, (ja, nt) in enumerate(src, 1)]
+        save(p, hdr, rows, False)
+        tmf = Path(d, 'sib.tsv')
+        w_atomic(tmf, '\t'.join(hdr) + '\nX1\tf\t1\tはーい\t\t다 됐다\ttranslated\tui\n')
+        xn = argparse.Namespace(speaker=False, tm=[str(tmf)], width=0)
+        cmd_export(p, rows, xn)
+        assert [l.split('\t')[0] for l in p.src.read_text(encoding='utf-8').split('\n') if l] == ['1', '2', '4']
+        w_atomic(p.out / 'P1.tsv', '1\t네~\n')
+        cmd_dupfill(p, rows, xn)
+        assert p.out.joinpath('PZ_dupfill.tsv').read_text(encoding='utf-8') == '3\t네~\n'  # opted-in row only
+        assert p.out.joinpath('PZ_tm.tsv').read_text(encoding='utf-8') == '2\t다 됐다\n'   # same class (ui) only
     with tempfile.TemporaryDirectory() as d:  # template TM
         p = Prj(d)
         src = ['一花のリボン×3', '二乃のピアス×5', '三玖のリボン×１２', '10月5日(月)まで', '11月2日(火)まで', 'ただの文']
@@ -1063,6 +1113,21 @@ def selftest():
         assert 'already has REVIEW' in refused(edits)                                # same edits never twice
         w_atomic(Path(ns.edits), 'T1\t안녕\t말투\n')                                   # a new edit set still applies
         assert 'REVIEW applied 1 rows' in said(cmd_review_apply, p, None, ns)
+        # supplement ids: the edit rewrites that row's line in supplement/out, or appends to PR_review.tsv
+        sp = Prj(d)
+        sp.man = p.supp / 'SUPP_MANIFEST.tsv'
+        save(sp, hdr, [dict(zip(hdr, (f'S{i}', 'f', str(i), ja, '', '', 'new', 'u3d_i2'))) for i, ja in
+                       enumerate(('閉じる', '戻る'), 1)], False)
+        w_atomic(p.supp / 'out' / 'S1.tsv', '1\t닫다\n')
+        assert 'manifest untouched' in refused('S1\t닫기あ\t용어\n')
+        before = p.man.read_bytes()
+        w_atomic(Path(ns.edits), 'S1\t닫기\t용어\nS2\t돌아가기\t용어\n')
+        assert 'supp parts 2' in said(cmd_review_apply, p, None, ns) and p.man.read_bytes() == before
+        assert p.supp.joinpath('out', 'S1.tsv').read_text(encoding='utf-8') == '1\t닫기\n'
+        assert p.supp.joinpath('out', 'PR_review.tsv').read_text(encoding='utf-8') == '2\t돌아가기\n'
+        said(cmd_supp_merge, p, None, argparse.Namespace(tm=None, width=0))
+        got = p.man.with_name('translation_manifest_merged.tsv').read_text(encoding='utf-8-sig')
+        assert '\t닫기\ttranslated' in got and '\t돌아가기\ttranslated' in got
     print('selftest ok')
 
 

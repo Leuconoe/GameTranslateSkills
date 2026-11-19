@@ -148,6 +148,11 @@ description: "Release a QA-verified Korean game patch using the platform adapter
    상태 변경 시 `--review-archive`로 재검토하고 승인을 초기화한다.
 7. **커밋(선택)**: 저장소 추적 대상(번역 TSV·용어집·문서)만 명시적 allowlist로 커밋
    (`common/SAFETY.md`의 git 규칙 — `git add .` 금지, 롬/키/추출물/빌드 산출물 제외).
+8. **마지막 `_release` 재검증**: 정리·커밋까지 끝난 **릴리스 실행의 마지막 단계**로 `_release/`를 다시 열어 ZIP(또는
+   `RELEASE_PACKAGE.json`의 분할 조각 전부)·`SHA256SUMS.txt`·`RELEASE_PACKAGE.json`이 존재하고 해시가 일치하는지
+   확인한다(NSW `release:validate:nsw`, Steam/PC `release:validate:steam`). 패키징 뒤 산출물이 사라지는 일이 있었으므로
+   패키징 직후 검증만으로 끝내지 않는다. 코디네이터도 완료를 보고하기 전에 같은 검사를 한 번 더 하고, 없거나 다르면
+   릴리스 미완수로 보고한다.
 
 ## 산출물
 
@@ -179,3 +184,4 @@ NSW·Steam/PC의 `<adapter release path>`는 타이틀(설치) 루트의 `_relea
 - [ ] canonical 파일명·경로·ZIP root·파일 allowlist가 어댑터 계약과 exact 일치
 - [ ] NSW이면 `release:validate:nsw`가 entry 경로·CRC-32·SHA-256과 canonical RomFS/ExeFS를 전수 대조해 통과
 - [ ] 공식 배포 릴리즈 런타임·하드웨어 상태와 `released` 판정이 서로 혼동되지 않음
+- [ ] 실행 마지막과 코디네이터 보고 직전에 `_release/`의 ZIP(또는 분할 조각)·`SHA256SUMS.txt`·`RELEASE_PACKAGE.json` 존재와 해시 일치를 재검증함

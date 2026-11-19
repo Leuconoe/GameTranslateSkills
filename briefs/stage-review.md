@@ -8,7 +8,8 @@
 4. 수정은 `P\30_translation\text\batches\review\REVIEW_EDITS.tsv`(`id<TAB>ko<TAB>category`, category = 말투/윤문/기타)에
    모은 뒤 `python -I <GT_HOME>/scripts/bulk/bulk_tool.py review-apply <edits.tsv> -p P`로 manifest에 원자적으로 1회
    반영한다(merge_log `REVIEW ... edits=<hash>`; 같은 edits가 이미 반영됐거나 검사 오류가 있으면 아무것도 쓰지 않고 거부).
-   반영 전후로 `python -I <GT_HOME>/scripts/bulk/bulk_tool.py check-all -p P`가 OK여야 한다. 프로젝트 전용 적용 스크립트는
-   만들지 않는다.
+   반영 전후로 `python -I <GT_HOME>/scripts/bulk/bulk_tool.py check-all -p P`가 OK여야 한다. 보충 행(SUPP_MANIFEST id)도
+   같은 edits에 넣으면 `supplement/out` 파트에 반영되므로, 그 뒤 `supp-merge`를 다시 돌린다. 프로젝트 전용 적용
+   스크립트(파트 직접 수정 포함)는 만들지 않는다.
 5. 폰트 범위 밖 한글이 새로 생기면 폰트를 다시 빌드한다. `integrated_r<N>`을 빌드하고 검증한 뒤,
    `50_test\TEXT_REVIEW.md`, RESUME.md State 줄, WORK_LOG 1줄을 갱신한다.

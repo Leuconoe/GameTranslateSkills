@@ -38,6 +38,20 @@ STYLE을 따르고 `$GT_HOME/common/image-translation-contract.md`를 적용한�
 이미 기록된 금지 범위를 회피하려고 재시도·재표현·직접 조판으로 우회하지 않는다.
 실패한 호출을 성공한 출력으로 꾸며 세지 않는다.
 
+### 조판 편집 박스와 원문 잔상
+
+조판(`origin=agent-typeset`, 엔진 조판 도구 포함)의 지우기 박스·마스크는 눈대중 좌표가 아니라 **원문 glyph 픽셀
+bounds + 여백**(외곽선·그림자·발광·AA 폭 이상)에서 만든다. 박스가 첫 글자 안쪽에서 시작하면 그 글자 획이 남는다.
+Unity `unity_image.py`의 badge/page 모드는 spec `dilate` 열로 지우기 마스크를 키워 남은 발광·AA 테두리를 덮는다.
+렌더 뒤 마스크 밖에 원문 글자 픽셀이 남았는지 잔상 검사를 하고, 남으면 박스·`dilate`를 고쳐 다시 렌더한다.
+
+### imagegen 할당량 대비
+
+imagegen 대상은 분석 직후 한 job 파일(`IMAGEGEN_QUEUE.tsv`)에 **전부, 처리 순서와 함께** 먼저 올린다. 행마다 상태
+(`queued/running/done/failed/typeset`)와 시도 횟수를 남겨 할당량 소진·세션 중단 뒤 다음 에이전트가 남은 행부터 이어
+가게 한다. 결과를 기다리는 동안 imagegen이 아닌 대상은 조판으로 먼저 끝낸다. 마지막 라운드에 아직 `queued`/`running`인
+행은 더 기다리지 않고 조판으로 마무리해 `origin=agent-typeset`로 기록한다.
+
 ## 실행 경로
 
 | 환경 | 동작 |

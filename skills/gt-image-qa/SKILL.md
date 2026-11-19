@@ -66,6 +66,10 @@ validator의 1~2회 imagegen 또는 별도 schema 6 typeset 분기를 사용한�
      질감/재질/광원, 자간/행간/baseline/정렬 보존
    - canvas/layout/alpha/atlas와 비대상 영역 보존
 
+   - **원문 잔상 검사**: 조판 후보는 지우기 박스·마스크가 원문 glyph 픽셀 bounds+여백에서 나왔는지 확인하고, 원본에서
+     원문 글자 픽셀(외곽선·발광·AA 포함)인 곳 중 마스크 밖에 남은 것이 있으면 실패다. 박스 수정이나 엔진 도구의
+     지우기 마스크 확장(Unity `unity_image.py` spec `dilate`)으로 다시 렌더한다.
+
    선택 후보가 읽히기만 하고 원어의 시각적 정체성과 어울리지 않으면
    `original_feel_status=fail` 및 `BLOCKED`다. 탈락 사유가 없는 rejected 후보나 QA 실패를
    숨긴 selected 후보도 실패시킨다.
@@ -85,7 +89,7 @@ validator의 1~2회 imagegen 또는 별도 schema 6 typeset 분기를 사용한�
 
 - [ ] required stable key, 3–4개 attempt, 선택 후보의 수량·path·hash가 일치함
 - [ ] 내장 imagegen best-of-3 provenance와 원본 비덮어쓰기 검증 통과
-- [ ] 원문 흔적·겹쳐쓰기 0건과 원본 느낌 보존 검증 통과
+- [ ] 원문 흔적·겹쳐쓰기 0건(조판은 마스크 밖 원문 글자 픽셀 0 잔상 검사 포함)과 원본 느낌 보존 검증 통과
 - [ ] canvas·format·alpha policy·atlas·anchor·padding·보존 영역 검증 통과
 - [ ] 현재 manifest validator 결과 `Issues: 0`, hold·미확인 항목 0건
 - [ ] `image_status=qa_ready`가 기록되고 `gt-image-review`로 진행 가능함
